@@ -1,0 +1,179 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Mamplan",
+  "description": "Schema for Mampok Mamplan configuration files.",
+  "type": "object",
+  "required": ["project", "service", "deployment"],
+  "additionalProperties": false,
+  "properties": {
+    "project": {
+      "type": "object",
+      "description": "Core project configuration. This section is mandatory.",
+      "required": ["project_id", "tool", "files", "creation_date"],
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "Unique project identifier. No capital letters or underscores allowed.",
+          "pattern": "^[^A-Z_]+$"
+        },
+        "tool": {
+          "type": "string",
+          "description": "Name of the MaMplate tool to use."
+        },
+        "files": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "File paths relative to the project folder to upload."
+        },
+        "init_container": {
+          "type": "string",
+          "description": "Container type for pre-initialization (e.g. s3download, s3downloadfolder)."
+        },
+        "project_size": {
+          "type": "integer",
+          "description": "Total project size in kilobytes.",
+          "minimum": 0
+        },
+        "creation_date": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Project creation date in ISO 8601 UTC datetime format (e.g. 2024-01-31T12:00:00Z)."
+        }
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "description": "Deployment configuration. If omitted, Mampok auto-generates it on first run. Cluster has no default and must always be set explicitly.",
+      "required": ["cluster", "status", "auth", "bucket", "mampok_bucket", "generate_url", "lifetime", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "boolean",
+          "description": "Indicates whether the deployment is currently active.",
+          "default": false
+        },
+        "auth": {
+          "type": "boolean",
+          "description": "Enables login protection.",
+          "default": false
+        },
+        "bucket": {
+          "type": "string",
+          "description": "S3 storage bucket name. No capital letters or underscores allowed.",
+          "pattern": "^[^A-Z_]+$"
+        },
+        "cluster": {
+          "type": "string",
+          "description": "Target cluster identifier. Must always be set explicitly — no default."
+        },
+        "mampok_bucket": {
+          "type": "boolean",
+          "description": "Auto-generate S3 bucket name.",
+          "default": true
+        },
+        "generate_url": {
+          "type": "boolean",
+          "description": "Auto-generate deployment URL.",
+          "default": true
+        },
+        "lifetime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Project expiration date in ISO 8601 UTC datetime format (e.g. 2024-12-31T00:00:00Z)."
+        },
+        "random_url_suffix": {
+          "type": "boolean",
+          "description": "Append 5 random characters to the deployment URL.",
+          "default": false
+        },
+        "url": {
+          "type": "string",
+          "description": "Custom deployment access URL. No capital letters allowed.",
+          "pattern": "^[^A-Z_]+$"
+        },
+        "autoscaling": {
+          "type": "boolean",
+          "description": "Enable pod autoscaling.",
+          "default": false
+        }
+      }
+    },
+    "container": {
+      "type": "object",
+      "description": "Container configuration. Any field from the referenced MaMplate can be overridden here. All fields are optional.",
+      "additionalProperties": false,
+      "properties": {
+        "main": {
+          "description": "Overrides for the main container. All MaMplate fields are available.",
+          "allOf": [{ "$ref": "mamplate_schema.json#/definitions/MamplateProperties" }]
+        },
+        "init": {
+          "description": "Overrides for the init container. All MaMplate fields are available.",
+          "allOf": [{ "$ref": "mamplate_schema.json#/definitions/MamplateProperties" }]
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "description": "Service metadata.",
+      "required": ["analyst", "datatype", "download_allowed", "metadata", "organization", "owner", "user"],
+      "additionalProperties": false,
+      "properties": {
+        "analyst": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "List of usernames of the data analysts responsible for this project."
+        },
+        "datatype": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "List of data types associated with this project."
+        },
+        "download_allowed": {
+          "type": "boolean",
+          "description": "Whether data download from the container is permitted.",
+          "default": false
+        },
+        "metadata": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of IDs referencing associated experimental metadata."
+        },
+        "organization": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Organization or department names. Use 'public' for publicly accessible projects."
+        },
+        "owner": {
+          "type": "string",
+          "description": "Username of the project owner. Must be 'public' if organization contains 'public'."
+        },
+        "user": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of usernames with access to this project."
+        }
+      }
+    },
+    "tags": {
+      "type": "object",
+      "description": "Optional free-form metadata tags. No validation is applied — any additional keys are allowed.",
+      "additionalProperties": true,
+      "properties": {
+        "gse": {
+          "type": "string",
+          "description": "GEO Series accession number."
+        },
+        "pubmedid": {
+          "type": "integer",
+          "description": "PubMed identifier for an associated publication."
+        }
+      }
+    }
+  },
+  "definitions": {}
+
+}

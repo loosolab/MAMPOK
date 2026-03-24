@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mampok"
+version = "2.0.0.dev0"
+description = "Kubernetes deployment manager for bioinformatics pipelines"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "kubernetes",
+    "boto3",
+    "jsonschema",
+    "typer",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+
+[project.scripts]
+mampok = "mampok.interfaces.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mampok"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests that need external services",
+]

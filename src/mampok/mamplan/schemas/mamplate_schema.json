@@ -1,0 +1,223 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Mamplate",
+  "description": "Schema for Mampok MaMplate container blueprint files.",
+  "allOf": [
+    { "$ref": "#/definitions/MamplateProperties" },
+    { "required": ["tool", "image", "containertype", "resources"] },
+    {
+      "if": {
+        "properties": {
+          "containertype": { "const": "maincontainer" }
+        },
+        "required": ["containertype"]
+      },
+      "then": {
+        "required": ["ports"]
+      }
+    }
+  ],
+  "definitions": {
+    "MamplateProperties": {
+      "type": "object",
+      "description": "All Mamplate fields. Used directly for Mamplate validation (with required fields added via allOf) and referenced from the Mamplan container section for overrides (all fields optional).",
+      "additionalProperties": false,
+      "properties": {
+        "tool": {
+          "type": "string",
+          "description": "Unique identifier for this tool/template."
+        },
+        "image": {
+          "type": "string",
+          "description": "Docker image URI for this container."
+        },
+        "containertype": {
+          "type": "string",
+          "description": "Whether this is a main container or an init container.",
+          "enum": ["maincontainer", "initcontainer"]
+        },
+        "containername": {
+          "type": "string",
+          "description": "Name of the container. Deprecated — this key is scheduled for removal."
+        },
+        "imagePullPolicy": {
+          "type": "string",
+          "description": "Kubernetes image pull policy.",
+          "enum": ["Always", "Never", "IfNotPresent"]
+        },
+        "ports": {
+          "type": "integer",
+          "description": "Port number exposed by the container for web access."
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Arguments passed to the container entrypoint."
+        },
+        "command": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Overrides the container entrypoint command."
+        },
+        "env": {
+          "type": "array",
+          "description": "Environment variables for the container. Each entry is either a secret reference or a direct key-value pair.",
+          "items": {
+            "oneOf": [
+              {
+                "title": "SecretEnvVar",
+                "description": "References a secret by name. secretname 0 = project secret, 1 = cluster secret.",
+                "type": "object",
+                "required": ["key", "name", "secretname"],
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "description": "The environment variable name inside the container."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "The secret key reference name."
+                  },
+                  "secretname": {
+                    "type": "integer",
+                    "description": "Secret scope: 0 = project secret, 1 = cluster secret.",
+                    "enum": [0, 1]
+                  }
+                }
+              },
+              {
+                "title": "DirectEnvVar",
+                "description": "Sets an environment variable to a literal value.",
+                "type": "object",
+                "required": ["name", "value"],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The environment variable name inside the container."
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "The literal value of the environment variable."
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "resources": {
+          "type": "object",
+          "description": "CPU and memory resource requests and limits for the container.",
+          "additionalProperties": false,
+          "properties": {
+            "limits": { "$ref": "#/definitions/ResourceSpec" },
+            "requests": { "$ref": "#/definitions/ResourceSpec" }
+          }
+        },
+        "volume": {
+          "type": "object",
+          "description": "Volume mount configuration for the container.",
+          "required": ["mountPath", "name"],
+          "additionalProperties": false,
+          "properties": {
+            "mountPath": {
+              "type": "string",
+              "description": "Path inside the container where the volume is mounted."
+            },
+            "name": {
+              "type": "string",
+              "description": "Volume identifier."
+            }
+          }
+        },
+        "downloadpaths": {
+          "type": "object",
+          "description": "Mapping of local labels to container paths for data extraction (label: container_path).",
+          "additionalProperties": { "type": "string" }
+        },
+        "readinessProbe": {
+          "type": "object",
+          "description": "Kubernetes readiness probe configuration. Kubernetes uses this to determine when the container is ready to accept traffic.",
+          "additionalProperties": false,
+          "properties": {
+            "httpGet": {
+              "type": "object",
+              "description": "HTTP GET probe configuration.",
+              "required": ["path", "port"],
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Path to probe (e.g. '/', '/health', '/api/status')."
+                },
+                "port": {
+                  "type": "integer",
+                  "description": "Port number to probe."
+                }
+              }
+            },
+            "tcpSocket": {
+              "type": "object",
+              "description": "TCP socket probe configuration.",
+              "required": ["port"],
+              "additionalProperties": false,
+              "properties": {
+                "port": {
+                  "type": "integer",
+                  "description": "Port number to probe."
+                }
+              }
+            },
+            "initialDelaySeconds": {
+              "type": "integer",
+              "description": "Seconds to wait after container start before probing.",
+              "default": 5,
+              "minimum": 0
+            },
+            "periodSeconds": {
+              "type": "integer",
+              "description": "How often (in seconds) to perform the probe.",
+              "default": 10,
+              "minimum": 1
+            },
+            "failureThreshold": {
+              "type": "integer",
+              "description": "Number of consecutive failures before marking as not ready.",
+              "default": 3,
+              "minimum": 1
+            },
+            "timeoutSeconds": {
+              "type": "integer",
+              "description": "Seconds after which the probe times out.",
+              "default": 1,
+              "minimum": 1
+            }
+          }
+        },
+        "annotation": {
+          "type": "object",
+          "description": "Kubernetes ingress annotations. Any string key-value pairs are allowed.",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "ResourceSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cpu": {
+          "description": "CPU allocation (e.g. '2', '500m', 0.5).",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "number" }
+          ]
+        },
+        "memory": {
+          "type": "string",
+          "description": "Memory allocation (e.g. '4Gi', '80Gi')."
+        }
+      }
+    }
+  }
+}
