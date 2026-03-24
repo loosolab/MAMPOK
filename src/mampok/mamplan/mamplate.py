@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
+from typing import ClassVar
 
 from mampok.mamplan.base import MamplanBase
 
@@ -11,41 +13,71 @@ class Mamplate(MamplanBase):
     """Template mit allen Informationen über den zu erzeugenden Container.
 
     Enthält Defaults und container-spezifische Konfiguration (Image, Resources,
-    Ports, Env-Variablen etc.). Wird gegen `mamplate_schema.json` validiert.
+    Ports, Env-Variablen etc.). Wird gegen ``mamplate_schema.json`` validiert.
 
-    Ein Mamplan referenziert ein Mamplate über das `tool`-Feld.
+    Ein Mamplan referenziert ein Mamplate über das ``tool``-Feld.
 
     Args:
-        mamplate: Mamplate-Konfigurations-Dict.
+        data: Mamplate-Konfigurations-Dict.
+
+    Raises:
+        jsonschema.ValidationError: Wenn data das Schema verletzt.
     """
 
-    def __init__(self, mamplate: dict) -> None:
-        """Initialisiert Mamplate und lädt das zugehörige JSON-Schema.
+    _schema_name: ClassVar[str] = "mamplate_schema.json"
+    _schema_cache: ClassVar[dict | None] = None
+    _registry: ClassVar[object | None] = None
+
+    def __init__(self, data: dict) -> None:
+        """Initialisiert Mamplate.
 
         Args:
-            mamplate: Mamplate-Konfigurations-Dict.
+            data: Mamplate-Konfigurations-Dict.
 
         Raises:
-            jsonschema.ValidationError: Wenn mamplate das Schema verletzt.
+            jsonschema.ValidationError: Wenn data das Schema verletzt.
         """
-        raise NotImplementedError
+        super().__init__(data)
+
+    def _get_auto_filename(self) -> str:
+        """Gibt den auto-generierten Dateinamen zurück.
+
+        Returns:
+            '{tool}-mamplate.json'
+        """
+        return f"{self.data['tool']}-mamplate.json"
 
     @classmethod
     def read_in(cls, path: Path) -> "Mamplate":
-        """Lädt ein Mamplate aus einer JSON- oder YAML-Datei.
+        """Lädt ein Mamplate aus einer JSON-Datei.
 
         Args:
             path: Pfad zur Mamplate-Datei.
 
         Returns:
             Neue Mamplate-Instanz.
-        """
-        raise NotImplementedError
 
-    def _get_schema_name(self) -> str:
-        """Gibt den Dateinamen des Mamplate-Schemas zurück.
+        Raises:
+            FileNotFoundError: Wenn die Datei nicht existiert.
+            json.JSONDecodeError: Wenn die JSON-Syntax ungültig ist.
+            jsonschema.ValidationError: Wenn der Inhalt das Schema verletzt.
+        """
+        return super().read_in(path)  # type: ignore[return-value]
+
+    @classmethod
+    def create(cls, **kwargs) -> "Mamplate":
+        """Factory-Methode für neue Mamplates.
+
+        Keine Normalisierung — tool, image, containertype und resources
+        sind direkte Pflichtfelder.
+
+        Args:
+            **kwargs: Mamplate-Felder (tool, image, containertype, resources, ports, etc.).
 
         Returns:
-            'mamplate_schema.json'
+            Validierte Mamplate-Instanz.
+
+        Raises:
+            jsonschema.ValidationError: Wenn Pflichtfelder fehlen oder ungültig sind.
         """
-        raise NotImplementedError
+        return cls(copy.deepcopy(kwargs))

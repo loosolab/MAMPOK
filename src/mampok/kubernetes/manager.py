@@ -2,75 +2,127 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+from mampok.kubernetes.builder import ManifestBuilder
 from mampok.kubernetes.client import KubeClient
 from mampok.kubernetes.config import DeploymentConfig
 
 
 class DeploymentManager:
-    """Verbindet KubeClient (Schicht 1) und ManifestBuilder (Schicht 2).
+    """Connects KubeClient (layer 1) and ManifestBuilder (layer 2).
 
-    Orchestriert Deploy/Delete-Zyklen für ein Mampok-Deployment.
+    Orchestrates deploy/delete cycles for a Mampok deployment.
 
     Args:
-        kube: Konfigurierter KubeClient für den Ziel-Namespace.
+        kube: Configured KubeClient for the target namespace.
     """
 
     def __init__(self, kube: KubeClient) -> None:
-        """Initialisiert DeploymentManager.
+        """Initialize DeploymentManager.
 
         Args:
-            kube: Konfigurierter KubeClient für den Ziel-Namespace.
+            kube: Configured KubeClient for the target namespace.
         """
-        raise NotImplementedError
+        self._kube = kube
+        self._builder = ManifestBuilder()
 
-    def deploy(self, cfg: DeploymentConfig) -> None:
-        """Deployt alle Kubernetes-Ressourcen für eine DeploymentConfig.
+    def deploy(self, cfg: DeploymentConfig, s3_credentials: dict) -> None:
+        """Deploy all Kubernetes resources for a DeploymentConfig.
 
-        Erzeugt Manifeste via ManifestBuilder und wendet sie via KubeClient an.
-        Reihenfolge: Secret → Deployment → Service → Ingress.
+        Builds manifests via ManifestBuilder and applies them via KubeClient.
+        Iterates itself (not via apply_many) for progress tracking.
+        Order: Secret -> Deployment -> Service -> Ingress.
 
         Args:
-            cfg: Deployment-Konfiguration.
+            cfg: Deployment configuration.
+            s3_credentials: S3 credentials dict.
         """
-        raise NotImplementedError
+        manifests = self._builder.build_all(cfg, s3_credentials)
+        for manifest in manifests:
+            self._kube.apply(manifest)
 
     def delete(self, cfg: DeploymentConfig) -> None:
-        """Löscht alle Kubernetes-Ressourcen eines Deployments.
+        """Delete all Kubernetes resources of a deployment.
 
-        Löscht in Reihenfolge: Deployment → Service → Ingress → Secret(s).
-        Existiert eine Ressource nicht, wird der Fehler ignoriert.
-
-        Args:
-            cfg: Deployment-Konfiguration.
-        """
-        raise NotImplementedError
-
-    def redeploy(self, cfg: DeploymentConfig) -> None:
-        """Löscht und deployt ein Deployment neu.
+        Order: Deployment -> Service -> Ingress -> Secret -> Auth-Secret.
+        Non-existing resources are silently ignored (idempotent via KubeClient.delete).
 
         Args:
-            cfg: Deployment-Konfiguration.
+            cfg: Deployment configuration.
         """
-        raise NotImplementedError
+        for kind, name in [
+            ("Deployment", cfg.deployment_name),
+            ("Service", cfg.service_name),
+            ("Ingress", cfg.ingress_name),
+            ("Secret", cfg.secret_name),
+            ("Secret", cfg.auth_secret_name),
+        ]:
+            self._kube.delete(kind, name)
+
+    def redeploy(self, cfg: DeploymentConfig, s3_credentials: dict) -> None:
+        """Delete and re-deploy a deployment.
+
+        Args:
+            cfg: Deployment configuration.
+            s3_credentials: S3 credentials dict.
+        """
+        self.delete(cfg)
+        self.deploy(cfg, s3_credentials)
 
     def rollout_status(self, cfg: DeploymentConfig) -> dict:
-        """Gibt den aktuellen Rollout-Status des Deployments zurück.
+        """Return the current rollout status of the deployment.
 
         Args:
-            cfg: Deployment-Konfiguration.
+            cfg: Deployment configuration.
 
         Returns:
-            Dict mit Status-Informationen (ready_replicas, available_replicas, etc.).
+            Dict with ready_replicas, available_replicas, updated_replicas, conditions.
         """
-        raise NotImplementedError
+        deployment = self._kube.get("Deployment", cfg.deployment_name)
+        status = deployment.get("status", {})
+        return {
+            "ready_replicas": status.get("ready_replicas"),
+            "available_replicas": status.get("available_replicas"),
+            "updated_replicas": status.get("updated_replicas"),
+            "conditions": status.get("conditions", []),
+        }
 
-    def update_image(self, cfg: DeploymentConfig, image: str) -> None:
-        """Aktualisiert das Container-Image eines laufenden Deployments.
-
-        Patcht das Deployment — Kubernetes rollt neue Pods automatisch aus.
+    def patch_deployment(self, cfg: DeploymentConfig, patch: dict) -> dict:
+        """Apply a Strategic Merge Patch to the deployment.
 
         Args:
-            cfg: Deployment-Konfiguration (für Deployment-Name und Namespace).
-            image: Neues Docker-Image URI.
+            cfg: Deployment configuration.
+            patch: Patch body as dict.
+
+        Returns:
+            The patched resource object as dict.
         """
-        raise NotImplementedError
+        return self._kube.patch("Deployment", cfg.deployment_name, patch)
+
+    def rollout_restart(self, cfg: DeploymentConfig) -> dict:
+        """Trigger a rolling restart via annotation patch.
+
+        Sets ``mampok/restartedAt`` annotation to current UTC timestamp,
+        causing Kubernetes to recreate pods (init containers re-run).
+
+        Args:
+            cfg: Deployment configuration.
+
+        Returns:
+            The patched resource object as dict.
+        """
+        patch = {
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "mampok/restartedAt": datetime.now(
+                                timezone.utc
+                            ).isoformat()
+                        }
+                    }
+                }
+            }
+        }
+        return self.patch_deployment(cfg, patch)

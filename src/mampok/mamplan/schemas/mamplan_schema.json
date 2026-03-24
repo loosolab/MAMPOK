@@ -89,8 +89,8 @@
         },
         "url": {
           "type": "string",
-          "description": "Custom deployment access URL. No capital letters allowed.",
-          "pattern": "^[^A-Z_]+$"
+          "description": "Custom deployment access URL. No capital letters allowed. Empty string allowed (URL auto-generated when generate_url is true).",
+          "pattern": "^[^A-Z_]*$"
         },
         "autoscaling": {
           "type": "boolean",

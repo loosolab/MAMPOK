@@ -7,12 +7,12 @@ from dataclasses import dataclass, field
 
 @dataclass
 class DeploymentConfig:
-    """Beschreibt alle Parameter eines Mampok-Deployments.
+    """Describes all parameters of a Mampok deployment.
 
-    Dient als typisierte Zwischenschicht zwischen Mamplan (dict) und
-    Kubernetes-Manifesten. Wird von ManifestBuilder konsumiert.
+    Serves as a typed intermediate layer between Mamplan (dict) and
+    Kubernetes manifests. Consumed by ManifestBuilder.
 
-    Naming-Schema der K8s-Ressourcen:
+    Resource naming scheme:
         Deployment: {project_id}-dpl-{tool}
         Service:    {project_id}-svc-{tool}
         Ingress:    {project_id}-ing-{tool}
@@ -21,64 +21,122 @@ class DeploymentConfig:
     """
 
     project_id: str
-    """Eindeutige Projekt-ID (lowercase, keine Underscores)."""
+    """Unique project ID (lowercase, no underscores)."""
 
     tool: str
-    """Tool-Name (z.B. cellxgene, nginx)."""
+    """Tool name (e.g. cellxgene, nginx)."""
 
     image: str
-    """Docker-Image URI des Containers."""
+    """Docker image URI."""
 
     namespace: str
-    """Kubernetes-Namespace."""
+    """Kubernetes namespace."""
 
     replicas: int = 1
-    """Anzahl der Pod-Replicas."""
+    """Number of pod replicas."""
 
     cpu: str = "1"
-    """CPU-Limit (z.B. '1', '500m')."""
+    """CPU limit (e.g. '1', '500m')."""
 
     memory: str = "2Gi"
-    """Memory-Limit (z.B. '2Gi', '4Gi')."""
+    """Memory limit (e.g. '2Gi', '4Gi')."""
+
+    request_cpu: str = ""
+    """CPU request (empty = same as limit)."""
+
+    request_memory: str = ""
+    """Memory request (empty = same as limit)."""
 
     ports: list[int] = field(default_factory=list)
-    """Exposed Container-Ports."""
+    """Exposed container ports."""
 
     env: list[dict] = field(default_factory=list)
-    """Umgebungsvariablen: [{name, value}] oder [{key, name, secretname}]."""
+    """Environment variables: [{name, value}] or [{name, valueFrom: {secretKeyRef: ...}}]."""
+
+    args: list[str] = field(default_factory=list)
+    """Container arguments."""
+
+    command: list[str] = field(default_factory=list)
+    """Container command (entrypoint override)."""
 
     url: str = ""
-    """Externe URL des Deployments (leer = kein Ingress)."""
+    """External URL of the deployment (empty = no Ingress)."""
+
+    host: str = ""
+    """Ingress host (from ClusterConfig)."""
 
     generate_url: bool = True
-    """Ob Mampok die URL automatisch generiert."""
+    """Whether Mampok auto-generates the URL."""
 
     auth: bool = False
-    """Ob Basic-Auth aktiviert ist."""
-
-    autoscaling: bool = False
-    """Ob HorizontalPodAutoscaler erstellt werden soll."""
+    """Whether basic auth is enabled."""
 
     labels: dict = field(default_factory=dict)
-    """Zusätzliche K8s-Labels (werden zu Standard-Labels gemergt)."""
+    """Additional K8s labels (merged with standard labels)."""
 
     volume_mounts: list[dict] = field(default_factory=list)
-    """Volume-Mount-Definitionen."""
+    """Container-level volume mount definitions."""
+
+    volumes: list[dict] = field(default_factory=list)
+    """Pod-level volume definitions."""
+
+    readiness_probe: dict | None = None
+    """Readiness probe configuration (K8s-native format)."""
 
     ingress_annotations: dict = field(default_factory=dict)
-    """Cluster-spezifische Ingress-Annotations."""
+    """Cluster-specific Ingress annotations."""
 
     ingress_class: str = ""
-    """Kubernetes Ingress-Class-Name."""
+    """Kubernetes Ingress class name."""
 
     tls_issuer: str = ""
-    """Cert-Issuer für TLS (dnsissuer)."""
+    """Cert issuer for TLS (dnsissuer)."""
 
     tls_secret: str = ""
-    """DNS-Secret für ACME-Challenge (dnssecret)."""
+    """DNS secret for ACME challenge (dnssecret)."""
 
     s3_secret_name: str = ""
-    """Name des K8s-Secrets mit S3-Credentials."""
+    """Name of the K8s secret containing S3 credentials."""
 
     init_container: dict | None = None
-    """Init-Container-Konfiguration (None = kein Init-Container)."""
+    """Init container configuration (None = no init container)."""
+
+    @property
+    def deployment_name(self) -> str:
+        """K8s Deployment resource name."""
+        return f"{self.project_id}-dpl-{self.tool}"
+
+    @property
+    def service_name(self) -> str:
+        """K8s Service resource name."""
+        return f"{self.project_id}-svc-{self.tool}"
+
+    @property
+    def ingress_name(self) -> str:
+        """K8s Ingress resource name."""
+        return f"{self.project_id}-ing-{self.tool}"
+
+    @property
+    def secret_name(self) -> str:
+        """K8s Secret resource name (S3 credentials)."""
+        return f"{self.project_id}-sc-{self.tool}"
+
+    @property
+    def auth_secret_name(self) -> str:
+        """K8s Secret resource name (basic auth)."""
+        return f"{self.project_id}-sc-{self.tool}-auth"
+
+    @property
+    def app_label(self) -> str:
+        """Standard app label value."""
+        return f"{self.project_id}-mampok-{self.tool}"
+
+    @property
+    def effective_request_cpu(self) -> str:
+        """CPU request, falling back to CPU limit if empty."""
+        return self.request_cpu or self.cpu
+
+    @property
+    def effective_request_memory(self) -> str:
+        """Memory request, falling back to memory limit if empty."""
+        return self.request_memory or self.memory

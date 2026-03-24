@@ -2,95 +2,221 @@
 
 from __future__ import annotations
 
+import base64
+
 from mampok.kubernetes.config import DeploymentConfig
 
 
 class ManifestBuilder:
-    """Erzeugt Kubernetes-Manifeste aus einer DeploymentConfig.
+    """Generates Kubernetes manifests from a DeploymentConfig.
 
-    Kein State, keine API-Calls — rein funktional und vollständig unit-testbar.
-    Gibt None zurück wenn eine Ressource für diese Config nicht benötigt wird
-    (z.B. kein Ingress wenn keine URL gesetzt).
+    No state, no API calls — purely functional and fully unit-testable.
+    Returns None when a resource is not needed for the given config
+    (e.g. no Ingress when no URL is set).
     """
 
-    def build_secret(self, cfg: DeploymentConfig) -> dict:
-        """Erzeugt das S3-Credentials-Secret-Manifest.
+    @staticmethod
+    def _b64(value: str) -> str:
+        """Base64-encode a string value."""
+        return base64.b64encode(value.encode()).decode()
 
-        Name: {project_id}-sc-{tool}
+    def build_secret(self, cfg: DeploymentConfig, s3_credentials: dict) -> dict:
+        """Build the S3 credentials Secret manifest.
 
         Args:
-            cfg: Deployment-Konfiguration.
+            cfg: Deployment configuration.
+            s3_credentials: Dict with s3_endpoint, s3_key, s3_secret, s3_files.
 
         Returns:
-            Vollständiges K8s-Secret-Manifest (type: Opaque).
+            Complete K8s Secret manifest (type: Opaque).
         """
-        raise NotImplementedError
+        return {
+            "apiVersion": "v1",
+            "kind": "Secret",
+            "metadata": {"name": cfg.secret_name, "namespace": cfg.namespace},
+            "type": "Opaque",
+            "data": {
+                "s3_endpoint": self._b64(s3_credentials["s3_endpoint"]),
+                "s3_key": self._b64(s3_credentials["s3_key"]),
+                "s3_secret": self._b64(s3_credentials["s3_secret"]),
+                "s3_files": self._b64(s3_credentials["s3_files"]),
+            },
+        }
 
     def build_auth_secret(self, cfg: DeploymentConfig, htpasswd_content: str) -> dict:
-        """Erzeugt das Basic-Auth-Secret-Manifest.
-
-        Name: {project_id}-sc-{tool}-auth. Wird nur erstellt wenn cfg.auth=True.
+        """Build the basic-auth Secret manifest.
 
         Args:
-            cfg: Deployment-Konfiguration.
-            htpasswd_content: Inhalt der htpasswd-Datei (bcrypt-gehashte Passwörter).
+            cfg: Deployment configuration.
+            htpasswd_content: htpasswd file content (bcrypt-hashed passwords).
 
         Returns:
-            Vollständiges K8s-Secret-Manifest (type: kubernetes.io/basic-auth).
+            Complete K8s Secret manifest (type: kubernetes.io/basic-auth).
         """
-        raise NotImplementedError
+        return {
+            "apiVersion": "v1",
+            "kind": "Secret",
+            "metadata": {"name": cfg.auth_secret_name, "namespace": cfg.namespace},
+            "type": "kubernetes.io/basic-auth",
+            "data": {"auth": self._b64(htpasswd_content)},
+        }
 
     def build_deployment(self, cfg: DeploymentConfig) -> dict:
-        """Erzeugt das Deployment-Manifest.
-
-        Name: {project_id}-dpl-{tool}
-        Labels: app={project_id}-mampok-{tool}
+        """Build the Deployment manifest.
 
         Args:
-            cfg: Deployment-Konfiguration.
+            cfg: Deployment configuration.
 
         Returns:
-            Vollständiges K8s-Deployment-Manifest (apps/v1).
+            Complete K8s Deployment manifest (apps/v1).
         """
-        raise NotImplementedError
+        container: dict = {
+            "name": "main-container",
+            "image": cfg.image,
+            "ports": [{"containerPort": p} for p in cfg.ports],
+            "resources": {
+                "limits": {"cpu": cfg.cpu, "memory": cfg.memory},
+                "requests": {
+                    "cpu": cfg.effective_request_cpu,
+                    "memory": cfg.effective_request_memory,
+                },
+            },
+        }
+
+        if cfg.env:
+            container["env"] = cfg.env
+        if cfg.args:
+            container["args"] = cfg.args
+        if cfg.command:
+            container["command"] = cfg.command
+        if cfg.volume_mounts:
+            container["volumeMounts"] = cfg.volume_mounts
+        if cfg.readiness_probe:
+            container["readinessProbe"] = cfg.readiness_probe
+
+        pod_spec: dict = {"containers": [container]}
+
+        if cfg.init_container:
+            pod_spec["initContainers"] = [cfg.init_container]
+        if cfg.volumes:
+            pod_spec["volumes"] = cfg.volumes
+
+        return {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {
+                "name": cfg.deployment_name,
+                "namespace": cfg.namespace,
+                "labels": {"app": cfg.app_label, **cfg.labels},
+            },
+            "spec": {
+                "replicas": cfg.replicas,
+                "selector": {"matchLabels": {"app": cfg.app_label}},
+                "template": {
+                    "metadata": {
+                        "labels": {"app": cfg.app_label, **cfg.labels},
+                    },
+                    "spec": pod_spec,
+                },
+            },
+        }
 
     def build_service(self, cfg: DeploymentConfig) -> dict | None:
-        """Erzeugt das Service-Manifest.
-
-        Name: {project_id}-svc-{tool}
+        """Build the Service manifest.
 
         Args:
-            cfg: Deployment-Konfiguration.
+            cfg: Deployment configuration.
 
         Returns:
-            Vollständiges K8s-Service-Manifest oder None wenn cfg.ports leer.
+            Complete K8s Service manifest, or None if cfg.ports is empty.
         """
-        raise NotImplementedError
+        if not cfg.ports:
+            return None
+
+        return {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {"name": cfg.service_name, "namespace": cfg.namespace},
+            "spec": {
+                "type": "ClusterIP",
+                "selector": {"app": cfg.app_label},
+                "ports": [
+                    {"port": 80, "targetPort": cfg.ports[0], "protocol": "TCP"}
+                ],
+            },
+        }
 
     def build_ingress(self, cfg: DeploymentConfig) -> dict | None:
-        """Erzeugt das Ingress-Manifest.
-
-        Name: {project_id}-ing-{tool}
-        Wird nur erstellt wenn URL gesetzt und Cluster-TLS-Config vorhanden.
+        """Build the Ingress manifest.
 
         Args:
-            cfg: Deployment-Konfiguration.
+            cfg: Deployment configuration.
 
         Returns:
-            Vollständiges K8s-Ingress-Manifest oder None wenn keine URL/TLS-Config.
+            Complete K8s Ingress manifest, or None if url or host is empty.
         """
-        raise NotImplementedError
+        if not cfg.url or not cfg.host:
+            return None
 
-    def build_all(self, cfg: DeploymentConfig) -> list[dict]:
-        """Erzeugt alle benötigten Manifeste für dieses Deployment.
+        metadata: dict = {
+            "name": cfg.ingress_name,
+            "namespace": cfg.namespace,
+            "annotations": cfg.ingress_annotations,
+        }
 
-        Ruft alle build_*-Methoden auf und filtert None-Werte heraus.
-        Reihenfolge: Secret, Deployment, Service, Ingress.
+        spec: dict = {
+            "tls": [{"hosts": [cfg.host], "secretName": cfg.tls_secret}],
+            "rules": [
+                {
+                    "host": cfg.host,
+                    "http": {
+                        "paths": [
+                            {
+                                "path": f"/{cfg.project_id}/{cfg.tool}",
+                                "pathType": "Prefix",
+                                "backend": {
+                                    "service": {
+                                        "name": cfg.service_name,
+                                        "port": {"number": 80},
+                                    },
+                                },
+                            }
+                        ]
+                    },
+                }
+            ],
+        }
+
+        if cfg.ingress_class:
+            spec["ingressClassName"] = cfg.ingress_class
+
+        return {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "Ingress",
+            "metadata": metadata,
+            "spec": spec,
+        }
+
+    def build_all(
+        self, cfg: DeploymentConfig, s3_credentials: dict
+    ) -> list[dict]:
+        """Build all required manifests for this deployment.
+
+        Calls all build_* methods and filters out None values.
+        Order: Secret -> Deployment -> Service -> Ingress.
+        Note: build_auth_secret is NOT called here (managed separately).
 
         Args:
-            cfg: Deployment-Konfiguration.
+            cfg: Deployment configuration.
+            s3_credentials: S3 credentials dict.
 
         Returns:
-            Liste aller K8s-Manifeste (keine None-Einträge).
+            List of K8s manifests (no None entries).
         """
-        raise NotImplementedError
+        manifests = [
+            self.build_secret(cfg, s3_credentials),
+            self.build_deployment(cfg),
+            self.build_service(cfg),
+            self.build_ingress(cfg),
+        ]
+        return [m for m in manifests if m is not None]

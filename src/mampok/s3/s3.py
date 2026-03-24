@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
+
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
 
 
 class S3:
@@ -36,7 +41,19 @@ class S3:
             secret_key: S3-Secret-Access-Key.
             client: Optionaler vorkonfigurierter boto3-Client (für Tests).
         """
-        raise NotImplementedError
+        self.bucket = bucket
+        if client is not None:
+            self.client = client
+        else:
+            session = boto3.Session(
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
+            )
+            self.client = session.client(
+                "s3",
+                endpoint_url=endpoint_url,
+                config=Config(signature_version="s3v4"),
+            )
 
     def upload(self, local_path: Path, key: str) -> None:
         """Lädt eine lokale Datei in den konfigurierten Bucket hoch.
@@ -45,7 +62,7 @@ class S3:
             local_path: Pfad zur lokalen Datei.
             key: S3-Objekt-Key (Zielname im Bucket).
         """
-        raise NotImplementedError
+        self.client.upload_file(str(local_path), self.bucket, key)
 
     def download_to_local(self, key: str, local_path: Path) -> Path:
         """Lädt ein S3-Objekt auf das lokale Filesystem herunter.
@@ -57,7 +74,8 @@ class S3:
         Returns:
             Pfad zur heruntergeladenen Datei.
         """
-        raise NotImplementedError
+        self.client.download_file(self.bucket, key, str(local_path))
+        return local_path
 
     def copy(
         self,
@@ -74,7 +92,11 @@ class S3:
             dest_bucket: Ziel-Bucket-Name.
             dest_key: Ziel-Objekt-Key.
         """
-        raise NotImplementedError
+        self.client.copy_object(
+            CopySource={"Bucket": source_bucket, "Key": source_key},
+            Bucket=dest_bucket,
+            Key=dest_key,
+        )
 
     def compare_size(self, key: str, local_path: Path) -> bool:
         """Vergleicht die Dateigröße zwischen S3-Objekt und lokaler Datei.
@@ -86,4 +108,55 @@ class S3:
         Returns:
             True wenn die Größen übereinstimmen, False wenn abweichend.
         """
-        raise NotImplementedError
+        response = self.client.head_object(Bucket=self.bucket, Key=key)
+        s3_size = response["ContentLength"]
+        local_size = os.path.getsize(local_path)
+        return s3_size == local_size
+
+    def list_objects(self, prefix: str = "") -> list[str]:
+        """Listet alle Objekt-Keys im Bucket auf.
+
+        Args:
+            prefix: Optionaler Prefix-Filter.
+
+        Returns:
+            Liste aller Objekt-Keys im Bucket.
+        """
+        paginator = self.client.get_paginator("list_objects_v2")
+        keys = []
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                keys.append(obj["Key"])
+        return keys
+
+    def create_bucket(self) -> None:
+        """Erstellt den konfigurierten Bucket (idempotent).
+
+        Kein Fehler wenn der Bucket bereits existiert.
+        """
+        if not self.bucket_exists():
+            self.client.create_bucket(Bucket=self.bucket)
+
+    def delete_bucket(self) -> None:
+        """Leert den Bucket und löscht ihn (idempotent).
+
+        Löscht zuerst alle Objekte, dann den Bucket selbst.
+        Kein Fehler wenn der Bucket nicht existiert.
+        """
+        if not self.bucket_exists():
+            return
+        for key in self.list_objects():
+            self.client.delete_object(Bucket=self.bucket, Key=key)
+        self.client.delete_bucket(Bucket=self.bucket)
+
+    def bucket_exists(self) -> bool:
+        """Prüft ob der konfigurierte Bucket existiert.
+
+        Returns:
+            True wenn der Bucket existiert, False wenn nicht.
+        """
+        try:
+            self.client.head_bucket(Bucket=self.bucket)
+            return True
+        except ClientError:
+            return False

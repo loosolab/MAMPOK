@@ -1,0 +1,46 @@
+"""Shared fixtures for Kubernetes module tests."""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+import pytest
+
+from mampok.kubernetes.config import DeploymentConfig
+
+
+@pytest.fixture
+def make_config():
+    """Factory for DeploymentConfig with sensible defaults."""
+
+    def _make(**overrides) -> DeploymentConfig:
+        defaults = {
+            "project_id": "testproj",
+            "tool": "nginx",
+            "image": "nginx:latest",
+            "namespace": "default",
+            "ports": [8080],
+        }
+        defaults.update(overrides)
+        return DeploymentConfig(**defaults)
+
+    return _make
+
+
+@pytest.fixture
+def sample_s3_credentials() -> dict:
+    """S3 credentials dict for testing."""
+    return {
+        "s3_endpoint": "https://s3.example.com",
+        "s3_key": "AKIAIOSFODNN7EXAMPLE",
+        "s3_secret": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        "s3_files": "bucket1/file1.txt,bucket1/file2.txt",
+    }
+
+
+@pytest.fixture
+def mock_api_client() -> MagicMock:
+    """MagicMock for kubernetes ApiClient."""
+    client = MagicMock()
+    client.call_api = MagicMock()
+    return client
