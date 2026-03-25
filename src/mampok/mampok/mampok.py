@@ -250,6 +250,11 @@ class Mampok:
         env = _transform_env(main.get("env", []), project_secret_name, cluster_secret_name)
 
         init_container = merged.get("init")
+        if init_container and "env" in init_container:
+            init_container = {
+                **init_container,
+                "env": _transform_env(init_container["env"], project_secret_name, cluster_secret_name),
+            }
 
         return DeploymentConfig(
             project_id=project_id,

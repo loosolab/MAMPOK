@@ -293,4 +293,5 @@ class ManifestBuilder:
         ]
         result = [m for m in manifests if m is not None]
         logger.debug("build_all: built %d manifests: %s", len(result), [m.get("kind") for m in result])
+        logger.debug("build_all: manifests=%s", result)
         return result
