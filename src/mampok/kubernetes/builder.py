@@ -101,7 +101,8 @@ class ManifestBuilder:
 
         if cfg.init_container:
             _MAMPOK_FIELDS = {"tool", "containertype", "downloadpaths", "volume"}
-            k8s_init = {k: v for k, v in cfg.init_container.items() if k not in _MAMPOK_FIELDS}
+            name = cfg.init_container.get("tool", "init-container")
+            k8s_init = {"name": name, **{k: v for k, v in cfg.init_container.items() if k not in _MAMPOK_FIELDS}}
             pod_spec["initContainers"] = [k8s_init]
         if cfg.volumes:
             pod_spec["volumes"] = cfg.volumes
