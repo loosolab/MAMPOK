@@ -163,3 +163,107 @@ class TestRolloutRestart:
         with patch.object(mgr, "patch_deployment", wraps=mgr.patch_deployment) as mock_pd:
             mgr.rollout_restart(cfg)
             mock_pd.assert_called_once()
+
+
+class TestDeploymentExists:
+    """Tests für DeploymentManager.deployment_exists."""
+
+    def test_returns_true_when_deployment_exists(self, make_config):
+        kube = MagicMock()
+        kube.exists.return_value = True
+        mgr = DeploymentManager(kube)
+        cfg = make_config()
+
+        assert mgr.deployment_exists(cfg) is True
+        kube.exists.assert_called_once_with("Deployment", cfg.deployment_name)
+
+    def test_returns_false_when_deployment_missing(self, make_config):
+        kube = MagicMock()
+        kube.exists.return_value = False
+        mgr = DeploymentManager(kube)
+        cfg = make_config()
+
+        assert mgr.deployment_exists(cfg) is False
+
+
+class TestWaitForReady:
+    """Tests für DeploymentManager.wait_for_ready."""
+
+    def _make_event(self, ready_replicas, replicas=1):
+        obj = MagicMock()
+        obj.status.ready_replicas = ready_replicas
+        return {"object": obj}
+
+    def test_returns_when_replicas_ready(self, make_config):
+        kube = MagicMock()
+        mgr = DeploymentManager(kube)
+        cfg = make_config(replicas=1)
+
+        mock_watch = MagicMock()
+        mock_watch.stream.return_value = iter([self._make_event(ready_replicas=1)])
+
+        with patch("kubernetes.watch.Watch", return_value=mock_watch):
+            mgr.wait_for_ready(cfg, timeout=30)
+
+        mock_watch.stop.assert_called_once()
+
+    def test_raises_timeout_when_stream_exhausted(self, make_config):
+        kube = MagicMock()
+        mgr = DeploymentManager(kube)
+        cfg = make_config(replicas=2)
+
+        mock_watch = MagicMock()
+        mock_watch.stream.return_value = iter([])  # stream exhausted without ready
+
+        with patch("kubernetes.watch.Watch", return_value=mock_watch):
+            with pytest.raises(TimeoutError, match="not ready"):
+                mgr.wait_for_ready(cfg, timeout=5)
+
+    def test_waits_through_partial_ready(self, make_config):
+        kube = MagicMock()
+        mgr = DeploymentManager(kube)
+        cfg = make_config(replicas=2)
+
+        events = [
+            self._make_event(ready_replicas=0),
+            self._make_event(ready_replicas=1),
+            self._make_event(ready_replicas=2),
+        ]
+        mock_watch = MagicMock()
+        mock_watch.stream.return_value = iter(events)
+
+        with patch("kubernetes.watch.Watch", return_value=mock_watch):
+            mgr.wait_for_ready(cfg, timeout=30)
+
+        mock_watch.stop.assert_called_once()
+
+    def test_handles_none_ready_replicas(self, make_config):
+        kube = MagicMock()
+        mgr = DeploymentManager(kube)
+        cfg = make_config(replicas=1)
+
+        events = [
+            self._make_event(ready_replicas=None),
+            self._make_event(ready_replicas=1),
+        ]
+        mock_watch = MagicMock()
+        mock_watch.stream.return_value = iter(events)
+
+        with patch("kubernetes.watch.Watch", return_value=mock_watch):
+            mgr.wait_for_ready(cfg, timeout=30)
+
+        mock_watch.stop.assert_called_once()
+
+    def test_passes_timeout_to_stream(self, make_config):
+        kube = MagicMock()
+        mgr = DeploymentManager(kube)
+        cfg = make_config(replicas=1)
+
+        mock_watch = MagicMock()
+        mock_watch.stream.return_value = iter([self._make_event(ready_replicas=1)])
+
+        with patch("kubernetes.watch.Watch", return_value=mock_watch):
+            mgr.wait_for_ready(cfg, timeout=120)
+
+        call_kwargs = mock_watch.stream.call_args[1]
+        assert call_kwargs["timeout_seconds"] == 120

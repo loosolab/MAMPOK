@@ -12,7 +12,9 @@ dependencies = [
     "kubernetes",
     "boto3",
     "jsonschema",
+    "referencing",
     "typer",
+    "bcrypt",
 ]
 
 [project.optional-dependencies]

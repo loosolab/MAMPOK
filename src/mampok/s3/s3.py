@@ -101,14 +101,22 @@ class S3:
     def compare_size(self, key: str, local_path: Path) -> bool:
         """Vergleicht die Dateigröße zwischen S3-Objekt und lokaler Datei.
 
+        Gibt False zurück wenn das Objekt nicht existiert oder die Größen
+        abweichen. Kann als Pre-Upload-Check genutzt werden:
+        ``if not compare_size(key, local): upload(local, key)``
+
         Args:
             key: S3-Objekt-Key.
             local_path: Pfad zur lokalen Datei.
 
         Returns:
-            True wenn die Größen übereinstimmen, False wenn abweichend.
+            True wenn das Objekt existiert und die Größen übereinstimmen.
+            False wenn das Objekt nicht existiert oder die Größen abweichen.
         """
-        response = self.client.head_object(Bucket=self.bucket, Key=key)
+        try:
+            response = self.client.head_object(Bucket=self.bucket, Key=key)
+        except ClientError:
+            return False
         s3_size = response["ContentLength"]
         local_size = os.path.getsize(local_path)
         return s3_size == local_size

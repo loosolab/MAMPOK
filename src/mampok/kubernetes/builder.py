@@ -101,6 +101,50 @@ class ManifestBuilder:
         if cfg.volumes:
             pod_spec["volumes"] = cfg.volumes
 
+        if cfg.auth:
+            if not cfg.auth_proxy_image:
+                raise ValueError(
+                    f"Deployment {cfg.deployment_name!r}: auth=True but auth_proxy_image is empty. "
+                    "Configure auth_proxy in the cluster config."
+                )
+
+            auth_volume_name = f"{cfg.auth_secret_name}-volume"
+
+            redirect_url = (
+                "/"
+                if "nginx.ingress.kubernetes.io/proxy-redirect-to" in cfg.auth_annotations
+                else f"/{cfg.project_id}/{cfg.tool}/"
+            )
+
+            gatekeeper: dict = {
+                "name": "gatekeeper",
+                "image": cfg.auth_proxy_image,
+                "ports": [{"containerPort": cfg.proxy_port}],
+                "resources": {
+                    "limits": {"cpu": cfg.proxy_cpu, "memory": cfg.proxy_memory},
+                    "requests": {"cpu": cfg.proxy_cpu, "memory": cfg.proxy_memory},
+                },
+                "env": [
+                    {"name": "REVERSE_PORT", "value": str(cfg.ports[0])},
+                    {"name": "REDIRECT_HOST", "value": f"https://{cfg.host}"},
+                    {"name": "REDIRECT_URL", "value": redirect_url},
+                    {"name": "PROJECT_ID", "value": cfg.project_id},
+                ],
+                "volumeMounts": [
+                    {"name": auth_volume_name, "mountPath": cfg.auth_config_mount_path}
+                ],
+            }
+
+            pod_spec["containers"] = [gatekeeper, container]
+
+            pod_spec.setdefault("volumes", [])
+            pod_spec["volumes"].append(
+                {"name": auth_volume_name, "secret": {"secretName": cfg.auth_secret_name}}
+            )
+
+            if cfg.image_pull_secrets:
+                pod_spec["imagePullSecrets"] = [{"name": s} for s in cfg.image_pull_secrets]
+
         return {
             "apiVersion": "apps/v1",
             "kind": "Deployment",
@@ -133,6 +177,26 @@ class ManifestBuilder:
         if not cfg.ports:
             return None
 
+        if cfg.auth:
+            service_ports = [
+                {
+                    "name": "main-app-port",
+                    "port": cfg.ports[0],
+                    "targetPort": cfg.ports[0],
+                    "protocol": "TCP",
+                },
+                {
+                    "name": "gatekeeper-port",
+                    "port": cfg.proxy_port,
+                    "targetPort": cfg.proxy_port,
+                    "protocol": "TCP",
+                },
+            ]
+        else:
+            service_ports = [
+                {"port": 80, "targetPort": cfg.ports[0], "protocol": "TCP"}
+            ]
+
         return {
             "apiVersion": "v1",
             "kind": "Service",
@@ -140,9 +204,7 @@ class ManifestBuilder:
             "spec": {
                 "type": "ClusterIP",
                 "selector": {"app": cfg.app_label},
-                "ports": [
-                    {"port": 80, "targetPort": cfg.ports[0], "protocol": "TCP"}
-                ],
+                "ports": service_ports,
             },
         }
 
@@ -158,10 +220,14 @@ class ManifestBuilder:
         if not cfg.url or not cfg.host:
             return None
 
+        annotations = dict(cfg.ingress_annotations)
+        if cfg.auth:
+            annotations.update(cfg.auth_annotations)
+
         metadata: dict = {
             "name": cfg.ingress_name,
             "namespace": cfg.namespace,
-            "annotations": cfg.ingress_annotations,
+            "annotations": annotations,
         }
 
         spec: dict = {
@@ -177,7 +243,7 @@ class ManifestBuilder:
                                 "backend": {
                                     "service": {
                                         "name": cfg.service_name,
-                                        "port": {"number": 80},
+                                        "port": {"name": "gatekeeper-port"} if cfg.auth else {"number": 80},
                                     },
                                 },
                             }

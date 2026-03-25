@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MampokConfig",
+  "description": "Schema for Mampok v2 configuration files.",
+  "type": "object",
+  "required": ["cluster", "s3", "mamplan_repo", "mamplates_path", "lifetime_days"],
+  "additionalProperties": false,
+  "properties": {
+    "cluster": {
+      "type": "object",
+      "description": "Named cluster profiles. Each key is a cluster name (e.g. 'BN', 'BN_public').",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/definitions/ClusterConfig"
+      }
+    },
+    "s3": {
+      "type": "object",
+      "description": "S3-compatible storage credentials (shared across all clusters).",
+      "required": ["endpoint", "access_key", "secret_key", "secretname"],
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "description": "S3 endpoint URL (e.g. 'https://s3.example.com')."
+        },
+        "access_key": {
+          "type": "string",
+          "description": "S3 access key ID."
+        },
+        "secret_key": {
+          "type": "string",
+          "description": "S3 secret access key."
+        },
+        "secretname": {
+          "type": "string",
+          "description": "Name of the pre-existing Kubernetes Secret holding S3 credentials (e.g. 'mpis')."
+        },
+        "prefix": {
+          "type": "string",
+          "description": "Optional prefix for S3 bucket names.",
+          "default": ""
+        }
+      }
+    },
+    "mamplan_repo": {
+      "type": "string",
+      "description": "Path to the Mamplan repository directory."
+    },
+    "mamplates_path": {
+      "type": "string",
+      "description": "Path to the Mamplates directory."
+    },
+    "lifetime_days": {
+      "type": "integer",
+      "description": "Default deployment lifetime in days.",
+      "minimum": 1
+    }
+  },
+  "definitions": {
+    "ClusterConfig": {
+      "type": "object",
+      "description": "Configuration for a single Kubernetes cluster.",
+      "required": ["host", "namespace", "kubeconfig_path"],
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "type": "string",
+          "description": "Ingress host for this cluster (e.g. 'bioinformatics-cluster.example.com')."
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Kubernetes namespace for deployments on this cluster."
+        },
+        "kubeconfig_path": {
+          "type": "string",
+          "description": "Absolute path to the kubeconfig file for this cluster."
+        },
+        "annotations": {
+          "type": "object",
+          "description": "Kubernetes Ingress annotations for this cluster.",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {}
+        },
+        "ingress_class": {
+          "type": "string",
+          "description": "Kubernetes Ingress class name (e.g. 'nginx').",
+          "default": ""
+        },
+        "dnsissuer": {
+          "type": "string",
+          "description": "Cert-manager issuer name for TLS certificates (optional).",
+          "default": ""
+        },
+        "dnssecret": {
+          "type": "string",
+          "description": "DNS secret name for ACME challenge (optional).",
+          "default": ""
+        },
+        "auth_proxy": {
+          "type": "object",
+          "description": "Gatekeeper-Proxy-Konfiguration. Nur nötig wenn Deployments auth=True nutzen.",
+          "required": ["auth_proxy_image"],
+          "additionalProperties": false,
+          "properties": {
+            "auth_proxy_image": {
+              "type": "string",
+              "description": "Docker-Image des Gatekeeper-Containers."
+            },
+            "proxy_port": {
+              "type": "integer",
+              "description": "Port, auf dem der Gatekeeper lauscht.",
+              "default": 8080,
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "auth_annotations": {
+              "type": "object",
+              "description": "Extra Ingress-Annotations bei auth=True.",
+              "additionalProperties": {"type": "string"},
+              "default": {}
+            },
+            "image_pull_secrets": {
+              "type": "array",
+              "description": "Pull-Secret-Namen für das Proxy-Image.",
+              "items": {"type": "string"},
+              "default": []
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -100,6 +100,56 @@ class DeploymentManager:
         """
         return self._kube.patch("Deployment", cfg.deployment_name, patch)
 
+    def deployment_exists(self, cfg: DeploymentConfig) -> bool:
+        """Check whether the Deployment resource exists on the cluster.
+
+        Args:
+            cfg: Deployment configuration.
+
+        Returns:
+            True if the Deployment exists, False otherwise.
+        """
+        return self._kube.exists("Deployment", cfg.deployment_name)
+
+    def wait_for_ready(self, cfg: DeploymentConfig, timeout: int = 300) -> None:
+        """Wait until all replicas are ready via the Kubernetes Watch API.
+
+        Streams Deployment events until ready_replicas >= cfg.replicas,
+        then returns. Readiness is determined by K8s Readiness Probes
+        (defined in the Mamplate, included in the Deployment manifest).
+
+        Args:
+            cfg: Deployment configuration.
+            timeout: Maximum seconds to wait for pods to become ready.
+
+        Raises:
+            TimeoutError: If replicas are not ready within timeout seconds.
+        """
+        import kubernetes.client
+        import kubernetes.watch
+
+        apps_v1 = kubernetes.client.AppsV1Api(api_client=self._kube._api_client)
+        w = kubernetes.watch.Watch()
+
+        for event in w.stream(
+            apps_v1.list_namespaced_deployment,
+            namespace=cfg.namespace,
+            field_selector=f"metadata.name={cfg.deployment_name}",
+            timeout_seconds=timeout,
+        ):
+            status = event["object"].status
+            if (
+                status is not None
+                and status.ready_replicas is not None
+                and status.ready_replicas >= cfg.replicas
+            ):
+                w.stop()
+                return
+
+        raise TimeoutError(
+            f"Deployment {cfg.deployment_name!r} not ready within {timeout}s"
+        )
+
     def rollout_restart(self, cfg: DeploymentConfig) -> dict:
         """Trigger a rolling restart via annotation patch.
 

@@ -39,6 +39,25 @@ def sample_s3_credentials() -> dict:
 
 
 @pytest.fixture
+def make_auth_config(make_config):
+    """Factory für auth-aktivierte DeploymentConfig."""
+
+    def _make(**overrides) -> DeploymentConfig:
+        defaults = {
+            "auth": True,
+            "auth_proxy_image": "registry.example.com/gatekeeper:latest",
+            "proxy_port": 9090,
+            "ports": [8080],
+            "host": "example.com",
+            "url": "https://example.com/testproj/nginx",
+        }
+        defaults.update(overrides)
+        return make_config(**defaults)
+
+    return _make
+
+
+@pytest.fixture
 def mock_api_client() -> MagicMock:
     """MagicMock for kubernetes ApiClient."""
     client = MagicMock()

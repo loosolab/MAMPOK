@@ -71,6 +71,27 @@ class DeploymentConfig:
     auth: bool = False
     """Whether basic auth is enabled."""
 
+    auth_proxy_image: str = ""
+    """Docker-Image des Gatekeeper-Sidecar-Containers."""
+
+    proxy_port: int = 8080
+    """Port, auf dem der Gatekeeper lauscht."""
+
+    proxy_cpu: str = "100m"
+    """CPU-Limit für den Gatekeeper-Sidecar."""
+
+    proxy_memory: str = "128Mi"
+    """Memory-Limit für den Gatekeeper-Sidecar."""
+
+    auth_annotations: dict = field(default_factory=dict)
+    """Extra Ingress-Annotations, nur bei auth=True hinzugefügt."""
+
+    image_pull_secrets: list[str] = field(default_factory=list)
+    """Pull-Secret-Namen — als imagePullSecrets auf Pod-Ebene gesetzt."""
+
+    auth_config_mount_path: str = "/etc/config"
+    """Mount-Pfad des Auth-Secret-Volumes im Gatekeeper-Container."""
+
     labels: dict = field(default_factory=dict)
     """Additional K8s labels (merged with standard labels)."""
 
@@ -100,6 +121,13 @@ class DeploymentConfig:
 
     init_container: dict | None = None
     """Init container configuration (None = no init container)."""
+
+    def __post_init__(self) -> None:
+        if self.auth and self.proxy_port in self.ports:
+            raise ValueError(
+                f"proxy_port {self.proxy_port} conflicts with app ports {self.ports}. "
+                "Set a different proxy_port in the cluster auth_proxy config."
+            )
 
     @property
     def deployment_name(self) -> str:

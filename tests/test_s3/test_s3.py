@@ -118,14 +118,13 @@ class TestS3CompareSize:
         mock_client.head_object.return_value = {"ContentLength": 999}
         assert s3.compare_size("file.txt", local_file) is False
 
-    def test_key_not_found_propagates(
+    def test_key_not_found_returns_false(
         self, s3: S3, mock_client: MagicMock, tmp_path: Path
     ) -> None:
         local_file = tmp_path / "file.txt"
         local_file.write_bytes(b"hello")
         mock_client.head_object.side_effect = make_client_error("NoSuchKey")
-        with pytest.raises(ClientError):
-            s3.compare_size("missing.txt", local_file)
+        assert s3.compare_size("missing.txt", local_file) is False
 
 
 class TestS3DownloadToLocal:

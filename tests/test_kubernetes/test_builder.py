@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 
+import pytest
+
 from mampok.kubernetes.builder import ManifestBuilder
 from mampok.kubernetes.config import DeploymentConfig
 
@@ -49,6 +51,8 @@ class TestDeploymentConfig:
             url="https://example.com",
             host="example.com",
             auth=True,
+            auth_proxy_image="gk:latest",
+            proxy_port=7777,
             labels={"team": "bio"},
             volume_mounts=[{"name": "data", "mountPath": "/data"}],
             volumes=[{"name": "data", "emptyDir": {}}],
@@ -348,3 +352,291 @@ class TestBuildAll:
         assert len(manifests) == 2
         kinds = [m["kind"] for m in manifests]
         assert kinds == ["Secret", "Deployment"]
+
+
+# ---------------------------------------------------------------------------
+# Gatekeeper — DeploymentConfig-Validierung
+# ---------------------------------------------------------------------------
+
+
+class TestDeploymentConfigGatekeeper:
+    """Tests für __post_init__-Validierung und neue auth-Felder."""
+
+    def test_proxy_port_conflict_raises(self):
+        with pytest.raises(ValueError, match="proxy_port"):
+            DeploymentConfig(
+                project_id="p",
+                tool="t",
+                image="img",
+                namespace="ns",
+                ports=[8080],
+                auth=True,
+                auth_proxy_image="gk:latest",
+                proxy_port=8080,
+            )
+
+    def test_proxy_port_no_conflict_ok(self):
+        cfg = DeploymentConfig(
+            project_id="p",
+            tool="t",
+            image="img",
+            namespace="ns",
+            ports=[8080],
+            auth=True,
+            auth_proxy_image="gk:latest",
+            proxy_port=9090,
+        )
+        assert cfg.proxy_port == 9090
+
+    def test_auth_fields_defaults(self):
+        cfg = DeploymentConfig(project_id="p", tool="t", image="img", namespace="ns")
+        assert cfg.auth_proxy_image == ""
+        assert cfg.proxy_port == 8080
+        assert cfg.proxy_cpu == "100m"
+        assert cfg.proxy_memory == "128Mi"
+        assert cfg.auth_annotations == {}
+        assert cfg.image_pull_secrets == []
+        assert cfg.auth_config_mount_path == "/etc/config"
+
+
+# ---------------------------------------------------------------------------
+# Gatekeeper — build_deployment
+# ---------------------------------------------------------------------------
+
+
+class TestBuildDeploymentWithAuth:
+    """Tests für Gatekeeper-Sidecar in build_deployment."""
+
+    def test_two_containers_present(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_deployment(cfg)
+        containers = manifest["spec"]["template"]["spec"]["containers"]
+        assert len(containers) == 2
+
+    def test_gatekeeper_is_first_container(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_deployment(cfg)
+        assert manifest["spec"]["template"]["spec"]["containers"][0]["name"] == "gatekeeper"
+
+    def test_gatekeeper_image(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_deployment(cfg)
+        gk = manifest["spec"]["template"]["spec"]["containers"][0]
+        assert gk["image"] == "registry.example.com/gatekeeper:latest"
+
+    def test_gatekeeper_port(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_deployment(cfg)
+        gk = manifest["spec"]["template"]["spec"]["containers"][0]
+        assert gk["ports"] == [{"containerPort": 9090}]
+
+    def test_env_reverse_port(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_deployment(cfg)
+        env = {e["name"]: e["value"] for e in manifest["spec"]["template"]["spec"]["containers"][0]["env"]}
+        assert env["REVERSE_PORT"] == "8080"
+
+    def test_env_redirect_host(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_deployment(cfg)
+        env = {e["name"]: e["value"] for e in manifest["spec"]["template"]["spec"]["containers"][0]["env"]}
+        assert env["REDIRECT_HOST"] == "https://example.com"
+
+    def test_env_redirect_url_default(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_deployment(cfg)
+        env = {e["name"]: e["value"] for e in manifest["spec"]["template"]["spec"]["containers"][0]["env"]}
+        assert env["REDIRECT_URL"] == "/testproj/nginx/"
+
+    def test_env_redirect_url_proxy_redirect_annotation(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config(
+            auth_annotations={"nginx.ingress.kubernetes.io/proxy-redirect-to": "https://example.com/"}
+        )
+        manifest = builder.build_deployment(cfg)
+        env = {e["name"]: e["value"] for e in manifest["spec"]["template"]["spec"]["containers"][0]["env"]}
+        assert env["REDIRECT_URL"] == "/"
+
+    def test_env_project_id(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_deployment(cfg)
+        env = {e["name"]: e["value"] for e in manifest["spec"]["template"]["spec"]["containers"][0]["env"]}
+        assert env["PROJECT_ID"] == "testproj"
+
+    def test_gatekeeper_volume_mount(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_deployment(cfg)
+        gk = manifest["spec"]["template"]["spec"]["containers"][0]
+        assert gk["volumeMounts"] == [
+            {"name": "testproj-sc-nginx-auth-volume", "mountPath": "/etc/config"}
+        ]
+
+    def test_auth_volume_in_pod_spec(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_deployment(cfg)
+        volumes = manifest["spec"]["template"]["spec"]["volumes"]
+        auth_vol = next((v for v in volumes if v["name"] == "testproj-sc-nginx-auth-volume"), None)
+        assert auth_vol is not None
+        assert auth_vol["secret"]["secretName"] == "testproj-sc-nginx-auth"
+
+    def test_gatekeeper_resources(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_deployment(cfg)
+        gk = manifest["spec"]["template"]["spec"]["containers"][0]
+        assert gk["resources"]["limits"] == {"cpu": "100m", "memory": "128Mi"}
+        assert gk["resources"]["requests"] == {"cpu": "100m", "memory": "128Mi"}
+
+    def test_image_pull_secrets_added(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config(image_pull_secrets=["regcred"])
+        manifest = builder.build_deployment(cfg)
+        pod_spec = manifest["spec"]["template"]["spec"]
+        assert pod_spec["imagePullSecrets"] == [{"name": "regcred"}]
+
+    def test_image_pull_secrets_empty_not_added(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config(image_pull_secrets=[])
+        manifest = builder.build_deployment(cfg)
+        pod_spec = manifest["spec"]["template"]["spec"]
+        assert "imagePullSecrets" not in pod_spec
+
+    def test_no_gatekeeper_without_auth(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(auth=False)
+        manifest = builder.build_deployment(cfg)
+        containers = manifest["spec"]["template"]["spec"]["containers"]
+        assert len(containers) == 1
+        assert containers[0]["name"] == "main-container"
+
+    def test_auth_volumes_appended_to_existing(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config(
+            volumes=[{"name": "existing-vol", "emptyDir": {}}]
+        )
+        manifest = builder.build_deployment(cfg)
+        volumes = manifest["spec"]["template"]["spec"]["volumes"]
+        names = [v["name"] for v in volumes]
+        assert "existing-vol" in names
+        assert "testproj-sc-nginx-auth-volume" in names
+
+    def test_empty_proxy_image_raises(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(auth=True, auth_proxy_image="", proxy_port=9090)
+        with pytest.raises(ValueError, match="auth_proxy_image"):
+            builder.build_deployment(cfg)
+
+    def test_custom_mount_path(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config(auth_config_mount_path="/custom/path")
+        manifest = builder.build_deployment(cfg)
+        gk = manifest["spec"]["template"]["spec"]["containers"][0]
+        assert gk["volumeMounts"][0]["mountPath"] == "/custom/path"
+
+
+# ---------------------------------------------------------------------------
+# Gatekeeper — build_service
+# ---------------------------------------------------------------------------
+
+
+class TestBuildServiceWithAuth:
+    """Tests für zwei Named Ports bei auth=True."""
+
+    def test_two_named_ports(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_service(cfg)
+        ports = manifest["spec"]["ports"]
+        assert len(ports) == 2
+        names = [p["name"] for p in ports]
+        assert "main-app-port" in names
+        assert "gatekeeper-port" in names
+
+    def test_main_app_port_values(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_service(cfg)
+        main_port = next(p for p in manifest["spec"]["ports"] if p["name"] == "main-app-port")
+        assert main_port["port"] == 8080
+        assert main_port["targetPort"] == 8080
+
+    def test_gatekeeper_port_values(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_service(cfg)
+        gk_port = next(p for p in manifest["spec"]["ports"] if p["name"] == "gatekeeper-port")
+        assert gk_port["port"] == 9090
+        assert gk_port["targetPort"] == 9090
+
+    def test_no_auth_single_port_unchanged(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(auth=False)
+        manifest = builder.build_service(cfg)
+        ports = manifest["spec"]["ports"]
+        assert len(ports) == 1
+        assert ports[0] == {"port": 80, "targetPort": 8080, "protocol": "TCP"}
+
+
+# ---------------------------------------------------------------------------
+# Gatekeeper — build_ingress
+# ---------------------------------------------------------------------------
+
+
+class TestBuildIngressWithAuth:
+    """Tests für Ingress-Routing und Annotation-Merge bei auth=True."""
+
+    def test_auth_backend_named_port(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_ingress(cfg)
+        path = manifest["spec"]["rules"][0]["http"]["paths"][0]
+        assert path["backend"]["service"]["port"] == {"name": "gatekeeper-port"}
+
+    def test_no_auth_backend_number_80(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(url="https://example.com/p/t", host="example.com")
+        manifest = builder.build_ingress(cfg)
+        path = manifest["spec"]["rules"][0]["http"]["paths"][0]
+        assert path["backend"]["service"]["port"] == {"number": 80}
+
+    def test_auth_annotations_merged(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config(
+            auth_annotations={"nginx.ingress.kubernetes.io/auth-type": "basic"}
+        )
+        manifest = builder.build_ingress(cfg)
+        assert manifest["metadata"]["annotations"]["nginx.ingress.kubernetes.io/auth-type"] == "basic"
+
+    def test_base_and_auth_annotations_combined(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config(
+            ingress_annotations={"kubernetes.io/ingress.class": "nginx"},
+            auth_annotations={"nginx.ingress.kubernetes.io/auth-type": "basic"},
+        )
+        manifest = builder.build_ingress(cfg)
+        annotations = manifest["metadata"]["annotations"]
+        assert annotations["kubernetes.io/ingress.class"] == "nginx"
+        assert annotations["nginx.ingress.kubernetes.io/auth-type"] == "basic"
+
+    def test_no_auth_no_extra_annotations(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            url="https://example.com/p/t",
+            host="example.com",
+            ingress_annotations={"kubernetes.io/ingress.class": "nginx"},
+            auth_annotations={"nginx.ingress.kubernetes.io/auth-type": "basic"},
+        )
+        manifest = builder.build_ingress(cfg)
+        annotations = manifest["metadata"]["annotations"]
+        assert "nginx.ingress.kubernetes.io/auth-type" not in annotations
+        assert annotations["kubernetes.io/ingress.class"] == "nginx"

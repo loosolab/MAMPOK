@@ -27,16 +27,16 @@ class API(MampokInterface):
         """
         raise NotImplementedError
 
-    def delete(self, mamplan_path: Path) -> None:
-        """Löscht ein Deployment.
+    def stop(self, mamplan_path: Path) -> None:
+        """Stoppt ein Deployment (K8s-Ressourcen entfernen, S3 bleibt).
 
         Args:
             mamplan_path: Pfad zur Mamplan-Datei.
         """
         raise NotImplementedError
 
-    def delete_expired(self, repository: Path) -> None:
-        """Löscht alle abgelaufenen Deployments in einem Repository.
+    def stop_expired(self, repository: Path) -> None:
+        """Stoppt alle abgelaufenen Deployments in einem Repository.
 
         Args:
             repository: Pfad zum Mamplan-Repository-Verzeichnis.
@@ -63,8 +63,16 @@ class API(MampokInterface):
         """
         raise NotImplementedError
 
+    def check_status_report(self, repository: Path) -> None:
+        """Erstellt einen Status-Report aller Mamplans im Repository.
+
+        Args:
+            repository: Pfad zum Mamplan-Repository-Verzeichnis.
+        """
+        raise NotImplementedError
+
     def redeploy(self, mamplan_path: Path) -> None:
-        """Löscht und deployt ein Projekt neu.
+        """Stoppt und deployt ein Projekt neu.
 
         Args:
             mamplan_path: Pfad zur Mamplan-Datei.
