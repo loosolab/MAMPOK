@@ -9,13 +9,12 @@ from pathlib import Path
 from typing import Iterator
 
 from mampok.config.config import MampokConfig
-from mampok.interfaces.base import MampokInterface
 from mampok.interfaces.cli import create_mampok_instance
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
 
 
-class API(MampokInterface):
+class API:
     """Importierbare Python-API für programmatischen Mampok-Zugriff.
 
     Für jede Operation wird pro Mamplan eine Mampok-Instanz erstellt
@@ -98,7 +97,7 @@ class API(MampokInterface):
         return mamplans, mamplates, config
 
     # ---------------------------------------------------------------------------
-    # MampokInterface — core operations
+    # core operations
     # ---------------------------------------------------------------------------
 
     def deploy(self, mamplan_path: Path) -> Iterator[dict]:

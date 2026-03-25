@@ -10,7 +10,6 @@ from typing import Annotated, Callable
 import typer
 
 from mampok.config.config import MampokConfig
-from mampok.interfaces.base import MampokInterface
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
 from mampok.mampok.mampok import Mampok
@@ -385,7 +384,7 @@ def _derive_users(mamplan: Mamplan) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-class CLI(MampokInterface):
+class CLI:
     """Typer-based CLI for Mampok.
 
     Iterates over Mamplans with error tolerance: if one Mamplan fails,
