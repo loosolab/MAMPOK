@@ -448,10 +448,12 @@ class TestMamplan:
         mamplan_data["project"]["init_container"] = "s3download"
         mp = Mamplan(mamplan_data)
         mt = Mamplate(mamplate_data)
-        result = mp.merge_container_config(mt)
+        init_mamplate_data = {**mamplate_data, "tool": "s3download", "image": "s3download:1.0"}
+        init_mt = Mamplate(init_mamplate_data)
+        result = mp.merge_container_config(mt, init_mt)
         assert "init" in result
+        assert result["init"]["image"] == "s3download:1.0"
         assert result["init"]["tool"] == "s3download"
-        assert result["init"]["containertype"] == "initcontainer"
 
     def test_merge_init_container_from_container_init(self, mamplan_data, mamplate_data):
         mamplan_data["container"] = {"init": {"image": "init-image:latest"}}

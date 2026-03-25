@@ -121,13 +121,18 @@ class Mamplan(MamplanBase):
 
         return cls(data)
 
-    def merge_container_config(self, mamplate: "Mamplate") -> dict:  # type: ignore[name-defined]
+    def merge_container_config(  # type: ignore[name-defined]
+        self,
+        mamplate: "Mamplate",
+        init_mamplate: "Mamplate | None" = None,
+    ) -> dict:
         """Merged die Container-Konfiguration von Mamplate mit Mamplan-Overrides.
 
         Mamplan-Werte haben Vorrang. Dicts werden gemergt, Listen ersetzt.
 
         Args:
             mamplate: Das zugehörige Mamplate mit Container-Blueprint.
+            init_mamplate: Optionales Mamplate für den Init-Container.
 
         Returns:
             Dict mit 'main'-Key (und optional 'init'-Key), bereit für
@@ -146,10 +151,7 @@ class Mamplan(MamplanBase):
         init_overrides = mamplan_container.get("init", {})
         init_container_type = self.data.get("project", {}).get("init_container")
         if init_overrides or init_container_type:
-            init_base: dict = {}
-            if init_container_type:
-                init_base["containertype"] = "initcontainer"
-                init_base["tool"] = init_container_type
+            init_base: dict = copy.deepcopy(init_mamplate.data) if init_mamplate else {}
             merged_init = _deep_merge_container(init_base, init_overrides)
             result["init"] = merged_init
 

@@ -42,6 +42,7 @@ class Mampok:
         mamplate: Mamplate,
         kube: DeploymentManager,
         s3: S3,
+        init_mamplate: Mamplate | None = None,
     ) -> None:
         """Initialisiert Mampok.
 
@@ -50,11 +51,13 @@ class Mampok:
             mamplate: Passendes Mamplate für das Tool im Mamplan.
             kube: Konfigurierter DeploymentManager für den Ziel-Cluster.
             s3: Konfigurierter S3-Client für den Projekt-Bucket.
+            init_mamplate: Optionales Mamplate für den Init-Container.
         """
         self.mamplan = mamplan
         self.mamplate = mamplate
         self.kube = kube
         self.s3 = s3
+        self.init_mamplate = init_mamplate
 
     @property
     def is_expired(self) -> bool:
@@ -218,7 +221,7 @@ class Mampok:
         cluster_cfg = config.get_cluster(cluster_name)
         auth_proxy = cluster_cfg.auth_proxy
 
-        merged = self.mamplan.merge_container_config(self.mamplate)
+        merged = self.mamplan.merge_container_config(self.mamplate, self.init_mamplate)
         main = merged["main"]
 
         # ports: Mamplate-Schema verwendet einzelnen int → zu Liste konvertieren

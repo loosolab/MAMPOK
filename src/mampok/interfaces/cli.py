@@ -171,6 +171,17 @@ def create_mampok_instance(
         )
     mamplate = mamplates[tool]
 
+    init_container_type = mamplan.data.get("project", {}).get("init_container")
+    if init_container_type:
+        if init_container_type not in mamplates:
+            raise KeyError(
+                f"No mamplate found for init_container '{init_container_type}'. "
+                f"Available: {list(mamplates)}"
+            )
+        init_mamplate = mamplates[init_container_type]
+    else:
+        init_mamplate = None
+
     raw_bucket = mamplan.data["deployment"].get("bucket") or ""
     if raw_bucket:
         bucket = raw_bucket
@@ -180,7 +191,7 @@ def create_mampok_instance(
 
     kube = config.build_deployment_manager(cluster_name)
     s3 = config.build_s3_client(bucket)
-    return Mampok(mamplan, mamplate, kube, s3)
+    return Mampok(mamplan, mamplate, kube, s3, init_mamplate=init_mamplate)
 
 
 # ---------------------------------------------------------------------------
