@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Iterator
 
 from mampok.kubernetes.builder import ManifestBuilder
 from mampok.kubernetes.client import KubeClient
@@ -27,20 +28,26 @@ class DeploymentManager:
         self._kube = kube
         self._builder = ManifestBuilder()
 
-    def deploy(self, cfg: DeploymentConfig, s3_credentials: dict) -> None:
+    def deploy(self, cfg: DeploymentConfig, s3_credentials: dict) -> Iterator[dict]:
         """Deploy all Kubernetes resources for a DeploymentConfig.
 
         Builds manifests via ManifestBuilder and applies them via KubeClient.
-        Iterates itself (not via apply_many) for progress tracking.
+        Yields a progress dict after each applied resource.
         Order: Secret -> Deployment -> Service -> Ingress.
 
         Args:
             cfg: Deployment configuration.
             s3_credentials: S3 credentials dict.
+
+        Yields:
+            {"stage": "k8s_apply", "status": "done", "resource": "Kind/name"}
         """
         manifests = self._builder.build_all(cfg, s3_credentials)
         for manifest in manifests:
+            kind = manifest.get("kind", "Unknown")
+            name = manifest.get("metadata", {}).get("name", "unknown")
             self._kube.apply(manifest)
+            yield {"stage": "k8s_apply", "status": "done", "resource": f"{kind}/{name}"}
 
     def delete(self, cfg: DeploymentConfig) -> None:
         """Delete all Kubernetes resources of a deployment.
@@ -60,15 +67,18 @@ class DeploymentManager:
         ]:
             self._kube.delete(kind, name)
 
-    def redeploy(self, cfg: DeploymentConfig, s3_credentials: dict) -> None:
+    def redeploy(self, cfg: DeploymentConfig, s3_credentials: dict) -> Iterator[dict]:
         """Delete and re-deploy a deployment.
 
         Args:
             cfg: Deployment configuration.
             s3_credentials: S3 credentials dict.
+
+        Yields:
+            Progress dicts from deploy().
         """
         self.delete(cfg)
-        self.deploy(cfg, s3_credentials)
+        yield from self.deploy(cfg, s3_credentials)
 
     def rollout_status(self, cfg: DeploymentConfig) -> dict:
         """Return the current rollout status of the deployment.
@@ -111,16 +121,20 @@ class DeploymentManager:
         """
         return self._kube.exists("Deployment", cfg.deployment_name)
 
-    def wait_for_ready(self, cfg: DeploymentConfig, timeout: int = 300) -> None:
+    def wait_for_ready(self, cfg: DeploymentConfig, timeout: int = 300) -> Iterator[dict]:
         """Wait until all replicas are ready via the Kubernetes Watch API.
 
-        Streams Deployment events until ready_replicas >= cfg.replicas,
-        then returns. Readiness is determined by K8s Readiness Probes
-        (defined in the Mamplate, included in the Deployment manifest).
+        Streams Deployment events until ready_replicas >= cfg.replicas.
+        Yields a progress dict for each event that reports ready replicas.
+        Readiness is determined by K8s Readiness Probes (defined in the
+        Mamplate, included in the Deployment manifest).
 
         Args:
             cfg: Deployment configuration.
             timeout: Maximum seconds to wait for pods to become ready.
+
+        Yields:
+            {"stage": "k8s_ready", "status": "running", "ready_replicas": N}
 
         Raises:
             TimeoutError: If replicas are not ready within timeout seconds.
@@ -138,13 +152,15 @@ class DeploymentManager:
             timeout_seconds=timeout,
         ):
             status = event["object"].status
-            if (
-                status is not None
-                and status.ready_replicas is not None
-                and status.ready_replicas >= cfg.replicas
-            ):
-                w.stop()
-                return
+            if status is not None and status.ready_replicas is not None:
+                yield {
+                    "stage": "k8s_ready",
+                    "status": "running",
+                    "ready_replicas": status.ready_replicas,
+                }
+                if status.ready_replicas >= cfg.replicas:
+                    w.stop()
+                    return
 
         raise TimeoutError(
             f"Deployment {cfg.deployment_name!r} not ready within {timeout}s"

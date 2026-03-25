@@ -210,37 +210,37 @@ class TestIsExpired:
 
 
 class TestDeploy:
-    """Tests für Mampok.deploy."""
+    """Tests für Mampok.deploy (Generator)."""
 
     def test_creates_bucket(self, mampok, mock_config, mock_s3):
-        mampok.deploy(mock_config)
+        list(mampok.deploy(mock_config))
         mock_s3.create_bucket.assert_called_once()
 
     def test_skips_upload_when_compare_size_true(self, mampok, mock_config, mock_s3):
         mampok.mamplan.data["project"]["files"] = ["/data/file.h5"]
         mock_s3.compare_size.return_value = True
-        mampok.deploy(mock_config)
+        list(mampok.deploy(mock_config))
         mock_s3.upload.assert_not_called()
 
     def test_uploads_when_compare_size_false(self, mampok, mock_config, mock_s3):
         mampok.mamplan.data["project"]["files"] = ["/data/file.h5"]
         mock_s3.compare_size.return_value = False
-        mampok.deploy(mock_config)
+        list(mampok.deploy(mock_config))
         mock_s3.upload.assert_called_once_with(Path("/data/file.h5"), "file.h5")
 
     def test_uploads_multiple_files(self, mampok, mock_config, mock_s3):
         mampok.mamplan.data["project"]["files"] = ["/data/a.h5", "/data/b.csv"]
         mock_s3.compare_size.return_value = False
-        mampok.deploy(mock_config)
+        list(mampok.deploy(mock_config))
         assert mock_s3.upload.call_count == 2
 
     def test_no_upload_when_no_files(self, mampok, mock_config, mock_s3):
         mampok.mamplan.data["project"]["files"] = []
-        mampok.deploy(mock_config)
+        list(mampok.deploy(mock_config))
         mock_s3.upload.assert_not_called()
 
     def test_calls_kube_deploy_with_correct_credentials(self, mampok, mock_config, mock_kube):
-        mampok.deploy(mock_config)
+        list(mampok.deploy(mock_config))
         mock_kube.deploy.assert_called_once()
         _, s3_creds = mock_kube.deploy.call_args[0]
         assert s3_creds["s3_endpoint"] == "https://s3.example.com"
@@ -248,13 +248,14 @@ class TestDeploy:
         assert s3_creds["s3_secret"] == "secret123"
 
     def test_calls_wait_for_ready(self, mampok, mock_config, mock_kube):
-        mampok.deploy(mock_config, timeout=120)
+        list(mampok.deploy(mock_config, timeout=120))
         mock_kube.wait_for_ready.assert_called_once()
-        _, kwargs = mock_kube.wait_for_ready.call_args
-        assert kwargs.get("timeout", mock_kube.wait_for_ready.call_args[0][1] if len(mock_kube.wait_for_ready.call_args[0]) > 1 else None) in (120, None)
+        call_args = mock_kube.wait_for_ready.call_args
+        timeout = call_args.kwargs.get("timeout") or (call_args.args[1] if len(call_args.args) > 1 else None)
+        assert timeout == 120
 
     def test_updates_mamplan_status_true(self, mampok, mock_config):
-        mampok.deploy(mock_config)
+        list(mampok.deploy(mock_config))
         mampok.mamplan.edit.assert_called_once()
         kwargs = mampok.mamplan.edit.call_args[1]
         assert kwargs["deployment__status"] is True
@@ -262,9 +263,33 @@ class TestDeploy:
     def test_s3_files_string_in_credentials(self, mampok, mock_config, mock_kube, mock_s3):
         mampok.mamplan.data["project"]["files"] = ["/data/a.h5", "/data/b.csv"]
         mock_s3.compare_size.return_value = False
-        mampok.deploy(mock_config)
+        list(mampok.deploy(mock_config))
         _, s3_creds = mock_kube.deploy.call_args[0]
         assert s3_creds["s3_files"] == "a.h5,b.csv"
+
+    def test_yields_init_stage(self, mampok, mock_config):
+        events = list(mampok.deploy(mock_config))
+        init_event = next(e for e in events if e.get("stage") == "init")
+        assert init_event["status"] == "done"
+        assert init_event["project_id"] == "test-proj"
+
+    def test_yields_done_stage_with_selfservice(self, mampok, mock_config):
+        events = list(mampok.deploy(mock_config))
+        done_event = next(e for e in events if e.get("stage") == "done")
+        assert "selfservice" in done_event
+        assert "project_id" in done_event["selfservice"]
+
+    def test_yields_s3_bucket_stage(self, mampok, mock_config):
+        events = list(mampok.deploy(mock_config))
+        s3_bucket = next(e for e in events if e.get("stage") == "s3_bucket")
+        assert s3_bucket["status"] in ("created", "exists")
+
+    def test_yields_s3_upload_per_file(self, mampok, mock_config, mock_s3):
+        mampok.mamplan.data["project"]["files"] = ["/data/a.h5", "/data/b.csv"]
+        mock_s3.compare_size.return_value = False
+        events = list(mampok.deploy(mock_config))
+        upload_events = [e for e in events if e.get("stage") == "s3_upload" and "file" in e]
+        assert len(upload_events) == 2
 
 
 class TestStop:

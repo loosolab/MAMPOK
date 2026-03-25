@@ -7,6 +7,7 @@ import secrets
 import string
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Iterator
 
 import bcrypt
 
@@ -70,7 +71,7 @@ class Mampok:
             lifetime = lifetime.replace(tzinfo=timezone.utc)
         return lifetime < datetime.now(timezone.utc)
 
-    def deploy(self, config: MampokConfig, timeout: int = 300) -> None:
+    def deploy(self, config: MampokConfig, timeout: int = 300) -> Iterator[dict]:
         """Deployt das Projekt auf Kubernetes.
 
         Ablauf:
@@ -84,29 +85,55 @@ class Mampok:
         Args:
             config: Konfiguration mit Cluster- und S3-Credentials.
             timeout: Maximale Wartezeit in Sekunden bis Pods ready sind.
+
+        Yields:
+            Fortschritts-Dicts für jeden Schritt des Deployments:
+            - {"stage": "init", "status": "done", "project_id": str}
+            - {"stage": "s3_bucket", "status": "created"|"exists"}
+            - {"stage": "s3_upload", "status": "done", "file": str}
+            - {"stage": "s3_upload", "status": "complete", "total_files": int}
+            - {"stage": "k8s_apply", "status": "done", "resource": str}
+            - {"stage": "k8s_ready", "status": "running", "ready_replicas": int}
+            - {"stage": "done", "selfservice": {"url": str, "project_id": str, "auth": bool}}
         """
         cfg = self._build_deployment_config(config)
+        project_id = cfg.project_id
 
+        yield {"stage": "init", "status": "done", "project_id": project_id}
+
+        # S3 bucket
+        bucket_existed = self.s3.bucket_exists()
         self.s3.create_bucket()
-        for file_path in self.mamplan.data["project"]["files"]:
+        yield {"stage": "s3_bucket", "status": "exists" if bucket_existed else "created"}
+
+        # S3 upload per file
+        files = self.mamplan.data["project"]["files"]
+        for file_path in files:
             local = Path(file_path)
             key = local.name
             if not self.s3.compare_size(key, local):
                 self.s3.upload(local, key)
+            yield {"stage": "s3_upload", "status": "done", "file": key}
+        yield {"stage": "s3_upload", "status": "complete", "total_files": len(files)}
 
+        # K8s deploy
         s3_credentials = {
             "s3_endpoint": config.s3.endpoint,
             "s3_key": config.s3.access_key,
             "s3_secret": config.s3.secret_key,
-            "s3_files": ",".join(
-                Path(f).name for f in self.mamplan.data["project"]["files"]
-            ),
+            "s3_files": ",".join(Path(f).name for f in files),
         }
+        yield from self.kube.deploy(cfg, s3_credentials)
 
-        self.kube.deploy(cfg, s3_credentials)
-        self.kube.wait_for_ready(cfg, timeout=timeout)
+        # Readiness watch
+        yield from self.kube.wait_for_ready(cfg, timeout=timeout)
 
+        # Update mamplan
         self.mamplan.edit(deployment__status=True, deployment__url=cfg.url)
+        yield {
+            "stage": "done",
+            "selfservice": {"url": cfg.url, "project_id": project_id, "auth": cfg.auth},
+        }
 
     def stop(self, config: MampokConfig) -> None:
         """Stoppt das Deployment — entfernt K8s-Ressourcen, S3-Bucket bleibt erhalten.

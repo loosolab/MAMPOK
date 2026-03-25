@@ -27,7 +27,7 @@ class TestDeploy:
         mgr = DeploymentManager(kube)
 
         cfg = make_config(ports=[8080], url="https://example.com", host="example.com")
-        mgr.deploy(cfg, sample_s3_credentials)
+        list(mgr.deploy(cfg, sample_s3_credentials))
 
         assert kube.apply.call_count == 4
         kinds = [c.args[0]["kind"] for c in kube.apply.call_args_list]
@@ -40,7 +40,7 @@ class TestDeploy:
 
         cfg = make_config(ports=[8080])
         with pytest.raises(Exception, match="API error"):
-            mgr.deploy(cfg, sample_s3_credentials)
+            list(mgr.deploy(cfg, sample_s3_credentials))
 
         # Secret applied, Deployment failed — 2 calls total
         assert kube.apply.call_count == 2
@@ -77,7 +77,7 @@ class TestRedeploy:
         kube.delete.side_effect = lambda *a: call_order.append("delete")
         kube.apply.side_effect = lambda *a: call_order.append("apply")
 
-        mgr.redeploy(cfg, sample_s3_credentials)
+        list(mgr.redeploy(cfg, sample_s3_credentials))
 
         # All deletes should come before any apply
         delete_indices = [i for i, v in enumerate(call_order) if v == "delete"]
@@ -203,7 +203,7 @@ class TestWaitForReady:
         mock_watch.stream.return_value = iter([self._make_event(ready_replicas=1)])
 
         with patch("kubernetes.watch.Watch", return_value=mock_watch):
-            mgr.wait_for_ready(cfg, timeout=30)
+            list(mgr.wait_for_ready(cfg, timeout=30))
 
         mock_watch.stop.assert_called_once()
 
@@ -217,7 +217,7 @@ class TestWaitForReady:
 
         with patch("kubernetes.watch.Watch", return_value=mock_watch):
             with pytest.raises(TimeoutError, match="not ready"):
-                mgr.wait_for_ready(cfg, timeout=5)
+                list(mgr.wait_for_ready(cfg, timeout=5))
 
     def test_waits_through_partial_ready(self, make_config):
         kube = MagicMock()
@@ -233,7 +233,7 @@ class TestWaitForReady:
         mock_watch.stream.return_value = iter(events)
 
         with patch("kubernetes.watch.Watch", return_value=mock_watch):
-            mgr.wait_for_ready(cfg, timeout=30)
+            list(mgr.wait_for_ready(cfg, timeout=30))
 
         mock_watch.stop.assert_called_once()
 
@@ -250,7 +250,7 @@ class TestWaitForReady:
         mock_watch.stream.return_value = iter(events)
 
         with patch("kubernetes.watch.Watch", return_value=mock_watch):
-            mgr.wait_for_ready(cfg, timeout=30)
+            list(mgr.wait_for_ready(cfg, timeout=30))
 
         mock_watch.stop.assert_called_once()
 
@@ -263,7 +263,7 @@ class TestWaitForReady:
         mock_watch.stream.return_value = iter([self._make_event(ready_replicas=1)])
 
         with patch("kubernetes.watch.Watch", return_value=mock_watch):
-            mgr.wait_for_ready(cfg, timeout=120)
+            list(mgr.wait_for_ready(cfg, timeout=120))
 
         call_kwargs = mock_watch.stream.call_args[1]
         assert call_kwargs["timeout_seconds"] == 120

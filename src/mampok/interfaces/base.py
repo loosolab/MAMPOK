@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Iterator
 
 
 class MampokInterface(ABC):
@@ -14,11 +15,14 @@ class MampokInterface(ABC):
     """
 
     @abstractmethod
-    def deploy(self, mamplan_path: Path) -> None:
+    def deploy(self, mamplan_path: Path) -> Iterator[dict] | None:
         """Deployt ein Projekt auf Kubernetes.
 
         Args:
             mamplan_path: Pfad zur Mamplan-Datei oder -Verzeichnis.
+
+        Returns:
+            Iterator über Fortschritts-Dicts (API) oder None (CLI).
         """
         raise NotImplementedError
 
@@ -60,19 +64,25 @@ class MampokInterface(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def redeploy(self, mamplan_path: Path) -> None:
+    def redeploy(self, mamplan_path: Path) -> Iterator[dict] | None:
         """Stoppt und deployt ein Projekt neu.
 
         Args:
             mamplan_path: Pfad zur Mamplan-Datei oder -Verzeichnis.
+
+        Returns:
+            Iterator über Fortschritts-Dicts (API) oder None (CLI).
         """
         raise NotImplementedError
 
     @abstractmethod
-    def check_status_report(self, repository: Path) -> None:
+    def check_status_report(self, repository: Path) -> list[dict] | None:
         """Erstellt einen Status-Report aller Mamplans im Repository.
 
         Args:
             repository: Pfad zum Mamplan-Repository-Verzeichnis.
+
+        Returns:
+            Liste von Status-Dicts (API) oder None (CLI, gibt direkt aus).
         """
         raise NotImplementedError
