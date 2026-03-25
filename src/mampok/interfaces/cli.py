@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Callable
 
@@ -24,45 +24,35 @@ app = typer.Typer(
 # Shared Typer option definitions
 # ---------------------------------------------------------------------------
 
-_CONFIG_DEFAULT = Path("~/.mampok/config.json")
-
 _OPT_CONFIG = typer.Option(
-    _CONFIG_DEFAULT,
     "--config",
     help="Path to Mampok config file.",
-    show_default=True,
 )
 _OPT_SELECTION = typer.Option(
-    [],
     "-s",
     "--selection",
     help="Filter: section:key:value (repeatable, AND-combined).",
 )
 _OPT_REGEX_SELECTION = typer.Option(
-    [],
     "-rs",
     "--regex-select",
     help="Regex filter: section:key:pattern (repeatable, AND-combined).",
 )
 _OPT_TIMEOUT = typer.Option(
-    300,
     "--timeout",
     help="Timeout in seconds for wait_for_ready.",
     show_default=True,
 )
 _OPT_THROW_ERROR = typer.Option(
-    False,
     "--throw-error",
     help="Disable error tolerance — raise on first failure.",
 )
 _OPT_YES = typer.Option(
-    False,
     "-Y",
     "--yes",
     help="Skip confirmation prompts.",
 )
 _OPT_DRY_RUN = typer.Option(
-    False,
     "--dry-run",
     help="Print manifests without deploying.",
 )
@@ -755,6 +745,45 @@ def _is_mamplan_expired(mamplan: Mamplan) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Lifetime parsing helper
+# ---------------------------------------------------------------------------
+
+_RELATIVE_LIFETIME_RE = re.compile(r"^(\d+)([dwm])$", re.IGNORECASE)
+
+
+def _parse_lifetime(value: str) -> str:
+    """Parse lifetime as relative shorthand or ISO 8601 string.
+
+    Args:
+        value: Relative string like '30d', '4w', '3m', or ISO 8601 datetime.
+
+    Returns:
+        ISO 8601 UTC datetime string.
+
+    Raises:
+        typer.BadParameter: If the value is neither a valid relative format nor ISO 8601.
+    """
+    match = _RELATIVE_LIFETIME_RE.match(value)
+    if match:
+        amount = int(match.group(1))
+        unit = match.group(2).lower()
+        if unit == "d":
+            delta = timedelta(days=amount)
+        elif unit == "w":
+            delta = timedelta(weeks=amount)
+        else:  # 'm'
+            delta = timedelta(days=amount * 30)
+        return (datetime.now(timezone.utc) + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return value
+    except ValueError:
+        raise typer.BadParameter(
+            f"Invalid lifetime '{value}'. Use relative (30d, 4w, 3m) or ISO 8601 (2026-12-31T00:00:00Z)."
+        )
+
+
+# ---------------------------------------------------------------------------
 # Typer commands (thin wrappers, I6–I14)
 # ---------------------------------------------------------------------------
 
@@ -762,7 +791,7 @@ def _is_mamplan_expired(mamplan: Mamplan) -> bool:
 @app.command()
 def deploy(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
-    config: Annotated[Path, _OPT_CONFIG] = _CONFIG_DEFAULT,
+    config: Annotated[Path, _OPT_CONFIG],
     selection: Annotated[list[str], _OPT_SELECTION] = [],
     regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
     timeout: Annotated[int, _OPT_TIMEOUT] = 300,
@@ -784,7 +813,7 @@ def deploy(
 @app.command()
 def stop(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
-    config: Annotated[Path, _OPT_CONFIG] = _CONFIG_DEFAULT,
+    config: Annotated[Path, _OPT_CONFIG],
     selection: Annotated[list[str], _OPT_SELECTION] = [],
     regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
@@ -802,7 +831,7 @@ def stop(
 @app.command(name="stop-expired")
 def stop_expired(
     repository: Annotated[Path, typer.Argument(help="Path to mamplan repository directory.")],
-    config: Annotated[Path, _OPT_CONFIG] = _CONFIG_DEFAULT,
+    config: Annotated[Path, _OPT_CONFIG],
     yes: Annotated[bool, _OPT_YES] = False,
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
 ) -> None:
@@ -814,7 +843,7 @@ def stop_expired(
 @app.command()
 def redeploy(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
-    config: Annotated[Path, _OPT_CONFIG] = _CONFIG_DEFAULT,
+    config: Annotated[Path, _OPT_CONFIG],
     selection: Annotated[list[str], _OPT_SELECTION] = [],
     regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
     timeout: Annotated[int, _OPT_TIMEOUT] = 300,
@@ -834,11 +863,11 @@ def redeploy(
 @app.command(name="edit-mamplan")
 def edit_mamplan(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file.")],
+    config: Annotated[Path, _OPT_CONFIG],
     fields: Annotated[
         list[str],
         typer.Option("--edit", "-e", help="Fields to edit: section:key:value."),
     ] = [],
-    config: Annotated[Path, _OPT_CONFIG] = _CONFIG_DEFAULT,
     redeploy_after: Annotated[
         bool,
         typer.Option("--redeploy", help="Redeploy after editing."),
@@ -862,15 +891,15 @@ def create_mamplan(
     project_id: Annotated[str, typer.Option(help="Unique project ID.")],
     tool: Annotated[str, typer.Option(help="Tool name (must match a mamplate).")],
     cluster: Annotated[str, typer.Option(help="Target cluster identifier.")],
-    lifetime: Annotated[str, typer.Option(help="Expiry datetime in ISO 8601 format (e.g. 2025-12-31T00:00:00Z).")],
+    lifetime: Annotated[str, typer.Option(help="Expiry datetime: ISO 8601 (2026-12-31T00:00:00Z) or relative (30d, 4w, 3m).")],
     output: Annotated[Path, typer.Option(help="Output path (file or directory).")],
-    config: Annotated[Path, _OPT_CONFIG] = _CONFIG_DEFAULT,
+    config: Annotated[Path, _OPT_CONFIG],
+    owner: Annotated[str, typer.Option(help="Project owner username.")],
+    datatype: Annotated[list[str], typer.Option(help="Data types (repeatable).")],
     files: Annotated[list[str], typer.Option(help="Files to upload (repeatable).")] = [],
     analyst: Annotated[list[str], typer.Option(help="Analyst usernames (repeatable).")] = [],
-    owner: Annotated[str, typer.Option(help="Project owner username.")] = "",
     organization: Annotated[list[str], typer.Option(help="Organizations (repeatable).")] = [],
     user: Annotated[list[str], typer.Option(help="User access list (repeatable).")] = [],
-    datatype: Annotated[list[str], typer.Option(help="Data types (repeatable).")] = [],
     metadata: Annotated[list[str], typer.Option(help="Metadata IDs (repeatable).")] = [],
     bucket: Annotated[str, typer.Option(help="S3 bucket name (auto-generated if empty).")] = "",
     auth: Annotated[bool, typer.Option(help="Enable login protection.")] = False,
@@ -879,6 +908,7 @@ def create_mamplan(
     """Create a new mamplan file."""
     cfg = MampokConfig.from_file(config.expanduser())
     creation_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    lifetime = _parse_lifetime(lifetime)
     CLI(cfg).create_mamplan(
         output=output,
         project={
@@ -909,7 +939,7 @@ def create_mamplan(
 @app.command(name="check-status")
 def check_status(
     repository: Annotated[Path, typer.Argument(help="Path to mamplan repository directory.")],
-    config: Annotated[Path, _OPT_CONFIG] = _CONFIG_DEFAULT,
+    config: Annotated[Path, _OPT_CONFIG],
     selection: Annotated[list[str], _OPT_SELECTION] = [],
     regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
@@ -927,7 +957,7 @@ def check_status(
 @app.command(name="update-auth")
 def update_auth(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
-    config: Annotated[Path, _OPT_CONFIG] = _CONFIG_DEFAULT,
+    config: Annotated[Path, _OPT_CONFIG],
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
 ) -> None:
     """Update the auth secret for a project."""
@@ -939,7 +969,7 @@ def update_auth(
 def download(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
     output: Annotated[Path, typer.Argument(help="Local output directory.")],
-    config: Annotated[Path, _OPT_CONFIG] = _CONFIG_DEFAULT,
+    config: Annotated[Path, _OPT_CONFIG],
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
 ) -> None:
     """Download output files from S3 to local filesystem."""
