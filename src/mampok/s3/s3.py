@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,8 @@ from typing import Any
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+
+logger = logging.getLogger(__name__)
 
 
 class S3:
@@ -62,6 +65,7 @@ class S3:
             local_path: Pfad zur lokalen Datei.
             key: S3-Objekt-Key (Zielname im Bucket).
         """
+        logger.debug("upload: %s -> s3://%s/%s", local_path, self.bucket, key)
         self.client.upload_file(str(local_path), self.bucket, key)
 
     def download_to_local(self, key: str, local_path: Path) -> Path:
@@ -74,6 +78,7 @@ class S3:
         Returns:
             Pfad zur heruntergeladenen Datei.
         """
+        logger.debug("download: s3://%s/%s -> %s", self.bucket, key, local_path)
         self.client.download_file(self.bucket, key, str(local_path))
         return local_path
 
@@ -143,6 +148,7 @@ class S3:
         Kein Fehler wenn der Bucket bereits existiert.
         """
         if not self.bucket_exists():
+            logger.debug("create_bucket: %s", self.bucket)
             self.client.create_bucket(Bucket=self.bucket)
 
     def delete_bucket(self) -> None:
@@ -153,6 +159,7 @@ class S3:
         """
         if not self.bucket_exists():
             return
+        logger.debug("delete_bucket: %s", self.bucket)
         for key in self.list_objects():
             self.client.delete_object(Bucket=self.bucket, Key=key)
         self.client.delete_bucket(Bucket=self.bucket)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.resources
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
@@ -13,6 +14,8 @@ import jsonschema
 if TYPE_CHECKING:
     from mampok.kubernetes.manager import DeploymentManager
     from mampok.s3.s3 import S3
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -241,6 +244,7 @@ class MampokConfig:
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Config file not found: {path}")
+        logger.info("loading config: %s", path)
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
         return cls.from_dict(data)

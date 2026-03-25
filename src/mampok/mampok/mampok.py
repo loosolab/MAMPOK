@@ -98,13 +98,19 @@ class Mampok:
         """
         cfg = self._build_deployment_config(config)
         project_id = cfg.project_id
+        logger.debug("deploy: project_id=%s, namespace=%s, image=%s, replicas=%s, auth=%s, url=%s",
+                     cfg.project_id, cfg.namespace, cfg.image, cfg.replicas, cfg.auth, cfg.url)
 
-        yield {"stage": "init", "status": "done", "project_id": project_id}
+        step: dict = {"stage": "init", "status": "done", "project_id": project_id}
+        logger.debug("step: %s", step)
+        yield step
 
         # S3 bucket
         bucket_existed = self.s3.bucket_exists()
         self.s3.create_bucket()
-        yield {"stage": "s3_bucket", "status": "exists" if bucket_existed else "created"}
+        step = {"stage": "s3_bucket", "status": "exists" if bucket_existed else "created"}
+        logger.debug("step: %s", step)
+        yield step
 
         # S3 upload per file
         files = self.mamplan.data["project"]["files"]
@@ -113,8 +119,12 @@ class Mampok:
             key = local.name
             if not self.s3.compare_size(key, local):
                 self.s3.upload(local, key)
-            yield {"stage": "s3_upload", "status": "done", "file": key}
-        yield {"stage": "s3_upload", "status": "complete", "total_files": len(files)}
+            step = {"stage": "s3_upload", "status": "done", "file": key}
+            logger.debug("step: %s", step)
+            yield step
+        step = {"stage": "s3_upload", "status": "complete", "total_files": len(files)}
+        logger.debug("step: %s", step)
+        yield step
 
         # K8s deploy
         s3_credentials = {
@@ -123,17 +133,22 @@ class Mampok:
             "s3_secret": config.s3.secret_key,
             "s3_files": ",".join(Path(f).name for f in files),
         }
-        yield from self.kube.deploy(cfg, s3_credentials)
+        logger.debug("s3_credentials: endpoint=%s, key=%s, secret=***, files=%s",
+                     s3_credentials["s3_endpoint"], s3_credentials["s3_key"], s3_credentials["s3_files"])
+        for step in self.kube.deploy(cfg, s3_credentials):
+            logger.debug("step: %s", step)
+            yield step
 
         # Readiness watch
-        yield from self.kube.wait_for_ready(cfg, timeout=timeout)
+        for step in self.kube.wait_for_ready(cfg, timeout=timeout):
+            logger.debug("step: %s", step)
+            yield step
 
         # Update mamplan
         self.mamplan.edit(deployment__status=True, deployment__url=cfg.url)
-        yield {
-            "stage": "done",
-            "selfservice": {"url": cfg.url, "project_id": project_id, "auth": cfg.auth},
-        }
+        step = {"stage": "done", "selfservice": {"url": cfg.url, "project_id": project_id, "auth": cfg.auth}}
+        logger.debug("step: %s", step)
+        yield step
 
     def stop(self, config: MampokConfig) -> None:
         """Stoppt das Deployment — entfernt K8s-Ressourcen, S3-Bucket bleibt erhalten.
@@ -142,6 +157,7 @@ class Mampok:
             config: Konfiguration mit Cluster-Credentials.
         """
         cfg = self._build_deployment_config(config)
+        logger.debug("stop: project_id=%s, namespace=%s", cfg.project_id, cfg.namespace)
         self.kube.delete(cfg)
         self.mamplan.edit(deployment__status=False)
 
@@ -157,12 +173,14 @@ class Mampok:
         cfg = self._build_deployment_config(config)
         expected_active = self.mamplan.data["deployment"]["status"]
         actually_deployed = self.kube.deployment_exists(cfg)
-        return {
+        result = {
             "project_id": cfg.project_id,
             "expected_active": expected_active,
             "actually_deployed": actually_deployed,
             "healthy": expected_active == actually_deployed,
         }
+        logger.debug("check_status: %s", result)
+        return result
 
     def update_auth_secret(self, users: list[str], config: MampokConfig) -> None:
         """Generiert ein neues htpasswd-Secret und aktualisiert es auf dem Cluster.

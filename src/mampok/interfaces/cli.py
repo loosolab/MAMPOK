@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -14,11 +15,33 @@ from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
 from mampok.mampok.mampok import Mampok
 
+logger = logging.getLogger(__name__)
+
 app = typer.Typer(
     name="mampok",
     help="Kubernetes deployment manager for bioinformatics pipelines.",
     no_args_is_help=True,
 )
+
+
+@app.callback()
+def _setup_logging(
+    log_level: Annotated[
+        str,
+        typer.Option("--log-level", help="Log level: DEBUG, INFO, WARNING, ERROR."),
+    ] = "WARNING",
+    debug: Annotated[
+        bool,
+        typer.Option("--debug", help="Shorthand for --log-level DEBUG."),
+    ] = False,
+) -> None:
+    """Configure logging for Mampok."""
+    level = logging.DEBUG if debug else getattr(logging, log_level.upper(), logging.WARNING)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
 # ---------------------------------------------------------------------------
 # Shared Typer option definitions
@@ -799,6 +822,10 @@ def deploy(
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
 ) -> None:
     """Deploy a project to Kubernetes."""
+    logger.info(
+        "deploy: mamplan=%s, config=%s, selection=%s, regex_selection=%s, timeout=%s, dry_run=%s, throw_error=%s",
+        mamplan, config, selection, regex_selection, timeout, dry_run, throw_error,
+    )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).deploy(
         mamplan,
@@ -819,6 +846,10 @@ def stop(
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
 ) -> None:
     """Stop a deployment (removes K8s resources, S3 remains)."""
+    logger.info(
+        "stop: mamplan=%s, config=%s, selection=%s, regex_selection=%s, throw_error=%s",
+        mamplan, config, selection, regex_selection, throw_error,
+    )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).stop(
         mamplan,
@@ -836,6 +867,7 @@ def stop_expired(
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
 ) -> None:
     """Stop all expired active deployments in a repository."""
+    logger.info("stop-expired: repository=%s, config=%s, yes=%s, throw_error=%s", repository, config, yes, throw_error)
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).stop_expired(repository, yes=yes, throw_error=throw_error)
 
@@ -850,6 +882,10 @@ def redeploy(
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
 ) -> None:
     """Stop and redeploy a project."""
+    logger.info(
+        "redeploy: mamplan=%s, config=%s, selection=%s, regex_selection=%s, timeout=%s, throw_error=%s",
+        mamplan, config, selection, regex_selection, timeout, throw_error,
+    )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).redeploy(
         mamplan,
@@ -876,6 +912,10 @@ def edit_mamplan(
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
 ) -> None:
     """Edit mamplan fields and optionally redeploy."""
+    logger.info(
+        "edit-mamplan: mamplan=%s, config=%s, fields=%s, redeploy=%s, timeout=%s, throw_error=%s",
+        mamplan, config, fields, redeploy_after, timeout, throw_error,
+    )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).edit_mamplan(
         mamplan,
@@ -906,6 +946,10 @@ def create_mamplan(
     generate_url: Annotated[bool, typer.Option(help="Auto-generate deployment URL.")] = True,
 ) -> None:
     """Create a new mamplan file."""
+    logger.info(
+        "create-mamplan: project_id=%s, tool=%s, cluster=%s, lifetime=%s, output=%s, owner=%s, datatype=%s, auth=%s",
+        project_id, tool, cluster, lifetime, output, owner, datatype, auth,
+    )
     cfg = MampokConfig.from_file(config.expanduser())
     creation_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     lifetime = _parse_lifetime(lifetime)
@@ -945,6 +989,10 @@ def check_status(
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
 ) -> None:
     """Show deployment status report for all mamplans in a repository."""
+    logger.info(
+        "check-status: repository=%s, config=%s, selection=%s, regex_selection=%s, throw_error=%s",
+        repository, config, selection, regex_selection, throw_error,
+    )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).check_status_report(
         repository,
@@ -961,6 +1009,7 @@ def update_auth(
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
 ) -> None:
     """Update the auth secret for a project."""
+    logger.info("update-auth: mamplan=%s, config=%s, throw_error=%s", mamplan, config, throw_error)
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).update_auth(mamplan, throw_error=throw_error)
 
@@ -973,5 +1022,6 @@ def download(
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
 ) -> None:
     """Download output files from S3 to local filesystem."""
+    logger.info("download: mamplan=%s, output=%s, config=%s, throw_error=%s", mamplan, output, config, throw_error)
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).download(mamplan, output, throw_error=throw_error)

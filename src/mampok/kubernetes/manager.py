@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Iterator
 
 from mampok.kubernetes.builder import ManifestBuilder
 from mampok.kubernetes.client import KubeClient
 from mampok.kubernetes.config import DeploymentConfig
+
+logger = logging.getLogger(__name__)
 
 
 class DeploymentManager:
@@ -43,9 +46,11 @@ class DeploymentManager:
             {"stage": "k8s_apply", "status": "done", "resource": "Kind/name"}
         """
         manifests = self._builder.build_all(cfg, s3_credentials)
+        logger.debug("deploy: project_id=%s, manifests=%d", cfg.project_id, len(manifests))
         for manifest in manifests:
             kind = manifest.get("kind", "Unknown")
             name = manifest.get("metadata", {}).get("name", "unknown")
+            logger.debug("applying %s/%s", kind, name)
             self._kube.apply(manifest)
             yield {"stage": "k8s_apply", "status": "done", "resource": f"{kind}/{name}"}
 
@@ -58,6 +63,7 @@ class DeploymentManager:
         Args:
             cfg: Deployment configuration.
         """
+        logger.debug("delete: project_id=%s", cfg.project_id)
         for kind, name in [
             ("Deployment", cfg.deployment_name),
             ("Service", cfg.service_name),
@@ -65,6 +71,7 @@ class DeploymentManager:
             ("Secret", cfg.secret_name),
             ("Secret", cfg.auth_secret_name),
         ]:
+            logger.debug("deleting %s/%s", kind, name)
             self._kube.delete(kind, name)
 
     def redeploy(self, cfg: DeploymentConfig, s3_credentials: dict) -> Iterator[dict]:
@@ -145,6 +152,7 @@ class DeploymentManager:
         apps_v1 = kubernetes.client.AppsV1Api(api_client=self._kube._api_client)
         w = kubernetes.watch.Watch()
 
+        logger.debug("wait_for_ready: deployment=%s, replicas=%s, timeout=%s", cfg.deployment_name, cfg.replicas, timeout)
         for event in w.stream(
             apps_v1.list_namespaced_deployment,
             namespace=cfg.namespace,
@@ -153,6 +161,7 @@ class DeploymentManager:
         ):
             status = event["object"].status
             if status is not None and status.ready_replicas is not None:
+                logger.debug("ready_replicas=%s/%s", status.ready_replicas, cfg.replicas)
                 yield {
                     "stage": "k8s_ready",
                     "status": "running",

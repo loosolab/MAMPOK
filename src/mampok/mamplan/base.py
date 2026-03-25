@@ -5,12 +5,15 @@ from __future__ import annotations
 import copy
 import importlib.resources
 import json
+import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import ClassVar
 
 import jsonschema
 from referencing import Registry, Resource
+
+logger = logging.getLogger(__name__)
 
 
 class MamplanBase(ABC):
@@ -89,6 +92,7 @@ class MamplanBase(ABC):
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Datei nicht gefunden: {path}")
+        logger.debug("read_in: %s", path)
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
         return cls(data)
@@ -103,6 +107,7 @@ class MamplanBase(ABC):
         path = Path(path)
         if path.is_dir():
             path = path / self._get_auto_filename()
+        logger.debug("write: %s", path)
         with path.open("w", encoding="utf-8") as f:
             json.dump(self.data, f, indent=2, ensure_ascii=False)
 
@@ -119,6 +124,7 @@ class MamplanBase(ABC):
             jsonschema.ValidationError: Wenn das Ergebnis das Schema verletzt.
                 Das Dict bleibt in diesem Fall unverändert (Rollback).
         """
+        logger.debug("edit: %s", kwargs)
         backup = copy.deepcopy(self.data)
         try:
             for key, value in kwargs.items():

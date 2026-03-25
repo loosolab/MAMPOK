@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import base64
+import logging
 
 from mampok.kubernetes.config import DeploymentConfig
+
+logger = logging.getLogger(__name__)
 
 
 class ManifestBuilder:
@@ -279,10 +282,13 @@ class ManifestBuilder:
         Returns:
             List of K8s manifests (no None entries).
         """
+        logger.debug("build_all: project_id=%s, image=%s, ports=%s, auth=%s", cfg.project_id, cfg.image, cfg.ports, cfg.auth)
         manifests = [
             self.build_secret(cfg, s3_credentials),
             self.build_deployment(cfg),
             self.build_service(cfg),
             self.build_ingress(cfg),
         ]
-        return [m for m in manifests if m is not None]
+        result = [m for m in manifests if m is not None]
+        logger.debug("build_all: built %d manifests: %s", len(result), [m.get("kind") for m in result])
+        return result

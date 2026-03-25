@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from kubernetes.client.rest import ApiException
+
+logger = logging.getLogger(__name__)
 
 
 class KubeClient:
@@ -78,6 +81,7 @@ class KubeClient:
         """
         kind = manifest["kind"]
         name = manifest["metadata"]["name"]
+        logger.debug("apply: %s/%s", kind, name)
         path = self._resolve_path(kind, name)
         response_type = self._RESPONSE_TYPES[kind]
 
@@ -122,6 +126,7 @@ class KubeClient:
         Returns:
             The resource object as dict.
         """
+        logger.debug("get: %s/%s", kind, name)
         path = self._resolve_path(kind, name)
         response_type = self._RESPONSE_TYPES[kind]
 
@@ -142,6 +147,7 @@ class KubeClient:
             kind: Resource kind (e.g. "Deployment", "Service").
             name: Resource name.
         """
+        logger.debug("delete: %s/%s", kind, name)
         path = self._resolve_path(kind, name)
 
         try:
@@ -187,6 +193,7 @@ class KubeClient:
         Returns:
             The patched resource object as dict.
         """
+        logger.debug("patch: %s/%s", kind, name)
         path = self._resolve_path(kind, name)
         response_type = self._RESPONSE_TYPES[kind]
 
