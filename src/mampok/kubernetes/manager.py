@@ -9,6 +9,7 @@ from typing import Iterator
 from mampok.kubernetes.builder import ManifestBuilder
 from mampok.kubernetes.client import KubeClient
 from mampok.kubernetes.config import DeploymentConfig
+from mampok.kubernetes.validator import ManifestValidationError, ManifestValidator
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,8 @@ class DeploymentManager:
         """
         manifests = self._builder.build_all(cfg, s3_credentials)
         logger.debug("deploy: project_id=%s, manifests=%d", cfg.project_id, len(manifests))
+        ManifestValidator.validate_all(manifests)
+        yield {"stage": "k8s_validate", "status": "done", "count": len(manifests)}
         for manifest in manifests:
             kind = manifest.get("kind", "Unknown")
             name = manifest.get("metadata", {}).get("name", "unknown")

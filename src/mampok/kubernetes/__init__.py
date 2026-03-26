@@ -4,5 +4,13 @@ from mampok.kubernetes.client import KubeClient
 from mampok.kubernetes.config import DeploymentConfig
 from mampok.kubernetes.builder import ManifestBuilder
 from mampok.kubernetes.manager import DeploymentManager
+from mampok.kubernetes.validator import ManifestValidationError, ManifestValidator
 
-__all__ = ["KubeClient", "DeploymentConfig", "ManifestBuilder", "DeploymentManager"]
+__all__ = [
+    "KubeClient",
+    "DeploymentConfig",
+    "ManifestBuilder",
+    "DeploymentManager",
+    "ManifestValidator",
+    "ManifestValidationError",
+]
