@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, call, patch, mock_open
 
 import pytest
 
-from mampok.interfaces.api import API, _is_mamplan_expired
+from mampok.interfaces.api import API
 from mampok.mamplan.mamplan import Mamplan
 
 
@@ -182,10 +182,9 @@ class TestAPIStopExpired:
     """Tests für API.stop_expired()."""
 
     def test_stops_expired_mamplan(self, api, mock_mamplan_data, mock_mampok, tmp_path):
-        mock_mamplan_data["deployment"]["status"] = True
-        mock_mamplan_data["deployment"]["lifetime"] = "2020-01-01T00:00:00+00:00"
         mamplan = MagicMock()
         mamplan.data = mock_mamplan_data
+        mamplan.is_expired = True
 
         with patch.object(api, "_load_config"), \
              patch.object(api, "_load_mamplans", return_value=[mamplan]), \
@@ -196,10 +195,9 @@ class TestAPIStopExpired:
         mock_mampok.stop.assert_called_once()
 
     def test_ignores_non_expired_mamplan(self, api, mock_mamplan_data, mock_mampok, tmp_path):
-        mock_mamplan_data["deployment"]["status"] = True
-        mock_mamplan_data["deployment"]["lifetime"] = "2099-12-31T00:00:00+00:00"
         mamplan = MagicMock()
         mamplan.data = mock_mamplan_data
+        mamplan.is_expired = False
 
         with patch.object(api, "_load_config"), \
              patch.object(api, "_load_mamplans", return_value=[mamplan]), \
@@ -210,10 +208,9 @@ class TestAPIStopExpired:
         mock_mampok.stop.assert_not_called()
 
     def test_ignores_inactive_mamplan(self, api, mock_mamplan_data, mock_mampok, tmp_path):
-        mock_mamplan_data["deployment"]["status"] = False
-        mock_mamplan_data["deployment"]["lifetime"] = "2020-01-01T00:00:00+00:00"
         mamplan = MagicMock()
         mamplan.data = mock_mamplan_data
+        mamplan.is_expired = False
 
         with patch.object(api, "_load_config"), \
              patch.object(api, "_load_mamplans", return_value=[mamplan]), \
@@ -525,41 +522,69 @@ class TestAPICreateMamplan:
         api = API(tmp_path / "config.json")
         output = tmp_path / "new-mamplan.json"
 
-        with patch("mampok.interfaces.api.Mamplan.create") as mock_create:
+        mock_config = MagicMock()
+        mock_config.clusters = {"BN": MagicMock()}
+        with patch("mampok.interfaces.api.Mamplan.create") as mock_create, \
+             patch.object(api, "_load_config", return_value=mock_config), \
+             patch.object(api, "_load_mamplates", return_value={"cellxgene": MagicMock()}):
             mock_mp = MagicMock()
             mock_create.return_value = mock_mp
 
             api.create_mamplan(output, project={"project_id": "new"})
 
-            mock_create.assert_called_once_with(project={"project_id": "new"})
+            call_kwargs = mock_create.call_args[1]
+            assert call_kwargs["project"] == {"project_id": "new"}
+            # deployment.lifetime is auto-populated as ISO 8601 placeholder
+            assert "lifetime" in call_kwargs.get("deployment", {})
             mock_mp.write.assert_called_once_with(output)
 
 
 # ---------------------------------------------------------------------------
-# TestIsMamplanExpired
+# TestAPIListExpiring
 # ---------------------------------------------------------------------------
 
 
-class TestIsMamplanExpired:
-    """Tests für _is_mamplan_expired Hilfsfunktion."""
+class TestAPIListExpiring:
+    """Tests für API.list_expiring()."""
 
-    def _make_mamplan(self, status: bool, lifetime: str) -> MagicMock:
+    def _make_mamplan(self, status: bool, lifetime: str, project_id: str = "proj") -> MagicMock:
         mp = MagicMock()
-        mp.data = {"deployment": {"status": status, "lifetime": lifetime}}
+        mp.data = {
+            "project": {"project_id": project_id},
+            "deployment": {"status": status, "lifetime": lifetime},
+        }
         return mp
 
-    def test_expired_active_returns_true(self):
-        mp = self._make_mamplan(True, "2020-01-01T00:00:00+00:00")
-        assert _is_mamplan_expired(mp) is True
+    def test_returns_active_expiring_soon(self, api, tmp_path):
+        future_7d = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        mamplan = self._make_mamplan(True, future_7d, "proj-a")
+        with patch("mampok.interfaces.cli.load_mamplans", return_value=[mamplan]):
+            result = api.list_expiring(tmp_path, within_days=7)
+        assert len(result) == 1
+        assert result[0]["project_id"] == "proj-a"
 
-    def test_future_active_returns_false(self):
-        mp = self._make_mamplan(True, "2099-12-31T00:00:00+00:00")
-        assert _is_mamplan_expired(mp) is False
+    def test_excludes_inactive_mamplan(self, api, tmp_path):
+        future_3d = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        mamplan = self._make_mamplan(False, future_3d, "proj-b")
+        with patch("mampok.interfaces.cli.load_mamplans", return_value=[mamplan]):
+            result = api.list_expiring(tmp_path, within_days=7)
+        assert result == []
 
-    def test_inactive_with_past_lifetime_returns_false(self):
-        mp = self._make_mamplan(False, "2020-01-01T00:00:00+00:00")
-        assert _is_mamplan_expired(mp) is False
+    def test_excludes_already_expired(self, api, tmp_path):
+        past = "2020-01-01T00:00:00+00:00"
+        mamplan = self._make_mamplan(True, past, "proj-c")
+        with patch("mampok.interfaces.cli.load_mamplans", return_value=[mamplan]):
+            result = api.list_expiring(tmp_path, within_days=7)
+        assert result == []
 
-    def test_timezone_naive_handled(self):
-        mp = self._make_mamplan(True, "2020-01-01T00:00:00")
-        assert _is_mamplan_expired(mp) is True
+    def test_excludes_beyond_window(self, api, tmp_path):
+        future_30d = (datetime.now(timezone.utc) + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        mamplan = self._make_mamplan(True, future_30d, "proj-d")
+        with patch("mampok.interfaces.cli.load_mamplans", return_value=[mamplan]):
+            result = api.list_expiring(tmp_path, within_days=7)
+        assert result == []
+
+    def test_empty_repo_returns_empty_list(self, api, tmp_path):
+        with patch("mampok.interfaces.cli.load_mamplans", return_value=[]):
+            result = api.list_expiring(tmp_path)
+        assert result == []

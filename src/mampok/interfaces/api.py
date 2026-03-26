@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
@@ -149,7 +148,7 @@ class API:
             repository: Path to the Mamplan repository directory.
         """
         all_mamplans, mamplates, config = self._load(repository)
-        expired = [m for m in all_mamplans if _is_mamplan_expired(m)]
+        expired = [m for m in all_mamplans if m.is_expired]
         for mamplan in expired:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             mampok.stop(config)
@@ -209,15 +208,23 @@ class API:
 
         tool = kwargs.get("project", {}).get("tool")
         cluster = kwargs.get("deployment", {}).get("cluster")
-        mamplates = self._load_mamplates(self.config)
+        config = self._load_config()
+        mamplates = self._load_mamplates(config)
         if tool and tool not in mamplates:
             raise ValueError(
                 f"No mamplate for tool '{tool}'. Available: {sorted(mamplates)}"
             )
-        if cluster and cluster not in self.config.clusters:
+        if cluster and cluster not in config.clusters:
             raise ValueError(
-                f"Cluster '{cluster}' not found in config. Available: {sorted(self.config.clusters)}"
+                f"Cluster '{cluster}' not found in config. Available: {sorted(config.clusters)}"
             )
+
+        # Default lifetime to now() as placeholder — deploy will overwrite with now + lifetime_days
+        from datetime import datetime, timezone
+        deployment = kwargs.get("deployment", {})
+        if "lifetime" not in deployment:
+            deployment["lifetime"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            kwargs["deployment"] = deployment
 
         mamplan = Mamplan.create(**kwargs)
         mamplan.write(Path(output))
@@ -240,6 +247,22 @@ class API:
         mamplan = Mamplan.read_in(mamplan_path)
         mamplan.edit(**kwargs)
         mamplan.write(mamplan_path)
+
+    def list_expiring(self, repository: Path, within_days: int = 7) -> list[dict]:
+        """Return active deployments expiring within ``within_days`` days.
+
+        Args:
+            repository: Path to the Mamplan repository directory.
+            within_days: Number of days to look ahead. Default: 7.
+
+        Returns:
+            List of dicts: [{"project_id": str, "lifetime": str, "days_remaining": int}, ...]
+        """
+        from datetime import timedelta
+        from mampok.interfaces.cli import _mamplan_expiry_info, load_mamplans
+
+        within = timedelta(days=within_days)
+        return [r for m in load_mamplans(Path(repository)) if (r := _mamplan_expiry_info(m, within))]
 
     def check_status_report(self, repository: Path) -> list[dict]:
         """Return a status report for all Mamplans in a repository.
@@ -416,24 +439,3 @@ class API:
                 mampok.s3.copy(src_bucket, src_key, dest_bucket, dest_key)
 
 
-# ---------------------------------------------------------------------------
-# Module-level helper
-# ---------------------------------------------------------------------------
-
-
-def _is_mamplan_expired(mamplan: Mamplan) -> bool:
-    """Return True if the Mamplan is active and its lifetime has passed.
-
-    Args:
-        mamplan: Mamplan to check.
-
-    Returns:
-        True if deployment.status is True and lifetime is in the past.
-    """
-    deployment = mamplan.data["deployment"]
-    if not deployment.get("status", False):
-        return False
-    lifetime = datetime.fromisoformat(deployment["lifetime"])
-    if lifetime.tzinfo is None:
-        lifetime = lifetime.replace(tzinfo=timezone.utc)
-    return lifetime < datetime.now(timezone.utc)

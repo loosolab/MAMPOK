@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import ClassVar
 
@@ -54,6 +55,21 @@ class Mamplan(MamplanBase):
             jsonschema.ValidationError: Wenn data das Schema verletzt.
         """
         super().__init__(data)
+
+    @property
+    def is_expired(self) -> bool:
+        """True if deployment.status is True and deployment.lifetime has passed.
+
+        Returns:
+            True if the deployment is active and its lifetime is in the past.
+        """
+        deployment = self.data["deployment"]
+        if not deployment.get("status", False):
+            return False
+        lifetime = datetime.fromisoformat(deployment["lifetime"])
+        if lifetime.tzinfo is None:
+            lifetime = lifetime.replace(tzinfo=timezone.utc)
+        return lifetime < datetime.now(timezone.utc)
 
     def _get_auto_filename(self) -> str:
         """Gibt den auto-generierten Dateinamen zurück.

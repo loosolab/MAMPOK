@@ -380,6 +380,47 @@ def _parse_edit_args(fields: list[str]) -> dict:
     return kwargs
 
 
+_RELATIVE_OFFSET_RE = re.compile(r"^\+(\d+)([dwm])$", re.IGNORECASE)
+
+
+def _expand_relative_lifetime(fields: list[str], mamplan: Mamplan) -> list[str]:
+    """Expand '+Nd/w/m' offset tokens in deployment:lifetime to absolute ISO 8601.
+
+    The offset is added to the mamplan's **existing** lifetime, not to now().
+    Tokens for other fields are passed through unchanged.
+
+    Args:
+        fields: List of 'section:key:value' edit tokens.
+        mamplan: The current (already loaded) Mamplan instance.
+
+    Returns:
+        New list of tokens with relative lifetime offsets resolved to absolute values.
+
+    Raises:
+        typer.BadParameter: If the existing lifetime cannot be parsed.
+    """
+    result = []
+    for token in fields:
+        parts = token.split(":", 2)
+        if len(parts) == 3 and parts[0] == "deployment" and parts[1] == "lifetime":
+            match = _RELATIVE_OFFSET_RE.match(parts[2])
+            if match:
+                amount = int(match.group(1))
+                unit = match.group(2).lower()
+                delta_map = {"d": timedelta(days=amount), "w": timedelta(weeks=amount), "m": timedelta(days=amount * 30)}
+                delta = delta_map[unit]
+                existing_str = mamplan.data["deployment"]["lifetime"]
+                try:
+                    existing = datetime.fromisoformat(existing_str.replace("Z", "+00:00"))
+                except ValueError as exc:
+                    raise typer.BadParameter(f"Cannot parse existing lifetime '{existing_str}': {exc}")
+                new_iso = (existing + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
+                result.append(f"deployment:lifetime:{new_iso}")
+                continue
+        result.append(token)
+    return result
+
+
 # ---------------------------------------------------------------------------
 # I13 helper — derive user list from mamplan
 # ---------------------------------------------------------------------------
@@ -533,7 +574,7 @@ class CLI:
             throw_error: If True, disable error tolerance.
         """
         all_mamplans = load_mamplans(repository)
-        expired = [m for m in all_mamplans if _is_mamplan_expired(m)]
+        expired = [m for m in all_mamplans if m.is_expired]
 
         if not expired:
             typer.echo("No expired deployments found.")
@@ -559,6 +600,32 @@ class CLI:
             typer.echo(f"Stopped: {mamplan.data['project']['project_id']}")
 
         run_with_error_tolerance(expired, _stop, throw_error=throw_error)
+
+    def list_expiring(
+        self,
+        repository: Path,
+        within: timedelta = timedelta(days=7),
+    ) -> None:
+        """List active deployments expiring within a given window.
+
+        Args:
+            repository: Path to Mamplan repository directory.
+            within: Time window as timedelta. Default: 7 days.
+        """
+        all_mamplans = load_mamplans(repository)
+        rows = [r for m in all_mamplans if (r := _mamplan_expiry_info(m, within))]
+
+        window_str = f"{within.days}d"
+        if not rows:
+            typer.echo(f"No deployments expiring within {window_str}.")
+            return
+
+        col_id = max(max(len(r["project_id"]) for r in rows), len("Project ID"))
+        header = f"{'Project ID':<{col_id}}  {'Lifetime':<26}  Days Remaining"
+        typer.echo(header)
+        typer.echo("-" * len(header))
+        for row in rows:
+            typer.echo(f"{row['project_id']:<{col_id}}  {row['lifetime']:<26}  {row['days_remaining']}")
 
     # I9
     def redeploy(
@@ -611,7 +678,8 @@ class CLI:
             throw_error: If True, disable error tolerance.
         """
         mamplan = Mamplan.read_in(mamplan_path)
-        kwargs = _parse_edit_args(fields or [])
+        expanded_fields = _expand_relative_lifetime(fields or [], mamplan)
+        kwargs = _parse_edit_args(expanded_fields)
         mamplan.edit(**kwargs)
         mamplan.write(mamplan_path)
         typer.echo(f"Saved: {mamplan_path}")
@@ -770,29 +838,6 @@ class CLI:
 
 
 # ---------------------------------------------------------------------------
-# Helper — expiration check without full Mampok instance
-# ---------------------------------------------------------------------------
-
-
-def _is_mamplan_expired(mamplan: Mamplan) -> bool:
-    """Return True if the Mamplan is active and its lifetime has passed.
-
-    Args:
-        mamplan: Mamplan to check.
-
-    Returns:
-        True if deployment.status is True and lifetime is in the past.
-    """
-    deployment = mamplan.data["deployment"]
-    if not deployment["status"]:
-        return False
-    lifetime = datetime.fromisoformat(deployment["lifetime"])
-    if lifetime.tzinfo is None:
-        lifetime = lifetime.replace(tzinfo=timezone.utc)
-    return lifetime < datetime.now(timezone.utc)
-
-
-# ---------------------------------------------------------------------------
 # Lifetime parsing helper
 # ---------------------------------------------------------------------------
 
@@ -829,6 +874,65 @@ def _parse_lifetime(value: str) -> str:
         raise typer.BadParameter(
             f"Invalid lifetime '{value}'. Use relative (30d, 4w, 3m) or ISO 8601 (2026-12-31T00:00:00Z)."
         )
+
+
+# ---------------------------------------------------------------------------
+# Expiring-window helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_within(value: str) -> timedelta:
+    """Parse a relative window string ('7d', '2w', '1m') into a timedelta.
+
+    Args:
+        value: Relative string like '7d', '2w', '1m'.
+
+    Returns:
+        timedelta corresponding to the window.
+
+    Raises:
+        typer.BadParameter: If not a valid relative format.
+    """
+    match = _RELATIVE_LIFETIME_RE.match(value)
+    if not match:
+        raise typer.BadParameter(
+            f"Invalid --within value '{value}'. Use relative format: 7d, 2w, 1m."
+        )
+    amount = int(match.group(1))
+    unit = match.group(2).lower()
+    if unit == "d":
+        return timedelta(days=amount)
+    elif unit == "w":
+        return timedelta(weeks=amount)
+    else:
+        return timedelta(days=amount * 30)
+
+
+def _mamplan_expiry_info(mamplan: Mamplan, within: timedelta) -> dict | None:
+    """Return expiry info if mamplan is active and expiring within ``within``, else None.
+
+    Args:
+        mamplan: Mamplan to inspect.
+        within: Window within which the mamplan must expire to be included.
+
+    Returns:
+        Dict with project_id, lifetime, days_remaining, or None if not relevant.
+    """
+    deployment = mamplan.data["deployment"]
+    if not deployment.get("status", False):
+        return None
+    lifetime_str = deployment["lifetime"]
+    lifetime = datetime.fromisoformat(lifetime_str)
+    if lifetime.tzinfo is None:
+        lifetime = lifetime.replace(tzinfo=timezone.utc)
+    delta = lifetime - datetime.now(timezone.utc)
+    if timedelta(0) < delta <= within:
+        return {
+            "project_id": mamplan.data["project"]["project_id"],
+            "lifetime": lifetime_str,
+            "days_remaining": delta.days,
+        }
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -899,6 +1003,18 @@ def stop_expired(
     CLI(cfg).stop_expired(repository, yes=yes, throw_error=throw_error)
 
 
+@app.command(name="list-expiring")
+def list_expiring(
+    repository: Annotated[Path, typer.Argument(help="Path to mamplan repository directory.")],
+    config: Annotated[Path, _OPT_CONFIG],
+    within: Annotated[str, typer.Option("--within", help="Alert window: relative (7d, 2w, 1m). Default: 7d.")] = "7d",
+) -> None:
+    """List active deployments expiring within a given window."""
+    logger.info("list-expiring: repository=%s, config=%s, within=%s", repository, config, within)
+    cfg = MampokConfig.from_file(config.expanduser())
+    CLI(cfg).list_expiring(repository, within=_parse_within(within))
+
+
 @app.command()
 def redeploy(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
@@ -958,7 +1074,6 @@ def create_mamplan(
     project_id: Annotated[str, typer.Option(help="Unique project ID.")],
     tool: Annotated[str, typer.Option(help="Tool name (must match a mamplate).")],
     cluster: Annotated[str, typer.Option(help="Target cluster identifier.")],
-    lifetime: Annotated[str, typer.Option(help="Expiry datetime: ISO 8601 (2026-12-31T00:00:00Z) or relative (30d, 4w, 3m).")],
     output: Annotated[Path, typer.Option(help="Output path (file or directory).")],
     config: Annotated[Path, _OPT_CONFIG],
     owner: Annotated[str | None, typer.Option(help="Project owner username. Required if no --metadata-file with owner is given.")] = None,
@@ -991,9 +1106,9 @@ def create_mamplan(
         )
 
     logger.info(
-        "create-mamplan: project_id=%s, tool=%s, cluster=%s, lifetime=%s, output=%s, "
+        "create-mamplan: project_id=%s, tool=%s, cluster=%s, output=%s, "
         "owner=%s, datatype=%s, auth=%s, metadata_file=%s",
-        project_id, tool, cluster, lifetime, output, resolved_owner, resolved_datatype, auth, metadata_file,
+        project_id, tool, cluster, output, resolved_owner, resolved_datatype, auth, metadata_file,
     )
     cfg = MampokConfig.from_file(config.expanduser())
 
@@ -1012,7 +1127,6 @@ def create_mamplan(
         )
 
     creation_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    lifetime = _parse_lifetime(lifetime)
     CLI(cfg).create_mamplan(
         output=output,
         project={
@@ -1023,7 +1137,7 @@ def create_mamplan(
         },
         deployment={
             "cluster": cluster,
-            "lifetime": lifetime,
+            "lifetime": creation_date,  # placeholder; deploy overwrites with now + lifetime_days
             "bucket": bucket,
             "url": "",
             "auth": auth,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import secrets
 import string
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
 
@@ -66,13 +66,7 @@ class Mampok:
         Returns:
             True wenn das Deployment aktiv und abgelaufen ist.
         """
-        deployment = self.mamplan.data["deployment"]
-        if not deployment["status"]:
-            return False
-        lifetime = datetime.fromisoformat(deployment["lifetime"])
-        if lifetime.tzinfo is None:
-            lifetime = lifetime.replace(tzinfo=timezone.utc)
-        return lifetime < datetime.now(timezone.utc)
+        return self.mamplan.is_expired
 
     def deploy(self, config: MampokConfig, timeout: int = 300, cleanup: bool = True) -> Iterator[dict]:
         """Deployt das Projekt auf Kubernetes.
@@ -163,8 +157,13 @@ class Mampok:
                 yield step
             raise
 
-        # Update mamplan
-        self.mamplan.edit(deployment__status=True, deployment__url=cfg.url)
+        # Update mamplan — reset lifetime to now + config.lifetime_days (lease renewal)
+        new_lifetime = datetime.now(timezone.utc) + timedelta(days=config.lifetime_days)
+        self.mamplan.edit(
+            deployment__status=True,
+            deployment__url=cfg.url,
+            deployment__lifetime=new_lifetime.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
         step = {"stage": "done", "selfservice": {"url": cfg.url, "project_id": project_id, "auth": cfg.auth}}
         logger.debug("step: %s", step)
         yield step
@@ -174,10 +173,18 @@ class Mampok:
 
         Args:
             config: Konfiguration mit Cluster-Credentials.
+
+        Raises:
+            RuntimeError: If K8s resource deletion fails. Mamplan status is NOT
+                          updated in this case to preserve accurate state reflection.
         """
         cfg = self._build_deployment_config(config)
         logger.debug("stop: project_id=%s, namespace=%s", cfg.project_id, cfg.namespace)
-        self.kube.delete(cfg)
+        try:
+            self.kube.delete(cfg)
+        except Exception:
+            logger.error("stop failed for '%s' — mamplan status NOT updated", cfg.project_id)
+            raise
         self.mamplan.edit(deployment__status=False)
 
     def check_status(self, config: MampokConfig) -> dict:

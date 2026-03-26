@@ -558,3 +558,32 @@ class TestMamplate:
             mamplate.edit(containertype="invalid-type")
         assert mamplate.data["image"] == original_image
         assert mamplate.data["containertype"] == "maincontainer"
+
+
+class TestMamplanIsExpired:
+    """Tests für Mamplan.is_expired Property."""
+
+    def test_expired_active_returns_true(self, mamplan_data):
+        mamplan_data["deployment"]["status"] = True
+        mamplan_data["deployment"]["lifetime"] = "2020-01-01T00:00:00+00:00"
+        assert Mamplan(mamplan_data).is_expired is True
+
+    def test_not_expired_active_returns_false(self, mamplan_data):
+        mamplan_data["deployment"]["status"] = True
+        mamplan_data["deployment"]["lifetime"] = "2099-12-31T00:00:00+00:00"
+        assert Mamplan(mamplan_data).is_expired is False
+
+    def test_inactive_never_expired(self, mamplan_data):
+        mamplan_data["deployment"]["status"] = False
+        mamplan_data["deployment"]["lifetime"] = "2020-01-01T00:00:00+00:00"
+        assert Mamplan(mamplan_data).is_expired is False
+
+    def test_timezone_naive_treated_as_utc(self, mamplan_data):
+        mamplan_data["deployment"]["status"] = True
+        mamplan_data["deployment"]["lifetime"] = "2020-01-01T00:00:00"
+        assert Mamplan(mamplan_data).is_expired is True
+
+    def test_timezone_aware_future_not_expired(self, mamplan_data):
+        mamplan_data["deployment"]["status"] = True
+        mamplan_data["deployment"]["lifetime"] = "2099-01-01T00:00:00+02:00"
+        assert Mamplan(mamplan_data).is_expired is False

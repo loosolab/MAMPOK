@@ -237,27 +237,15 @@ class TestTransformEnv:
 
 
 class TestIsExpired:
-    """Tests für Mampok.is_expired Property."""
+    """Tests dass Mampok.is_expired an mamplan.is_expired delegiert."""
 
-    def test_expired_active_returns_true(self, mampok):
-        mampok.mamplan.data["deployment"]["status"] = True
-        mampok.mamplan.data["deployment"]["lifetime"] = "2020-01-01T00:00:00+00:00"
+    def test_delegates_true(self, mampok):
+        mampok.mamplan.is_expired = True
         assert mampok.is_expired is True
 
-    def test_not_expired_active_returns_false(self, mampok):
-        mampok.mamplan.data["deployment"]["status"] = True
-        mampok.mamplan.data["deployment"]["lifetime"] = "2099-12-31T00:00:00+00:00"
+    def test_delegates_false(self, mampok):
+        mampok.mamplan.is_expired = False
         assert mampok.is_expired is False
-
-    def test_inactive_never_expired(self, mampok):
-        mampok.mamplan.data["deployment"]["status"] = False
-        mampok.mamplan.data["deployment"]["lifetime"] = "2020-01-01T00:00:00+00:00"
-        assert mampok.is_expired is False
-
-    def test_timezone_naive_lifetime_handled(self, mampok):
-        mampok.mamplan.data["deployment"]["status"] = True
-        mampok.mamplan.data["deployment"]["lifetime"] = "2020-01-01T00:00:00"
-        assert mampok.is_expired is True
 
 
 class TestDeploy:
@@ -342,6 +330,18 @@ class TestDeploy:
         upload_events = [e for e in events if e.get("stage") == "s3_upload" and "file" in e]
         assert len(upload_events) == 2
 
+    def test_deploy_resets_lifetime_from_config(self, mampok, mock_config):
+        """Deploy sets deployment.lifetime = now + config.lifetime_days."""
+        from datetime import datetime, timezone, timedelta
+        before = datetime.now(timezone.utc)
+        list(mampok.deploy(mock_config))
+        kwargs = mampok.mamplan.edit.call_args[1]
+        assert "deployment__lifetime" in kwargs
+        new_lifetime = datetime.fromisoformat(kwargs["deployment__lifetime"].replace("Z", "+00:00"))
+        expected = before + timedelta(days=mock_config.lifetime_days)
+        assert new_lifetime >= before
+        assert abs((new_lifetime - expected).total_seconds()) < 5
+
 
 class TestDeployCleanup:
     """Tests für automatisches K8s-Cleanup bei fehlgeschlagenem Deploy."""
@@ -418,6 +418,32 @@ class TestStop:
         mock_s3.delete_bucket.assert_not_called()
         mock_s3.upload.assert_not_called()
         mock_s3.create_bucket.assert_not_called()
+
+
+class TestStopTransactional:
+    """Tests für transaktionales Verhalten von Mampok.stop (Feature I)."""
+
+    def test_mamplan_not_updated_when_delete_fails(self, mampok, mock_config, mock_kube):
+        """Mamplan status must stay True when K8s delete raises."""
+        mock_kube.delete.side_effect = RuntimeError("K8s unreachable")
+
+        with pytest.raises(RuntimeError, match="K8s unreachable"):
+            mampok.stop(mock_config)
+
+        mampok.mamplan.edit.assert_not_called()
+
+    def test_mamplan_updated_when_delete_succeeds(self, mampok, mock_config):
+        """Mamplan status is updated to False when K8s delete succeeds."""
+        mampok.stop(mock_config)
+        kwargs = mampok.mamplan.edit.call_args[1]
+        assert kwargs["deployment__status"] is False
+
+    def test_exception_re_raised(self, mampok, mock_config, mock_kube):
+        """The K8s exception propagates to the caller."""
+        mock_kube.delete.side_effect = RuntimeError("network failure")
+
+        with pytest.raises(RuntimeError):
+            mampok.stop(mock_config)
 
 
 class TestCheckStatus:

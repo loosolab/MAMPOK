@@ -64,6 +64,36 @@ class TestDelete:
         assert calls[3] == call("Secret", cfg.secret_name)
         assert calls[4] == call("Secret", cfg.auth_secret_name)
 
+    def test_all_resources_attempted_even_when_first_fails(self, make_config):
+        """All 5 K8s resources are attempted even if the first delete raises."""
+        kube = MagicMock()
+        kube.delete.side_effect = [RuntimeError("K8s error"), None, None, None, None]
+        mgr = DeploymentManager(kube)
+        cfg = make_config()
+
+        with pytest.raises(RuntimeError):
+            mgr.delete(cfg)
+
+        assert kube.delete.call_count == 5
+
+    def test_raises_runtime_error_listing_failures(self, make_config):
+        """RuntimeError message includes failure count and resource details."""
+        kube = MagicMock()
+        kube.delete.side_effect = [None, RuntimeError("svc gone"), None, RuntimeError("sec gone"), None]
+        mgr = DeploymentManager(kube)
+        cfg = make_config()
+
+        with pytest.raises(RuntimeError, match="2 resource"):
+            mgr.delete(cfg)
+
+    def test_no_raise_when_all_succeed(self, make_config):
+        """No exception when all deletes succeed."""
+        kube = MagicMock()
+        mgr = DeploymentManager(kube)
+        cfg = make_config()
+
+        mgr.delete(cfg)  # must not raise
+
 
 class TestRedeploy:
     """Tests for DeploymentManager.redeploy."""

@@ -61,21 +61,37 @@ class DeploymentManager:
         """Delete all Kubernetes resources of a deployment.
 
         Order: Deployment -> Service -> Ingress -> Secret -> Auth-Secret.
+        All resources are attempted even if earlier deletions fail.
         Non-existing resources are silently ignored (idempotent via KubeClient.delete).
 
         Args:
             cfg: Deployment configuration.
+
+        Raises:
+            RuntimeError: If one or more resources could not be deleted,
+                          listing all failures in the message.
         """
         logger.debug("delete: project_id=%s", cfg.project_id)
-        for kind, name in [
+        resources = [
             ("Deployment", cfg.deployment_name),
             ("Service", cfg.service_name),
             ("Ingress", cfg.ingress_name),
             ("Secret", cfg.secret_name),
             ("Secret", cfg.auth_secret_name),
-        ]:
-            logger.debug("deleting %s/%s", kind, name)
-            self._kube.delete(kind, name)
+        ]
+        failures = []
+        for kind, name in resources:
+            try:
+                logger.debug("deleting %s/%s", kind, name)
+                self._kube.delete(kind, name)
+            except Exception as exc:
+                logger.warning("failed to delete %s/%s: %s", kind, name, exc)
+                failures.append((kind, name, exc))
+        if failures:
+            details = "; ".join(f"{k}/{n}: {e}" for k, n, e in failures)
+            raise RuntimeError(
+                f"Failed to delete {len(failures)} resource(s) for '{cfg.project_id}': {details}"
+            )
 
     def redeploy(self, cfg: DeploymentConfig, s3_credentials: dict) -> Iterator[dict]:
         """Delete and re-deploy a deployment.
