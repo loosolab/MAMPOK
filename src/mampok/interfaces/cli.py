@@ -996,6 +996,21 @@ def create_mamplan(
         project_id, tool, cluster, lifetime, output, resolved_owner, resolved_datatype, auth, metadata_file,
     )
     cfg = MampokConfig.from_file(config.expanduser())
+
+    mamplates = load_mamplates(cfg.mamplates_path)
+    if tool not in mamplates:
+        raise typer.BadParameter(
+            f"Kein Mamplate für Tool '{tool}' in {cfg.mamplates_path}. "
+            f"Verfügbar: {sorted(mamplates)}",
+            param_hint="'--tool'",
+        )
+    if cluster not in cfg.clusters:
+        raise typer.BadParameter(
+            f"Cluster '{cluster}' nicht in der Config. "
+            f"Verfügbar: {sorted(cfg.clusters)}",
+            param_hint="'--cluster'",
+        )
+
     creation_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     lifetime = _parse_lifetime(lifetime)
     CLI(cfg).create_mamplan(

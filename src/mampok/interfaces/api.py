@@ -193,6 +193,7 @@ class API:
 
         Raises:
             jsonschema.ValidationError: If the provided data violates the schema.
+            ValueError: If the tool has no matching Mamplate or the cluster is not in the config.
         """
         if metadata_files:
             yaml_svc = parse_metadata_files(metadata_files)
@@ -205,6 +206,19 @@ class API:
                 "datatype": _merge_unique(svc.get("datatype", []), yaml_svc.get("datatype", [])),
                 "metadata": _merge_unique(svc.get("metadata", []), yaml_svc.get("metadata", [])),
             }
+
+        tool = kwargs.get("project", {}).get("tool")
+        cluster = kwargs.get("deployment", {}).get("cluster")
+        mamplates = self._load_mamplates(self.config)
+        if tool and tool not in mamplates:
+            raise ValueError(
+                f"No mamplate for tool '{tool}'. Available: {sorted(mamplates)}"
+            )
+        if cluster and cluster not in self.config.clusters:
+            raise ValueError(
+                f"Cluster '{cluster}' not found in config. Available: {sorted(self.config.clusters)}"
+            )
+
         mamplan = Mamplan.create(**kwargs)
         mamplan.write(Path(output))
 

@@ -17,7 +17,7 @@ _YAML_SCH79 = {
         "id": "sch79",
         "project_name": "GLORI2 TEST",
         "owner": {"name": "Su, Jianbang", "ldap_name": "jsu", "department": "AG-aschnei"},
-        "nerd": {"ldap_name": "bioinf_user"},
+        "nerd": [{"name": "Guenther, Stefan", "ldap_name": "bioinf_user", "department": "AG-nerds"}],
     },
     "technical_details": {
         "techniques": [
@@ -31,7 +31,7 @@ _YAML_DST302 = {
         "id": "dst302",
         "project_name": "ATAC seq",
         "owner": {"name": "Gehlot, Rupal", "ldap_name": "rgehlot", "department": "Abt-K"},
-        "nerd": {"ldap_name": "another_nerd"},
+        "nerd": [{"name": "Someone Else", "ldap_name": "another_nerd", "department": "AG-nerds"}],
     },
     "technical_details": {
         "techniques": [
@@ -97,6 +97,23 @@ class TestParseMetadataFiles:
         assert result["organization"] == ["AG-aschnei", "Abt-K"]
         assert result["datatype"] == ["GLORI-seq", "bulk ATAC-seq"]
         assert result["metadata"] == ["sch79", "dst302"]
+
+    def test_multiple_nerds_in_one_file(self, tmp_path: Path) -> None:
+        yaml_data = {
+            "project": {
+                "id": "multi",
+                "owner": {"ldap_name": "pi_user", "department": "AG-test"},
+                "nerd": [
+                    {"ldap_name": "nerd1", "department": "AG-nerds"},
+                    {"ldap_name": "nerd2", "department": "AG-nerds"},
+                ],
+            },
+            "technical_details": {"techniques": [{"technique": ["scRNA-seq"]}]},
+        }
+        path = tmp_path / "multi.yaml"
+        path.write_text(yaml.dump(yaml_data), encoding="utf-8")
+        result = parse_metadata_files([path])
+        assert result["analyst"] == ["nerd1", "nerd2"]
 
     def test_datatype_deduplicated(self, yaml_dst302: Path) -> None:
         # dst302 hat bulk ATAC-seq in exp1 und exp2 – darf nur einmal erscheinen

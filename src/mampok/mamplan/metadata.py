@@ -56,11 +56,10 @@ def parse_metadata_files(paths: list[Path]) -> dict:
         if dept:
             result["organization"] = _merge_unique(result["organization"], [dept])
 
-        # analyst: project.nerd.ldap_name – kein Fallback auf owner
-        nerd_block = project.get("nerd", {}) or {}
-        nerd_ldap = nerd_block.get("ldap_name", "")
-        if nerd_ldap:
-            result["analyst"] = _merge_unique(result["analyst"], [nerd_ldap])
+        # analyst: project.nerd[].ldap_name – kein Fallback auf owner
+        nerd_list = project.get("nerd") or []
+        nerd_ldaps = [n["ldap_name"] for n in nerd_list if isinstance(n, dict) and n.get("ldap_name")]
+        result["analyst"] = _merge_unique(result["analyst"], nerd_ldaps)
 
         # metadata: project.id
         project_id = project.get("id", "")
