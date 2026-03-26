@@ -27,8 +27,9 @@
           "description": "File paths relative to the project folder to upload."
         },
         "init_container": {
-          "type": "string",
-          "description": "Container type for pre-initialization (e.g. s3download, s3downloadfolder)."
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of additional init container types (Mamplate tool names)."
         },
         "project_size": {
           "type": "integer",

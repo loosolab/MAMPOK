@@ -1,0 +1,16 @@
+{
+  "tool": "sleep-init",
+  "image": "busybox:1.36",
+  "containertype": "initcontainer",
+  "command": ["/bin/sh", "-c", "sleep 60"],
+  "resources": {
+    "limits": {
+      "cpu": "100m",
+      "memory": "64Mi"
+    },
+    "requests": {
+      "cpu": "50m",
+      "memory": "32Mi"
+    }
+  }
+}

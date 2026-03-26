@@ -19,7 +19,7 @@ def mock_mamplan():
             "project_id": "test-proj",
             "tool": "cellxgene",
             "files": [],
-            "init_container": None,
+            "init_container": [],
         },
         "deployment": {
             "status": False,
@@ -66,6 +66,7 @@ def mock_kube():
 def mock_s3():
     """S3-Mock."""
     s3 = MagicMock(spec=S3)
+    s3.bucket = "test-bucket"
     s3.compare_size.return_value = True  # default: bereits vorhanden
     return s3
 

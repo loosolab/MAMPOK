@@ -124,7 +124,7 @@ class Mamplan(MamplanBase):
     def merge_container_config(  # type: ignore[name-defined]
         self,
         mamplate: "Mamplate",
-        init_mamplate: "Mamplate | None" = None,
+        init_mamplates: "list[Mamplate] | None" = None,
     ) -> dict:
         """Merged die Container-Konfiguration von Mamplate mit Mamplan-Overrides.
 
@@ -132,12 +132,12 @@ class Mamplan(MamplanBase):
 
         Args:
             mamplate: Das zugehörige Mamplate mit Container-Blueprint.
-            init_mamplate: Optionales Mamplate für den Init-Container.
+            init_mamplates: Optionale Liste von Mamplates für custom Init-Container.
 
         Returns:
-            Dict mit 'main'-Key (und optional 'init'-Key), bereit für
+            Dict mit 'main'-Key (und optional 'init'-Key als Liste), bereit für
             den Mampok-Orchestrator zur Umwandlung in DeploymentConfig.
-            Beispiel: {'main': {tool, image, ports, resources, ...}, 'init': {...}}
+            Beispiel: {'main': {tool, image, ports, resources, ...}, 'init': [{...}, ...]}
         """
         mamplan_container = self.data.get("container", {})
 
@@ -149,11 +149,15 @@ class Mamplan(MamplanBase):
 
         # Init-Container: nur wenn Mamplan container.init oder project.init_container hat
         init_overrides = mamplan_container.get("init", {})
-        init_container_type = self.data.get("project", {}).get("init_container")
-        if init_overrides or init_container_type:
-            init_base: dict = copy.deepcopy(init_mamplate.data) if init_mamplate else {}
-            merged_init = _deep_merge_container(init_base, init_overrides)
-            result["init"] = merged_init
+        resolved_init_mamplates = init_mamplates or []
+        if resolved_init_mamplates or init_overrides:
+            init_list = []
+            for init_mt in resolved_init_mamplates:
+                base = copy.deepcopy(init_mt.data)
+                init_list.append(_deep_merge_container(base, init_overrides))
+            if not resolved_init_mamplates and init_overrides:
+                init_list.append(_deep_merge_container({}, init_overrides))
+            result["init"] = init_list
 
         return result
 

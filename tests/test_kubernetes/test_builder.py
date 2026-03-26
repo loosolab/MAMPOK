@@ -28,7 +28,9 @@ class TestDeploymentConfig:
         assert cfg.volumes == []
         assert cfg.volume_mounts == []
         assert cfg.readiness_probe is None
-        assert cfg.init_container is None
+        assert cfg.init_containers == []
+        assert cfg.include_s3download is False
+        assert cfg.bucket == ""
         assert cfg.request_cpu == ""
         assert cfg.request_memory == ""
         assert cfg.host == ""
@@ -57,7 +59,7 @@ class TestDeploymentConfig:
             volume_mounts=[{"name": "data", "mountPath": "/data"}],
             volumes=[{"name": "data", "emptyDir": {}}],
             readiness_probe={"httpGet": {"path": "/health", "port": 8080}},
-            init_container={"name": "init", "image": "busybox"},
+            init_containers=[{"name": "init", "image": "busybox"}],
         )
         assert cfg.replicas == 3
         assert cfg.request_cpu == "500m"
@@ -181,10 +183,54 @@ class TestBuildDeployment:
     def test_init_container(self, make_config):
         builder = ManifestBuilder()
         init = {"name": "init", "image": "busybox", "command": ["sh", "-c", "echo"]}
-        cfg = make_config(init_container=init)
+        cfg = make_config(init_containers=[init])
         dep = builder.build_deployment(cfg)
 
         assert dep["spec"]["template"]["spec"]["initContainers"] == [init]
+
+    def test_s3download_init_container(self, make_config):
+        from mampok.kubernetes.builder import (
+            _FILEDIR_MOUNT_PATH,
+            _FILEDIR_VOLUME_NAME,
+            _S3DOWNLOAD_ARGS,
+            _S3DOWNLOAD_COMMAND,
+            _S3DOWNLOAD_IMAGE,
+        )
+
+        builder = ManifestBuilder()
+        cfg = make_config(include_s3download=True, bucket="my-bucket")
+        dep = builder.build_deployment(cfg)
+        spec = dep["spec"]["template"]["spec"]
+
+        assert "initContainers" in spec
+        ic = spec["initContainers"][0]
+        assert ic["name"] == "init-container"
+        assert ic["image"] == _S3DOWNLOAD_IMAGE
+        assert ic["command"] == _S3DOWNLOAD_COMMAND
+        assert ic["args"] == _S3DOWNLOAD_ARGS
+        assert ic["volumeMounts"] == [{"name": _FILEDIR_VOLUME_NAME, "mountPath": _FILEDIR_MOUNT_PATH}]
+        env_names = {e["name"] for e in ic["env"]}
+        assert env_names == {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "s3endpoint", "s3bucket"}
+        s3bucket_env = next(e for e in ic["env"] if e["name"] == "s3bucket")
+        assert s3bucket_env == {"name": "s3bucket", "value": "my-bucket"}
+
+        volumes = spec.get("volumes", [])
+        assert any(v["name"] == _FILEDIR_VOLUME_NAME for v in volumes)
+
+    def test_s3download_not_added_when_disabled(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(include_s3download=False)
+        dep = builder.build_deployment(cfg)
+        assert "initContainers" not in dep["spec"]["template"]["spec"]
+
+    def test_s3download_before_custom_init_containers(self, make_config):
+        builder = ManifestBuilder()
+        custom = {"tool": "myjob", "image": "myjob:1.0"}
+        cfg = make_config(include_s3download=True, bucket="b", init_containers=[custom])
+        dep = builder.build_deployment(cfg)
+        ic_list = dep["spec"]["template"]["spec"]["initContainers"]
+        assert ic_list[0]["name"] == "init-container"
+        assert ic_list[1]["name"] == "myjob"
 
     def test_env_secret_ref(self, make_config):
         builder = ManifestBuilder()

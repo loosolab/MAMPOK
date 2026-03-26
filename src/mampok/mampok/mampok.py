@@ -42,7 +42,7 @@ class Mampok:
         mamplate: Mamplate,
         kube: DeploymentManager,
         s3: S3,
-        init_mamplate: Mamplate | None = None,
+        init_mamplates: list[Mamplate] | None = None,
     ) -> None:
         """Initialisiert Mampok.
 
@@ -51,13 +51,13 @@ class Mampok:
             mamplate: Passendes Mamplate für das Tool im Mamplan.
             kube: Konfigurierter DeploymentManager für den Ziel-Cluster.
             s3: Konfigurierter S3-Client für den Projekt-Bucket.
-            init_mamplate: Optionales Mamplate für den Init-Container.
+            init_mamplates: Optionale Liste von Mamplates für custom Init-Container.
         """
         self.mamplan = mamplan
         self.mamplate = mamplate
         self.kube = kube
         self.s3 = s3
-        self.init_mamplate = init_mamplate
+        self.init_mamplates: list[Mamplate] = init_mamplates or []
 
     @property
     def is_expired(self) -> bool:
@@ -221,7 +221,7 @@ class Mampok:
         cluster_cfg = config.get_cluster(cluster_name)
         auth_proxy = cluster_cfg.auth_proxy
 
-        merged = self.mamplan.merge_container_config(self.mamplate, self.init_mamplate)
+        merged = self.mamplan.merge_container_config(self.mamplate, self.init_mamplates)
         main = merged["main"]
 
         # ports: Mamplate-Schema verwendet einzelnen int → zu Liste konvertieren
@@ -249,12 +249,15 @@ class Mampok:
         cluster_secret_name = config.s3.secretname
         env = _transform_env(main.get("env", []), project_secret_name, cluster_secret_name)
 
-        init_container = merged.get("init")
-        if init_container and "env" in init_container:
-            init_container = {
-                **init_container,
-                "env": _transform_env(init_container["env"], project_secret_name, cluster_secret_name),
-            }
+        raw_init_list = merged.get("init", [])
+        init_containers = []
+        for ic in raw_init_list:
+            if "env" in ic:
+                ic = {**ic, "env": _transform_env(ic["env"], project_secret_name, cluster_secret_name)}
+            init_containers.append(ic)
+
+        files = self.mamplan.data["project"].get("files", [])
+        include_s3download = bool(files)
 
         return DeploymentConfig(
             project_id=project_id,
@@ -281,7 +284,9 @@ class Mampok:
             tls_issuer=cluster_cfg.dnsissuer,
             tls_secret=cluster_cfg.dnssecret,
             s3_secret_name=config.s3.secretname,
-            init_container=init_container,
+            init_containers=init_containers,
+            include_s3download=include_s3download,
+            bucket=self.s3.bucket,
             auth_proxy_image=auth_proxy.auth_proxy_image if auth_proxy else "",
             proxy_port=auth_proxy.proxy_port if auth_proxy else 8080,
             auth_annotations=auth_proxy.auth_annotations if auth_proxy else {},

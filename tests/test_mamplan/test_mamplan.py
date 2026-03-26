@@ -134,7 +134,7 @@ class TestMamplan:
 
     def test_init_with_optional_fields(self, mamplan_data):
         mamplan_data["tags"] = {"gse": "GSE12345"}
-        mamplan_data["project"]["init_container"] = "s3download"
+        mamplan_data["project"]["init_container"] = ["s3download"]
         mp = Mamplan(mamplan_data)
         assert mp.data["tags"]["gse"] == "GSE12345"
 
@@ -445,15 +445,16 @@ class TestMamplan:
         assert "init" not in result
 
     def test_merge_init_container_from_project_init_container(self, mamplan_data, mamplate_data):
-        mamplan_data["project"]["init_container"] = "s3download"
+        mamplan_data["project"]["init_container"] = ["s3download"]
         mp = Mamplan(mamplan_data)
         mt = Mamplate(mamplate_data)
         init_mamplate_data = {**mamplate_data, "tool": "s3download", "image": "s3download:1.0"}
         init_mt = Mamplate(init_mamplate_data)
-        result = mp.merge_container_config(mt, init_mt)
+        result = mp.merge_container_config(mt, [init_mt])
         assert "init" in result
-        assert result["init"]["image"] == "s3download:1.0"
-        assert result["init"]["tool"] == "s3download"
+        assert isinstance(result["init"], list)
+        assert result["init"][0]["image"] == "s3download:1.0"
+        assert result["init"][0]["tool"] == "s3download"
 
     def test_merge_init_container_from_container_init(self, mamplan_data, mamplate_data):
         mamplan_data["container"] = {"init": {"image": "init-image:latest"}}
@@ -461,7 +462,8 @@ class TestMamplan:
         mt = Mamplate(mamplate_data)
         result = mp.merge_container_config(mt)
         assert "init" in result
-        assert result["init"]["image"] == "init-image:latest"
+        assert isinstance(result["init"], list)
+        assert result["init"][0]["image"] == "init-image:latest"
 
     def test_merge_does_not_modify_originals(self, mamplan_data, mamplate_data):
         mamplan_data["container"] = {"main": {"image": "override:latest"}}

@@ -119,14 +119,14 @@ class TestBuildDeploymentConfig:
                 "resources": {"limits": {"cpu": "1", "memory": "1Gi"}, "requests": {}},
                 "env": [], "args": [], "command": [],
             },
-            "init": {"image": "init:1"},
+            "init": [{"image": "init:1"}],
         }
         cfg = mampok._build_deployment_config(mock_config)
-        assert cfg.init_container == {"image": "init:1"}
+        assert cfg.init_containers == [{"image": "init:1"}]
 
     def test_no_init_container_by_default(self, mampok, mock_config):
         cfg = mampok._build_deployment_config(mock_config)
-        assert cfg.init_container is None
+        assert cfg.init_containers == []
 
     def test_s3_secret_name_from_config(self, mampok, mock_config):
         cfg = mampok._build_deployment_config(mock_config)

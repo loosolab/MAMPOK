@@ -1,0 +1,30 @@
+{
+  "project": {
+    "project_id": "my-cellxgene-project",
+    "tool": "cellxgene",
+    "files": ["data.h5ad"],
+    "creation_date": "2026-03-26T12:00:00Z",
+    "init_container": ["sleep-init"]
+  },
+  "deployment": {
+    "cluster": "BN",
+    "status": false,
+    "auth": false,
+    "bucket": "",
+    "generate_url": true,
+    "lifetime": "2027-01-01T00:00:00Z",
+    "url": ""
+  },
+  "service": {
+    "owner": "jdoe",
+    "analyst": ["jdoe"],
+    "datatype": ["scRNA-seq"],
+    "download_allowed": false,
+    "metadata": [],
+    "organization": ["mpi-bn"],
+    "user": ["jdoe"]
+  },
+  "tags": {
+    "gse": "GSE123456"
+  }
+}

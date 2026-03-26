@@ -1,0 +1,35 @@
+{
+  "tool": "cellxgene",
+  "image": "ghcr.io/chanzuckerberg/cellxgene:1.2.0",
+  "containertype": "maincontainer",
+  "ports": 5005,
+  "command": [
+    "cellxgene",
+    "launch",
+    "/DOWNLOADS3/data.h5ad",
+    "--host", "0.0.0.0",
+    "--port", "5005"
+  ],
+  "resources": {
+    "limits": {
+      "cpu": "4",
+      "memory": "16Gi"
+    },
+    "requests": {
+      "cpu": "1",
+      "memory": "4Gi"
+    }
+  },
+  "volume": {
+    "name": "filedir",
+    "mountPath": "/DOWNLOADS3"
+  },
+  "readinessProbe": {
+    "tcpSocket": {
+      "port": 5005
+    },
+    "initialDelaySeconds": 10,
+    "periodSeconds": 10,
+    "failureThreshold": 6
+  }
+}

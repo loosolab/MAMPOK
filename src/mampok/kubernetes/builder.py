@@ -9,6 +9,19 @@ from mampok.kubernetes.config import DeploymentConfig
 
 logger = logging.getLogger(__name__)
 
+_S3DOWNLOAD_IMAGE = "amazon/aws-cli"
+_S3DOWNLOAD_COMMAND = ["/bin/sh", "-c"]
+_S3DOWNLOAD_ARGS = [
+    "aws --endpoint-url $(s3endpoint) s3 cp s3://$(s3bucket)/ /DOWNLOADS3/ --recursive"
+]
+_S3DOWNLOAD_RESOURCES = {
+    "limits": {"cpu": "1", "memory": "1Gi"},
+    "requests": {"cpu": "0.5", "memory": "0.5Gi"},
+}
+_FILEDIR_VOLUME_NAME = "filedir"
+_FILEDIR_MOUNT_PATH = "/DOWNLOADS3"
+_MAMPOK_FIELDS = {"tool", "containertype", "downloadpaths", "volume"}
+
 
 class ManifestBuilder:
     """Generates Kubernetes manifests from a DeploymentConfig.
@@ -99,11 +112,45 @@ class ManifestBuilder:
 
         pod_spec: dict = {"containers": [container]}
 
-        if cfg.init_container:
-            _MAMPOK_FIELDS = {"tool", "containertype", "downloadpaths", "volume"}
-            name = cfg.init_container.get("tool", "init-container")
-            k8s_init = {"name": name, **{k: v for k, v in cfg.init_container.items() if k not in _MAMPOK_FIELDS}}
-            pod_spec["initContainers"] = [k8s_init]
+        init_containers = []
+
+        if cfg.include_s3download:
+            init_containers.append({
+                "name": "init-container",
+                "image": _S3DOWNLOAD_IMAGE,
+                "command": _S3DOWNLOAD_COMMAND,
+                "args": _S3DOWNLOAD_ARGS,
+                "env": [
+                    {"name": "AWS_ACCESS_KEY_ID",
+                     "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_key"}}},
+                    {"name": "AWS_SECRET_ACCESS_KEY",
+                     "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_secret"}}},
+                    {"name": "s3endpoint",
+                     "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_endpoint"}}},
+                    {"name": "s3bucket", "value": cfg.bucket},
+                ],
+                "resources": _S3DOWNLOAD_RESOURCES,
+                "volumeMounts": [{"name": _FILEDIR_VOLUME_NAME, "mountPath": _FILEDIR_MOUNT_PATH}],
+            })
+            filedir_vol = {"name": _FILEDIR_VOLUME_NAME, "emptyDir": {}}
+            if not any(v.get("name") == _FILEDIR_VOLUME_NAME for v in pod_spec.get("volumes", [])):
+                pod_spec.setdefault("volumes", []).append(filedir_vol)
+
+        for custom in cfg.init_containers:
+            name = custom.get("tool", "init-container")
+            k8s_init: dict = {"name": name}
+            k8s_init.update({k: v for k, v in custom.items() if k not in _MAMPOK_FIELDS})
+            volume = custom.get("volume")
+            if volume:
+                k8s_init["volumeMounts"] = [{"name": volume["name"], "mountPath": volume["mountPath"]}]
+                vol_entry = {"name": volume["name"], "emptyDir": {}}
+                if not any(v.get("name") == volume["name"] for v in pod_spec.get("volumes", [])):
+                    pod_spec.setdefault("volumes", []).append(vol_entry)
+            init_containers.append(k8s_init)
+
+        if init_containers:
+            pod_spec["initContainers"] = init_containers
+
         if cfg.volumes:
             pod_spec["volumes"] = cfg.volumes
 

@@ -119,8 +119,14 @@ class DeploymentConfig:
     s3_secret_name: str = ""
     """Name of the K8s secret containing S3 credentials."""
 
-    init_container: dict | None = None
-    """Init container configuration (None = no init container)."""
+    init_containers: list[dict] = field(default_factory=list)
+    """Custom init container configurations (Mamplate-format, transformed by builder)."""
+
+    include_s3download: bool = False
+    """Whether to prepend the hardcoded s3download init container."""
+
+    bucket: str = ""
+    """S3 bucket name — injected as env var into the s3download init container."""
 
     def __post_init__(self) -> None:
         if self.auth and self.proxy_port in self.ports:
