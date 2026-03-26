@@ -15,6 +15,7 @@ dependencies = [
     "referencing",
     "typer",
     "bcrypt",
+    "PyYAML",
 ]
 
 [project.optional-dependencies]

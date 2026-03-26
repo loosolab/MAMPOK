@@ -13,6 +13,7 @@ import typer
 from mampok.config.config import MampokConfig
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
+from mampok.mamplan.metadata import _merge_unique, parse_metadata_files
 from mampok.mampok.mampok import Mampok
 
 logger = logging.getLogger(__name__)
@@ -960,21 +961,39 @@ def create_mamplan(
     lifetime: Annotated[str, typer.Option(help="Expiry datetime: ISO 8601 (2026-12-31T00:00:00Z) or relative (30d, 4w, 3m).")],
     output: Annotated[Path, typer.Option(help="Output path (file or directory).")],
     config: Annotated[Path, _OPT_CONFIG],
-    owner: Annotated[str, typer.Option(help="Project owner username.")],
-    datatype: Annotated[list[str], typer.Option(help="Data types (repeatable).")],
+    owner: Annotated[str | None, typer.Option(help="Project owner username. Required if no --metadata-file with owner is given.")] = None,
+    datatype: Annotated[list[str], typer.Option(help="Data types (repeatable). Required if no --metadata-file with datatype is given.")] = [],
     files: Annotated[list[str], typer.Option(help="Files to upload (repeatable).")] = [],
     analyst: Annotated[list[str], typer.Option(help="Analyst usernames (repeatable).")] = [],
     organization: Annotated[list[str], typer.Option(help="Organizations (repeatable).")] = [],
     user: Annotated[list[str], typer.Option(help="User access list (repeatable).")] = [],
     metadata: Annotated[list[str], typer.Option(help="Metadata IDs (repeatable).")] = [],
+    metadata_file: Annotated[list[Path], typer.Option(help="YAML metadata file(s) to populate the service section (repeatable).")] = [],
     bucket: Annotated[str, typer.Option(help="S3 bucket name (auto-generated if empty).")] = "",
     auth: Annotated[bool, typer.Option(help="Enable login protection.")] = False,
     generate_url: Annotated[bool, typer.Option(help="Auto-generate deployment URL.")] = True,
 ) -> None:
     """Create a new mamplan file."""
+    yaml_svc = parse_metadata_files(metadata_file) if metadata_file else {}
+
+    resolved_owner = owner or yaml_svc.get("owner", "")
+    if not resolved_owner:
+        raise typer.BadParameter(
+            "Entweder --owner oder --metadata-file mit owner angeben.",
+            param_hint="'--owner'",
+        )
+
+    resolved_datatype = _merge_unique(datatype, yaml_svc.get("datatype", []))
+    if not resolved_datatype:
+        raise typer.BadParameter(
+            "Entweder --datatype oder --metadata-file mit datatype angeben.",
+            param_hint="'--datatype'",
+        )
+
     logger.info(
-        "create-mamplan: project_id=%s, tool=%s, cluster=%s, lifetime=%s, output=%s, owner=%s, datatype=%s, auth=%s",
-        project_id, tool, cluster, lifetime, output, owner, datatype, auth,
+        "create-mamplan: project_id=%s, tool=%s, cluster=%s, lifetime=%s, output=%s, "
+        "owner=%s, datatype=%s, auth=%s, metadata_file=%s",
+        project_id, tool, cluster, lifetime, output, resolved_owner, resolved_datatype, auth, metadata_file,
     )
     cfg = MampokConfig.from_file(config.expanduser())
     creation_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -996,12 +1015,12 @@ def create_mamplan(
             "generate_url": generate_url,
         },
         service={
-            "analyst": analyst or [owner] if owner else analyst,
-            "owner": owner,
-            "organization": organization,
+            "analyst": _merge_unique(analyst, yaml_svc.get("analyst", [])) or [resolved_owner],
+            "owner": resolved_owner,
+            "organization": _merge_unique(organization, yaml_svc.get("organization", [])),
             "user": user,
-            "datatype": datatype,
-            "metadata": metadata,
+            "datatype": resolved_datatype,
+            "metadata": _merge_unique(metadata, yaml_svc.get("metadata", [])),
         },
     )
 

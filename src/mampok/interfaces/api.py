@@ -12,6 +12,7 @@ from mampok.config.config import MampokConfig
 from mampok.interfaces.cli import create_mampok_instance
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
+from mampok.mamplan.metadata import _merge_unique, parse_metadata_files
 
 
 class API:
@@ -178,17 +179,32 @@ class API:
             yield from mampok.deploy(config)
             mamplan.write(mamplan.source_path)
 
-    def create_mamplan(self, output: Path, **kwargs) -> None:
+    def create_mamplan(self, output: Path, metadata_files: list[Path] | None = None, **kwargs) -> None:
         """Create a new Mamplan from keyword arguments and write it to disk.
 
         Args:
             output: Output path (file or directory). If directory, filename
                     is auto-generated as {project_id}-mamplan.json.
+            metadata_files: Optional list of YAML metadata file paths. Extracted
+                fields (owner, analyst, organization, datatype, metadata) are
+                merged into the service section. Explicit values in ``kwargs``
+                take precedence for scalar fields; list fields are merged.
             **kwargs: Mamplan sections (project, deployment, service, etc.).
 
         Raises:
             jsonschema.ValidationError: If the provided data violates the schema.
         """
+        if metadata_files:
+            yaml_svc = parse_metadata_files(metadata_files)
+            svc = kwargs.get("service", {})
+            kwargs["service"] = {
+                **svc,
+                "owner": svc.get("owner") or yaml_svc.get("owner", ""),
+                "analyst": _merge_unique(svc.get("analyst", []), yaml_svc.get("analyst", [])),
+                "organization": _merge_unique(svc.get("organization", []), yaml_svc.get("organization", [])),
+                "datatype": _merge_unique(svc.get("datatype", []), yaml_svc.get("datatype", [])),
+                "metadata": _merge_unique(svc.get("metadata", []), yaml_svc.get("metadata", [])),
+            }
         mamplan = Mamplan.create(**kwargs)
         mamplan.write(Path(output))
 
