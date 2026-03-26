@@ -74,7 +74,7 @@ class Mampok:
             lifetime = lifetime.replace(tzinfo=timezone.utc)
         return lifetime < datetime.now(timezone.utc)
 
-    def deploy(self, config: MampokConfig, timeout: int = 300) -> Iterator[dict]:
+    def deploy(self, config: MampokConfig, timeout: int = 300, cleanup: bool = True) -> Iterator[dict]:
         """Deployt das Projekt auf Kubernetes.
 
         Ablauf:
@@ -85,9 +85,13 @@ class Mampok:
         5. Warten bis alle Pods ready sind
         6. Mamplan aktualisieren (status=True, url)
 
+        Bei Fehler während Schritt 4 oder 5 werden bereits erstellte K8s-Ressourcen
+        automatisch bereinigt (sofern cleanup=True).
+
         Args:
             config: Konfiguration mit Cluster- und S3-Credentials.
             timeout: Maximale Wartezeit in Sekunden bis Pods ready sind.
+            cleanup: Falls True, werden K8s-Ressourcen bei Fehler automatisch gelöscht.
 
         Yields:
             Fortschritts-Dicts für jeden Schritt des Deployments:
@@ -97,6 +101,7 @@ class Mampok:
             - {"stage": "s3_upload", "status": "complete", "total_files": int}
             - {"stage": "k8s_apply", "status": "done", "resource": str}
             - {"stage": "k8s_ready", "status": "running", "ready_replicas": int}
+            - {"stage": "k8s_cleanup", "status": "done", "project_id": str}  (nur bei Fehler+cleanup)
             - {"stage": "done", "selfservice": {"url": str, "project_id": str, "auth": bool}}
         """
         cfg = self._build_deployment_config(config)
@@ -138,14 +143,25 @@ class Mampok:
         }
         logger.debug("s3_credentials: endpoint=%s, key=%s, secret=***, files=%s",
                      s3_credentials["s3_endpoint"], s3_credentials["s3_key"], s3_credentials["s3_files"])
-        for step in self.kube.deploy(cfg, s3_credentials):
-            logger.debug("step: %s", step)
-            yield step
+        k8s_started = False
+        try:
+            for step in self.kube.deploy(cfg, s3_credentials):
+                k8s_started = True
+                logger.debug("step: %s", step)
+                yield step
 
-        # Readiness watch
-        for step in self.kube.wait_for_ready(cfg, timeout=timeout):
-            logger.debug("step: %s", step)
-            yield step
+            # Readiness watch
+            for step in self.kube.wait_for_ready(cfg, timeout=timeout):
+                logger.debug("step: %s", step)
+                yield step
+        except Exception:
+            if cleanup and k8s_started:
+                logger.warning("deploy failed, cleaning up K8s resources: %s", cfg.project_id)
+                self.kube.delete(cfg)
+                step = {"stage": "k8s_cleanup", "status": "done", "project_id": cfg.project_id}
+                logger.debug("step: %s", step)
+                yield step
+            raise
 
         # Update mamplan
         self.mamplan.edit(deployment__status=True, deployment__url=cfg.url)

@@ -100,15 +100,20 @@ class API:
     # core operations
     # ---------------------------------------------------------------------------
 
-    def deploy(self, mamplan_path: Path) -> Iterator[dict]:
+    def deploy(self, mamplan_path: Path, timeout: int = 300, cleanup: bool = True) -> Iterator[dict]:
         """Deploy a project to Kubernetes.
 
         Yields progress dicts for each stage of the deployment:
         init → s3_bucket → s3_upload (per file) → k8s_apply (per resource)
         → k8s_ready (per readiness event) → done (with selfservice data).
 
+        On failure during K8s steps, already-created resources are automatically
+        deleted (unless cleanup=False).
+
         Args:
             mamplan_path: Path to the Mamplan file.
+            timeout: Maximum seconds to wait for pods to become ready.
+            cleanup: If True, K8s resources are deleted automatically on failure.
 
         Yields:
             Progress dicts, final one contains "selfservice" key with url and auth info.
@@ -116,12 +121,12 @@ class API:
         Raises:
             FileNotFoundError: If mamplan_path does not exist.
             KeyError: If the tool has no matching Mamplate.
-            TimeoutError: If pods are not ready within the default timeout.
+            TimeoutError: If pods are not ready within the timeout.
         """
         mamplans, mamplates, config = self._load(mamplan_path)
         for mamplan in mamplans:
             mampok = create_mampok_instance(config, mamplan, mamplates)
-            yield from mampok.deploy(config)
+            yield from mampok.deploy(config, timeout=timeout, cleanup=cleanup)
 
     def stop(self, mamplan_path: Path) -> None:
         """Stop a deployment (removes K8s resources, S3 bucket remains).

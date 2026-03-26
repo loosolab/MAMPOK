@@ -79,6 +79,10 @@ _OPT_DRY_RUN = typer.Option(
     "--dry-run",
     help="Print manifests without deploying.",
 )
+_OPT_NO_CLEANUP = typer.Option(
+    "--no-cleanup",
+    help="Skip automatic K8s resource cleanup on deploy failure (useful for debugging).",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -448,6 +452,7 @@ class CLI:
         timeout: int = 300,
         dry_run: bool = False,
         throw_error: bool = False,
+        no_cleanup: bool = False,
     ) -> None:
         """Deploy one or more projects to Kubernetes.
 
@@ -458,6 +463,7 @@ class CLI:
             timeout: Wait-for-ready timeout in seconds.
             dry_run: If True, print manifests without deploying.
             throw_error: If True, disable error tolerance.
+            no_cleanup: If True, skip automatic K8s cleanup on failure.
         """
         mamplans, mamplates = self._load(mamplan_path)
         mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
@@ -473,7 +479,7 @@ class CLI:
 
         def _deploy(mamplan: Mamplan) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
-            for _ in mampok.deploy(config, timeout=timeout):
+            for _ in mampok.deploy(config, timeout=timeout, cleanup=not no_cleanup):
                 pass
             typer.echo(f"Deployed: {mamplan.data['project']['project_id']}")
 
@@ -830,11 +836,12 @@ def deploy(
     timeout: Annotated[int, _OPT_TIMEOUT] = 300,
     dry_run: Annotated[bool, _OPT_DRY_RUN] = False,
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
+    no_cleanup: Annotated[bool, _OPT_NO_CLEANUP] = False,
 ) -> None:
     """Deploy a project to Kubernetes."""
     logger.info(
-        "deploy: mamplan=%s, config=%s, selection=%s, regex_selection=%s, timeout=%s, dry_run=%s, throw_error=%s",
-        mamplan, config, selection, regex_selection, timeout, dry_run, throw_error,
+        "deploy: mamplan=%s, config=%s, selection=%s, regex_selection=%s, timeout=%s, dry_run=%s, throw_error=%s, no_cleanup=%s",
+        mamplan, config, selection, regex_selection, timeout, dry_run, throw_error, no_cleanup,
     )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).deploy(
@@ -844,6 +851,7 @@ def deploy(
         timeout=timeout,
         dry_run=dry_run,
         throw_error=throw_error,
+        no_cleanup=no_cleanup,
     )
 
 

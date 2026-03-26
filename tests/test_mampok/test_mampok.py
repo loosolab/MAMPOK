@@ -292,6 +292,63 @@ class TestDeploy:
         assert len(upload_events) == 2
 
 
+class TestDeployCleanup:
+    """Tests für automatisches K8s-Cleanup bei fehlgeschlagenem Deploy."""
+
+    def test_cleanup_on_timeout_calls_kube_delete(self, mampok, mock_config, mock_kube):
+        """Bei TimeoutError in wait_for_ready wird kube.delete() aufgerufen."""
+        mock_kube.deploy.return_value = iter([{"stage": "k8s_validate", "status": "done", "count": 1}])
+        mock_kube.wait_for_ready.side_effect = TimeoutError("not ready")
+        with pytest.raises(TimeoutError):
+            list(mampok.deploy(mock_config, cleanup=True))
+        mock_kube.delete.assert_called_once()
+
+    def test_cleanup_on_timeout_yields_cleanup_event(self, mampok, mock_config, mock_kube):
+        """Bei TimeoutError wird ein k8s_cleanup-Event geliefert."""
+        mock_kube.deploy.return_value = iter([{"stage": "k8s_validate", "status": "done", "count": 1}])
+        mock_kube.wait_for_ready.side_effect = TimeoutError("not ready")
+        events = []
+        with pytest.raises(TimeoutError):
+            for event in mampok.deploy(mock_config, cleanup=True):
+                events.append(event)
+        cleanup_events = [e for e in events if e.get("stage") == "k8s_cleanup"]
+        assert len(cleanup_events) == 1
+        assert cleanup_events[0]["status"] == "done"
+        assert cleanup_events[0]["project_id"] == "test-proj"
+
+    def test_cleanup_on_k8s_apply_error(self, mampok, mock_config, mock_kube):
+        """Bei Fehler nach erstem k8s_apply-Event wird cleanup ausgeführt."""
+        # Erster yield (k8s_validate) geht durch, dann Fehler
+        def deploy_with_error(cfg, creds):
+            yield {"stage": "k8s_validate", "status": "done", "count": 1}
+            raise RuntimeError("apply failed")
+        mock_kube.deploy.side_effect = deploy_with_error
+        with pytest.raises(RuntimeError):
+            list(mampok.deploy(mock_config, cleanup=True))
+        mock_kube.delete.assert_called_once()
+
+    def test_no_cleanup_flag_skips_delete_on_timeout(self, mampok, mock_config, mock_kube):
+        """Mit cleanup=False wird kube.delete() bei Timeout nicht aufgerufen."""
+        mock_kube.wait_for_ready.side_effect = TimeoutError("not ready")
+        with pytest.raises(TimeoutError):
+            list(mampok.deploy(mock_config, cleanup=False))
+        mock_kube.delete.assert_not_called()
+
+    def test_no_cleanup_on_s3_error(self, mampok, mock_config, mock_kube, mock_s3):
+        """Bei Fehler vor K8s-Start (S3-Phase) wird kein Cleanup ausgeführt."""
+        mock_s3.create_bucket.side_effect = RuntimeError("s3 error")
+        with pytest.raises(RuntimeError):
+            list(mampok.deploy(mock_config, cleanup=True))
+        mock_kube.delete.assert_not_called()
+
+    def test_mamplan_not_updated_after_cleanup(self, mampok, mock_config, mock_kube):
+        """Nach Cleanup bleibt der Mamplan-Status auf False."""
+        mock_kube.wait_for_ready.side_effect = TimeoutError("not ready")
+        with pytest.raises(TimeoutError):
+            list(mampok.deploy(mock_config, cleanup=True))
+        mampok.mamplan.edit.assert_not_called()
+
+
 class TestStop:
     """Tests für Mampok.stop."""
 
