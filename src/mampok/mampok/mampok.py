@@ -299,9 +299,9 @@ def _transform_env(
 ) -> list:
     """Transformiert Mamplate-env-Einträge in K8s-natives Format.
 
-    secretname: 0 → Projekt-Secret ({project_id}-sc-{tool}, von Mampok erstellt)
-    secretname: 1 → Cluster-Secret (config.s3.secretname, pre-existing in K8s)
-    secretname: str → Custom Secret-Name
+    secret_ref: 'project' → Projekt-Secret ({project_id}-sc-{tool}, von Mampok erstellt)
+    secret_ref: 'cluster' → Cluster-Secret (config.s3.secretname, pre-existing in K8s)
+    secret_ref: <anderer string> → Custom Secret-Name
 
     Args:
         env_items: Liste von Mamplate-env-Einträgen.
@@ -317,14 +317,14 @@ def _transform_env(
             # DirectEnvVar: {name, value} → bereits K8s-kompatibel
             result.append({"name": item["name"], "value": item["value"]})
         else:
-            # SecretEnvVar: {key, name, secretname}
-            secretname = item["secretname"]
-            if secretname == 0:
+            # SecretEnvVar: {key, name, secret_ref}
+            secret_ref = item["secret_ref"]
+            if secret_ref == "project":
                 secret_name = project_secret_name
-            elif secretname == 1:
+            elif secret_ref == "cluster":
                 secret_name = cluster_secret_name
             else:
-                secret_name = str(secretname)
+                secret_name = secret_ref
             result.append(
                 {
                     "name": item["key"],

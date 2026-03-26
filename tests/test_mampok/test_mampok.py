@@ -146,8 +146,8 @@ class TestTransformEnv:
         result = _transform_env(items, "proj-sc-tool", "mpis")
         assert result == [{"name": "MY_VAR", "value": "hello"}]
 
-    def test_secret_env_var_secretname_0_uses_project_secret(self):
-        items = [{"key": "MY_KEY", "name": "s3_key", "secretname": 0}]
+    def test_secret_env_var_project_uses_project_secret(self):
+        items = [{"key": "MY_KEY", "name": "s3_key", "secret_ref": "project"}]
         result = _transform_env(items, "test-proj-sc-cellxgene", "mpis")
         assert result == [
             {
@@ -156,8 +156,8 @@ class TestTransformEnv:
             }
         ]
 
-    def test_secret_env_var_secretname_1_uses_cluster_secret(self):
-        items = [{"key": "CLUSTER_KEY", "name": "some_key", "secretname": 1}]
+    def test_secret_env_var_cluster_uses_cluster_secret(self):
+        items = [{"key": "CLUSTER_KEY", "name": "some_key", "secret_ref": "cluster"}]
         result = _transform_env(items, "test-proj-sc-cellxgene", "mpis")
         assert result == [
             {
@@ -166,8 +166,8 @@ class TestTransformEnv:
             }
         ]
 
-    def test_secret_env_var_custom_string_secretname(self):
-        items = [{"key": "CUSTOM_KEY", "name": "key_ref", "secretname": "my-custom-secret"}]
+    def test_secret_env_var_custom_string_secret_ref(self):
+        items = [{"key": "CUSTOM_KEY", "name": "key_ref", "secret_ref": "my-custom-secret"}]
         result = _transform_env(items, "proj-sc", "mpis")
         assert result[0]["valueFrom"]["secretKeyRef"]["name"] == "my-custom-secret"
 
@@ -177,7 +177,7 @@ class TestTransformEnv:
     def test_mixed_env_vars(self):
         items = [
             {"name": "DIRECT", "value": "val"},
-            {"key": "FROM_SECRET", "name": "key", "secretname": 0},
+            {"key": "FROM_SECRET", "name": "key", "secret_ref": "project"},
         ]
         result = _transform_env(items, "proj-sc", "mpis")
         assert len(result) == 2

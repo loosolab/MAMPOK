@@ -66,9 +66,9 @@
             "oneOf": [
               {
                 "title": "SecretEnvVar",
-                "description": "References a secret by name. secretname 0 = project secret, 1 = cluster secret.",
+                "description": "References a K8s secret by name or scope keyword.",
                 "type": "object",
-                "required": ["key", "name", "secretname"],
+                "required": ["key", "name", "secret_ref"],
                 "additionalProperties": false,
                 "properties": {
                   "key": {
@@ -79,10 +79,9 @@
                     "type": "string",
                     "description": "The secret key reference name."
                   },
-                  "secretname": {
-                    "type": "integer",
-                    "description": "Secret scope: 0 = project secret, 1 = cluster secret.",
-                    "enum": [0, 1]
+                  "secret_ref": {
+                    "type": "string",
+                    "description": "K8s secret name. Use 'project' for the auto-created project secret or 'cluster' for the shared cluster secret."
                   }
                 }
               },
