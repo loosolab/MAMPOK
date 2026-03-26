@@ -310,7 +310,7 @@ class TestBuildIngress:
     def test_with_url_and_host(self, make_config):
         builder = ManifestBuilder()
         cfg = make_config(
-            url="https://example.com/proj/tool",
+            url="https://example.com/testproj/nginx",
             host="example.com",
             tls_secret="tls-cert",
             ingress_annotations={"nginx.ingress.kubernetes.io/rewrite-target": "/"},
@@ -327,8 +327,30 @@ class TestBuildIngress:
         rule = ing["spec"]["rules"][0]
         assert rule["host"] == "example.com"
         path = rule["http"]["paths"][0]
-        assert path["path"] == f"/{cfg.project_id}/{cfg.tool}"
+        assert path["path"] == "/testproj/nginx"
         assert path["pathType"] == "Prefix"
+
+    def test_no_tls_when_tls_secret_empty(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(url="https://example.com/testproj/nginx", host="example.com", tls_secret="")
+        ing = builder.build_ingress(cfg)
+        assert "tls" not in ing["spec"]
+
+    def test_tls_when_tls_secret_set(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(url="https://example.com/testproj/nginx", host="example.com", tls_secret="my-tls-secret")
+        ing = builder.build_ingress(cfg)
+        assert ing["spec"]["tls"] == [{"hosts": ["example.com"], "secretName": "my-tls-secret"}]
+
+    def test_ingress_path_from_url_with_suffix(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            url="https://example.com/testproj/nginx-ab12c",
+            host="example.com",
+        )
+        ing = builder.build_ingress(cfg)
+        path = ing["spec"]["rules"][0]["http"]["paths"][0]
+        assert path["path"] == "/testproj/nginx-ab12c"
 
     def test_without_url_returns_none(self, make_config):
         builder = ManifestBuilder()

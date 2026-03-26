@@ -137,6 +137,57 @@ class TestBuildDeploymentConfig:
         with pytest.raises(KeyError):
             mampok._build_deployment_config(mock_config)
 
+    def test_generates_url_when_generate_url_true(self, mampok, mock_config):
+        # generate_url=True, url="" → URL auto-generated from host/project_id/tool
+        mampok.mamplan.data["deployment"]["url"] = ""
+        mampok.mamplan.data["deployment"]["generate_url"] = True
+        cfg = mampok._build_deployment_config(mock_config)
+        assert cfg.url == "https://bioinformatics-cluster.example.com/mampok-bn/test-proj/cellxgene/"
+
+    def test_no_url_generated_when_url_already_set(self, mampok, mock_config):
+        # url already set → keep as-is, ignore generate_url
+        mampok.mamplan.data["deployment"]["url"] = "https://custom.example.com/my/path"
+        mampok.mamplan.data["deployment"]["generate_url"] = True
+        cfg = mampok._build_deployment_config(mock_config)
+        assert cfg.url == "https://custom.example.com/my/path"
+
+    def test_no_url_generated_when_generate_url_false(self, mampok, mock_config):
+        mampok.mamplan.data["deployment"]["url"] = ""
+        mampok.mamplan.data["deployment"]["generate_url"] = False
+        cfg = mampok._build_deployment_config(mock_config)
+        assert cfg.url == ""
+
+    def test_no_url_generated_when_host_empty(self, mampok, mock_config):
+        from mampok.config.config import ClusterConfig, S3Config, MampokConfig
+        cluster_no_host = ClusterConfig(
+            host="",
+            namespace="mampok-bn",
+            kubeconfig_path="/app/BN_kube_config",
+        )
+        config_no_host = MampokConfig(
+            clusters={"BN": cluster_no_host},
+            s3=mock_config.s3,
+            mamplan_repo=mock_config.mamplan_repo,
+            mamplates_path=mock_config.mamplates_path,
+            lifetime_days=10,
+        )
+        mampok.mamplan.data["deployment"]["url"] = ""
+        mampok.mamplan.data["deployment"]["generate_url"] = True
+        cfg = mampok._build_deployment_config(config_no_host)
+        assert cfg.url == ""
+
+    def test_random_url_suffix_appended(self, mampok, mock_config):
+        mampok.mamplan.data["deployment"]["url"] = ""
+        mampok.mamplan.data["deployment"]["generate_url"] = True
+        mampok.mamplan.data["deployment"]["random_url_suffix"] = True
+        cfg = mampok._build_deployment_config(mock_config)
+        base = "https://bioinformatics-cluster.example.com/mampok-bn/test-proj/cellxgene-"
+        assert cfg.url.startswith(base)
+        assert cfg.url.endswith("/")
+        suffix = cfg.url[len(base):].rstrip("/")
+        assert len(suffix) == 5
+        assert suffix.isalnum()
+
 
 class TestTransformEnv:
     """Tests für _transform_env Hilfsfunktion."""

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import logging
+from urllib.parse import urlparse
 
 from mampok.kubernetes.config import DeploymentConfig
 
@@ -284,15 +285,14 @@ class ManifestBuilder:
         }
 
         spec: dict = {
-            "tls": [{"hosts": [cfg.host], "secretName": cfg.tls_secret}],
             "rules": [
                 {
                     "host": cfg.host,
                     "http": {
                         "paths": [
                             {
-                                "path": f"/{cfg.project_id}/{cfg.tool}",
-                                "pathType": "Prefix",
+                                "path": _ingress_path(urlparse(cfg.url).path, cfg.ingress_annotations),
+                                "pathType": _ingress_path_type(cfg.ingress_annotations),
                                 "backend": {
                                     "service": {
                                         "name": cfg.service_name,
@@ -305,6 +305,9 @@ class ManifestBuilder:
                 }
             ],
         }
+
+        if cfg.tls_secret:
+            spec["tls"] = [{"hosts": [cfg.host], "secretName": cfg.tls_secret}]
 
         if cfg.ingress_class:
             spec["ingressClassName"] = cfg.ingress_class
@@ -343,3 +346,27 @@ class ManifestBuilder:
         logger.debug("build_all: built %d manifests: %s", len(result), [m.get("kind") for m in result])
         logger.debug("build_all: manifests=%s", result)
         return result
+
+
+def _has_capture_group_rewrite(annotations: dict) -> bool:
+    """Return True if annotations contain a rewrite-target with capture groups ($1/$2)."""
+    rewrite = annotations.get("nginx.ingress.kubernetes.io/rewrite-target", "")
+    return "$" in rewrite
+
+
+def _ingress_path(base_path: str, annotations: dict) -> str:
+    """Return the ingress path, appending capture group suffix for rewrite-target annotations.
+
+    Trailing slash is stripped from base_path so the rule matches both
+    '/path' and '/path/' (with or without trailing slash from the browser).
+    """
+    if _has_capture_group_rewrite(annotations):
+        return base_path.rstrip("/") + "(/|$)(.*)"
+    return base_path
+
+
+def _ingress_path_type(annotations: dict) -> str:
+    """Return 'ImplementationSpecific' for regex paths, 'Prefix' otherwise."""
+    if _has_capture_group_rewrite(annotations):
+        return "ImplementationSpecific"
+    return "Prefix"

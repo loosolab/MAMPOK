@@ -472,7 +472,7 @@ class CLI:
             for mamplan in mamplans:
                 mampok = create_mampok_instance(self.config, mamplan, mamplates)
                 cfg = mampok._build_deployment_config(self.config)
-                typer.echo(f"[DRY-RUN] {cfg.project_id}: would deploy to cluster '{cfg.namespace}'")
+                typer.echo(f"[DRY-RUN] {cfg.project_id}: would deploy to cluster '{cfg.namespace}', url='{cfg.url}'")
             return
 
         config = self.config
@@ -483,6 +483,9 @@ class CLI:
                 pass
             mamplan.write(mamplan.source_path)
             typer.echo(f"Deployed: {mamplan.data['project']['project_id']}")
+            url = mamplan.data["deployment"].get("url", "")
+            if url:
+                typer.echo(f"URL: {url}")
 
         run_with_error_tolerance(mamplans, _deploy, throw_error=throw_error)
 
