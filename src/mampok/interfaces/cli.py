@@ -481,6 +481,7 @@ class CLI:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             for _ in mampok.deploy(config, timeout=timeout, cleanup=not no_cleanup):
                 pass
+            mamplan.write(mamplan.source_path)
             typer.echo(f"Deployed: {mamplan.data['project']['project_id']}")
 
         run_with_error_tolerance(mamplans, _deploy, throw_error=throw_error)
@@ -508,6 +509,7 @@ class CLI:
         def _stop(mamplan: Mamplan) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             mampok.stop(config)
+            mamplan.write(mamplan.source_path)
             typer.echo(f"Stopped: {mamplan.data['project']['project_id']}")
 
         run_with_error_tolerance(mamplans, _stop, throw_error=throw_error)
@@ -549,6 +551,7 @@ class CLI:
         def _stop(mamplan: Mamplan) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             mampok.stop(config)
+            mamplan.write(mamplan.source_path)
             typer.echo(f"Stopped: {mamplan.data['project']['project_id']}")
 
         run_with_error_tolerance(expired, _stop, throw_error=throw_error)
@@ -580,6 +583,7 @@ class CLI:
             mampok.stop(config)
             for _ in mampok.deploy(config, timeout=timeout):
                 pass
+            mamplan.write(mamplan.source_path)
             typer.echo(f"Redeployed: {mamplan.data['project']['project_id']}")
 
         run_with_error_tolerance(mamplans, _redeploy, throw_error=throw_error)
@@ -617,6 +621,7 @@ class CLI:
                 mampok.stop(config)
                 for _ in mampok.deploy(config, timeout=timeout):
                     pass
+                m.write(mamplan_path)
                 typer.echo(f"Redeployed: {m.data['project']['project_id']}")
 
             run_with_error_tolerance([mamplan], _redeploy, throw_error=throw_error)

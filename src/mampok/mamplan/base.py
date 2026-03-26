@@ -53,6 +53,7 @@ class MamplanBase(ABC):
             with schema_ref.open("r", encoding="utf-8") as f:
                 cls._schema_cache = json.load(f)
         self.data = data
+        self.source_path: Path | None = None
         self.schema: dict = cls._schema_cache  # type: ignore[assignment]
         self.check_schema()
 
@@ -95,7 +96,9 @@ class MamplanBase(ABC):
         logger.debug("read_in: %s", path)
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
-        return cls(data)
+        instance = cls(data)
+        instance.source_path = path
+        return instance
 
     def write(self, path: Path) -> None:
         """Schreibt die Konfiguration als JSON-Datei (indent=2).

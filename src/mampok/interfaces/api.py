@@ -127,6 +127,7 @@ class API:
         for mamplan in mamplans:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             yield from mampok.deploy(config, timeout=timeout, cleanup=cleanup)
+            mamplan.write(mamplan.source_path)
 
     def stop(self, mamplan_path: Path) -> None:
         """Stop a deployment (removes K8s resources, S3 bucket remains).
@@ -138,6 +139,7 @@ class API:
         for mamplan in mamplans:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             mampok.stop(config)
+            mamplan.write(mamplan.source_path)
 
     def stop_expired(self, repository: Path) -> None:
         """Stop all expired active deployments in a repository.
@@ -150,6 +152,7 @@ class API:
         for mamplan in expired:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             mampok.stop(config)
+            mamplan.write(mamplan.source_path)
 
     def redeploy(self, mamplan_path: Path) -> Iterator[dict]:
         """Stop and redeploy a project.
@@ -173,6 +176,7 @@ class API:
                 "project_id": mamplan.data["project"]["project_id"],
             }
             yield from mampok.deploy(config)
+            mamplan.write(mamplan.source_path)
 
     def create_mamplan(self, output: Path, **kwargs) -> None:
         """Create a new Mamplan from keyword arguments and write it to disk.
