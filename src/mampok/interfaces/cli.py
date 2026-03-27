@@ -786,10 +786,10 @@ class CLI:
         def _update(mamplan: Mamplan) -> None:
             users = _derive_users(mamplan)
             mampok = create_mampok_instance(config, mamplan, mamplates)
-            mampok.update_auth_secret(users, config)
+            token_url = mampok.update_auth_secret(users, config)
             typer.echo(
                 f"Updated auth: {mamplan.data['project']['project_id']} "
-                f"({len(users)} user(s))"
+                f"({len(users)} user(s))\nToken URL: {token_url}"
             )
 
         run_with_error_tolerance(mamplans, _update, throw_error=throw_error)

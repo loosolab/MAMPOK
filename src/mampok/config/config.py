@@ -33,6 +33,7 @@ class AuthProxyConfig:
     proxy_port: int = 8080
     auth_annotations: dict = field(default_factory=dict)
     image_pull_secrets: list[str] = field(default_factory=list)
+    project_auth_path: str = ""
 
 
 @dataclass
@@ -201,6 +202,7 @@ class MampokConfig:
                         proxy_port=_ap.get("proxy_port", 8080),
                         auth_annotations=_ap.get("auth_annotations", {}),
                         image_pull_secrets=_ap.get("image_pull_secrets", []),
+                        project_auth_path=_ap.get("project_auth_path", ""),
                     )
                     if (_ap := cluster_data.get("auth_proxy")) is not None
                     else None

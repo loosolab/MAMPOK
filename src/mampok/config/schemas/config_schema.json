@@ -127,6 +127,11 @@
               "description": "Pull-Secret-Namen für das Proxy-Image.",
               "items": {"type": "string"},
               "default": []
+            },
+            "project_auth_path": {
+              "type": "string",
+              "description": "Absoluter Pfad zu project_auth.json (für den Flask-API-/openProject-Endpoint).",
+              "default": ""
             }
           }
         }

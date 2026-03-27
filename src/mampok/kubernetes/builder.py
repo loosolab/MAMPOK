@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 from urllib.parse import urlparse
 
@@ -60,22 +61,21 @@ class ManifestBuilder:
             },
         }
 
-    def build_auth_secret(self, cfg: DeploymentConfig, htpasswd_content: str) -> dict:
-        """Build the basic-auth Secret manifest.
+    def build_auth_secret(self, cfg: DeploymentConfig, auth_data: dict) -> dict:
+        """Build the auth proxy Secret manifest.
 
         Args:
             cfg: Deployment configuration.
-            htpasswd_content: htpasswd file content (bcrypt-hashed passwords).
+            auth_data: Dict with keys: secret_key, users, owner, groups.
 
         Returns:
-            Complete K8s Secret manifest (type: kubernetes.io/basic-auth).
+            Complete K8s Secret manifest (Opaque) with auth-proxy.json key.
         """
         return {
             "apiVersion": "v1",
             "kind": "Secret",
             "metadata": {"name": cfg.auth_secret_name, "namespace": cfg.namespace},
-            "type": "kubernetes.io/basic-auth",
-            "data": {"auth": self._b64(htpasswd_content)},
+            "data": {"auth-proxy.json": self._b64(json.dumps(auth_data))},
         }
 
     def build_deployment(self, cfg: DeploymentConfig) -> dict:

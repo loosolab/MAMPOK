@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import secrets
 import string
@@ -9,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
 
-import bcrypt
+import jwt
 
 from mampok.config.config import MampokConfig
 from mampok.kubernetes.builder import ManifestBuilder
@@ -103,6 +104,15 @@ class Mampok:
         logger.debug("deploy: project_id=%s, namespace=%s, image=%s, replicas=%s, auth=%s, url=%s",
                      cfg.project_id, cfg.namespace, cfg.image, cfg.replicas, cfg.auth, cfg.url)
 
+        # Auth-Secret VOR kube.deploy() anlegen — Pod-Start scheitert sonst am fehlenden Secret
+        token_url: str | None = None
+        if cfg.auth:
+            service = self.mamplan.data["service"]
+            orgs: list[str] = service.get("organization", [])
+            users_raw: list[str] = service.get("user", [])
+            users = ["public"] if "public" in orgs else list(dict.fromkeys(orgs + users_raw))
+            token_url = self.update_auth_secret(users, config)
+
         step: dict = {"stage": "init", "status": "done", "project_id": project_id}
         logger.debug("step: %s", step)
         yield step
@@ -164,7 +174,7 @@ class Mampok:
             deployment__url=cfg.url,
             deployment__lifetime=new_lifetime.strftime("%Y-%m-%dT%H:%M:%SZ"),
         )
-        step = {"stage": "done", "selfservice": {"url": cfg.url, "project_id": project_id, "auth": cfg.auth}}
+        step = {"stage": "done", "selfservice": {"url": cfg.url, "token_url": token_url, "project_id": project_id, "auth": cfg.auth}}
         logger.debug("step: %s", step)
         yield step
 
@@ -208,28 +218,59 @@ class Mampok:
         logger.debug("check_status: %s", result)
         return result
 
-    def update_auth_secret(self, users: list[str], config: MampokConfig) -> None:
-        """Generiert ein neues htpasswd-Secret und aktualisiert es auf dem Cluster.
+    def update_auth_secret(self, users: list[str], config: MampokConfig) -> str:
+        """Generiert ein neues JWT-Auth-Secret und aktualisiert es auf dem Cluster.
 
-        Erzeugt bcrypt-gehashte Passwörter für alle übergebenen User und
-        ersetzt das bestehende K8s-Basic-Auth-Secret ohne Pod-Neustart.
+        Erzeugt einen zufälligen secret_key, baut das K8s-Secret im Format des
+        bcu-container-auth-proxy, persistiert den secret_key in project_auth.json
+        und gibt eine initiale Token-URL zurück.
 
         Args:
-            users: Liste von Usernamen für die neue htpasswd-Datei.
-                   Bei ["public"] wird nur ein öffentlicher Zugang erstellt.
+            users: Liste von Usernamen/Organisationen mit Zugriff.
             config: Konfiguration mit Cluster-Credentials.
-        """
-        lines = []
-        for user in users:
-            password = _generate_password()
-            hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-            lines.append(f"{user}:{hashed}")
-        htpasswd_content = "\n".join(lines) + "\n"
 
+        Returns:
+            Initiale Token-URL (cfg.url + ?token=<jwt>) für sofortigen Zugang.
+        """
         cfg = self._build_deployment_config(config)
+        service = self.mamplan.data["service"]
+        owner = service["owner"]
+        groups = service.get("organization", [])
+
+        secret_key = _generate_secret_key()
+        auth_data = {
+            "secret_key": secret_key,
+            "users": users,
+            "owner": owner,
+            "groups": groups,
+        }
+
+        # K8s Secret anlegen/aktualisieren
         builder = ManifestBuilder()
-        manifest = builder.build_auth_secret(cfg, htpasswd_content)
+        manifest = builder.build_auth_secret(cfg, auth_data)
         self.kube._kube.apply(manifest)
+
+        # secret_key in project_auth.json persistieren (für Flask-API /openProject)
+        cluster_name = self.mamplan.data["deployment"]["cluster"]
+        auth_proxy = config.get_cluster(cluster_name).auth_proxy
+        if auth_proxy and auth_proxy.project_auth_path:
+            path = Path(auth_proxy.project_auth_path)
+            existing: dict = {}
+            if path.exists():
+                with path.open("r", encoding="utf-8") as f:
+                    existing = json.load(f)
+            existing[cfg.project_id] = secret_key
+            with path.open("w", encoding="utf-8") as f:
+                json.dump(existing, f, indent=2)
+
+        # Initialen JWT für sofortigen Zugang generieren
+        payload = {
+            "groups": groups,
+            "username": owner,
+            "iat": datetime.now(timezone.utc),
+        }
+        token = jwt.encode(payload, secret_key, algorithm="HS256")
+        return f"{cfg.url}?token={token}"
 
     def _build_deployment_config(self, config: MampokConfig) -> DeploymentConfig:
         """Leitet eine DeploymentConfig aus Mamplan, Mamplate und ClusterConfig ab.
@@ -369,14 +410,14 @@ def _transform_env(
     return result
 
 
-def _generate_password(length: int = 16) -> str:
-    """Generiert ein kryptographisch sicheres zufälliges Passwort.
+def _generate_secret_key(length: int = 32) -> str:
+    """Generiert einen kryptographisch sicheren zufälligen Secret-Key.
 
     Args:
-        length: Länge des Passworts.
+        length: Länge des Keys.
 
     Returns:
         Zufälliger alphanumerischer String.
     """
-    alphabet = string.ascii_letters + string.digits
-    return "".join(secrets.choice(alphabet) for _ in range(length))
+    characters = string.ascii_letters + string.digits
+    return "".join(secrets.choice(characters) for _ in range(length))

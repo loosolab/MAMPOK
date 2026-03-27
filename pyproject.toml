@@ -14,7 +14,7 @@ dependencies = [
     "jsonschema",
     "referencing",
     "typer",
-    "bcrypt",
+    "PyJWT",
     "PyYAML",
 ]
 

@@ -356,8 +356,8 @@ class API:
                 mamplates = self._load_mamplates(config)
                 mampok = create_mampok_instance(config, mamplan, mamplates)
                 auth_users = (users or []) + (organizations or [])
-                mampok.update_auth_secret(auth_users, config)
-                yield {"stage": "auth_secret", "status": "updated"}
+                token_url = mampok.update_auth_secret(auth_users, config)
+                yield {"stage": "auth_secret", "status": "updated", "token_url": token_url}
             except Exception as exc:
                 yield {"stage": "auth_secret", "status": "failed", "reason": str(exc)}
                 # Rollback: restore Mamplan to original state
