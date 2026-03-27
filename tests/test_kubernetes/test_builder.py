@@ -121,18 +121,20 @@ class TestBuildAuthSecret:
     def test_structure(self, make_config):
         builder = ManifestBuilder()
         cfg = make_config()
-        secret = builder.build_auth_secret(cfg, "user:$2b$12$hash")
+        auth_data = {"secret_key": "abc123", "users": ["alice"], "owner": "alice", "groups": []}
+        secret = builder.build_auth_secret(cfg, auth_data)
 
         assert secret["kind"] == "Secret"
-        assert secret["type"] == "kubernetes.io/basic-auth"
         assert secret["metadata"]["name"] == cfg.auth_secret_name
+        assert "auth-proxy.json" in secret["data"]
 
-    def test_htpasswd_encoded(self, make_config):
+    def test_auth_proxy_json_encoded(self, make_config):
         builder = ManifestBuilder()
-        content = "admin:$2b$12$somehash"
-        secret = builder.build_auth_secret(make_config(), content)
-        decoded = base64.b64decode(secret["data"]["auth"]).decode()
-        assert decoded == content
+        auth_data = {"secret_key": "abc123", "users": ["alice"], "owner": "alice", "groups": []}
+        secret = builder.build_auth_secret(make_config(), auth_data)
+        decoded = base64.b64decode(secret["data"]["auth-proxy.json"]).decode()
+        import json
+        assert json.loads(decoded) == auth_data
 
 
 class TestBuildDeployment:
@@ -521,7 +523,7 @@ class TestBuildDeploymentWithAuth:
         cfg = make_auth_config()
         manifest = builder.build_deployment(cfg)
         env = {e["name"]: e["value"] for e in manifest["spec"]["template"]["spec"]["containers"][0]["env"]}
-        assert env["REDIRECT_URL"] == "/testproj/nginx/"
+        assert env["REDIRECT_URL"] == "/mynamespace/testproj/nginx/"
 
     def test_env_redirect_url_proxy_redirect_annotation(self, make_auth_config):
         builder = ManifestBuilder()
@@ -596,6 +598,19 @@ class TestBuildDeploymentWithAuth:
         volumes = manifest["spec"]["template"]["spec"]["volumes"]
         names = [v["name"] for v in volumes]
         assert "existing-vol" in names
+        assert "testproj-sc-nginx-auth-volume" in names
+
+    def test_auth_volumes_not_overwritten_by_cfg_volumes(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config(
+            volumes=[{"name": "cfg-vol", "emptyDir": {}}],
+            init_containers=[{"tool": "my-init", "image": "busybox", "volume": {"name": "init-vol", "mountPath": "/init"}}],
+        )
+        manifest = builder.build_deployment(cfg)
+        volumes = manifest["spec"]["template"]["spec"]["volumes"]
+        names = [v["name"] for v in volumes]
+        assert "cfg-vol" in names
+        assert "init-vol" in names
         assert "testproj-sc-nginx-auth-volume" in names
 
     def test_empty_proxy_image_raises(self, make_config):

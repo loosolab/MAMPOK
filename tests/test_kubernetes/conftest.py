@@ -49,7 +49,7 @@ def make_auth_config(make_config):
             "proxy_port": 9090,
             "ports": [8080],
             "host": "example.com",
-            "url": "https://example.com/testproj/nginx",
+            "url": "https://example.com/mynamespace/testproj/nginx/",
         }
         defaults.update(overrides)
         return make_config(**defaults)

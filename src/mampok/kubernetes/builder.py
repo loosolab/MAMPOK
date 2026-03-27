@@ -153,7 +153,10 @@ class ManifestBuilder:
             pod_spec["initContainers"] = init_containers
 
         if cfg.volumes:
-            pod_spec["volumes"] = cfg.volumes
+            existing_names = {v.get("name") for v in pod_spec.get("volumes", [])}
+            for vol in cfg.volumes:
+                if vol.get("name") not in existing_names:
+                    pod_spec.setdefault("volumes", []).append(vol)
 
         if cfg.auth:
             if not cfg.auth_proxy_image:
@@ -167,7 +170,7 @@ class ManifestBuilder:
             redirect_url = (
                 "/"
                 if "nginx.ingress.kubernetes.io/proxy-redirect-to" in cfg.auth_annotations
-                else f"/{cfg.project_id}/{cfg.tool}/"
+                else urlparse(cfg.url).path or f"/{cfg.project_id}/{cfg.tool}/"
             )
 
             gatekeeper: dict = {
