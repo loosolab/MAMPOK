@@ -98,7 +98,7 @@ def patched_api(api, mock_mamplan_data, mock_mampok, tmp_path):
     mamplan.data["project"]["project_id"] = "test-proj"
 
     with patch.object(api, "_load_config"), \
-         patch.object(api, "_load_mamplans", return_value=[mamplan]), \
+         patch.object(api, "_load_mamplan", return_value=mamplan), \
          patch.object(api, "_load_mamplates", return_value={"cellxgene": MagicMock()}), \
          patch("mampok.interfaces.api.create_mampok_instance", return_value=mock_mampok):
         yield api, mamplan, mock_mampok
@@ -171,54 +171,6 @@ class TestAPIStop:
         api, mamplan, mampok = patched_api
         result = api.stop(Path("/fake/mamplan.json"))
         assert result is None
-
-
-# ---------------------------------------------------------------------------
-# TestAPIStopExpired
-# ---------------------------------------------------------------------------
-
-
-class TestAPIStopExpired:
-    """Tests für API.stop_expired()."""
-
-    def test_stops_expired_mamplan(self, api, mock_mamplan_data, mock_mampok, tmp_path):
-        mamplan = MagicMock()
-        mamplan.data = mock_mamplan_data
-        mamplan.is_expired = True
-
-        with patch.object(api, "_load_config"), \
-             patch.object(api, "_load_mamplans", return_value=[mamplan]), \
-             patch.object(api, "_load_mamplates", return_value={}), \
-             patch("mampok.interfaces.api.create_mampok_instance", return_value=mock_mampok):
-            api.stop_expired(tmp_path)
-
-        mock_mampok.stop.assert_called_once()
-
-    def test_ignores_non_expired_mamplan(self, api, mock_mamplan_data, mock_mampok, tmp_path):
-        mamplan = MagicMock()
-        mamplan.data = mock_mamplan_data
-        mamplan.is_expired = False
-
-        with patch.object(api, "_load_config"), \
-             patch.object(api, "_load_mamplans", return_value=[mamplan]), \
-             patch.object(api, "_load_mamplates", return_value={}), \
-             patch("mampok.interfaces.api.create_mampok_instance", return_value=mock_mampok):
-            api.stop_expired(tmp_path)
-
-        mock_mampok.stop.assert_not_called()
-
-    def test_ignores_inactive_mamplan(self, api, mock_mamplan_data, mock_mampok, tmp_path):
-        mamplan = MagicMock()
-        mamplan.data = mock_mamplan_data
-        mamplan.is_expired = False
-
-        with patch.object(api, "_load_config"), \
-             patch.object(api, "_load_mamplans", return_value=[mamplan]), \
-             patch.object(api, "_load_mamplates", return_value={}), \
-             patch("mampok.interfaces.api.create_mampok_instance", return_value=mock_mampok):
-            api.stop_expired(tmp_path)
-
-        mock_mampok.stop.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -408,63 +360,54 @@ class TestAPIProjectInfo:
 
     def test_returns_projects_dict(self, patched_api, tmp_path):
         api, mamplan, mampok = patched_api
-        result = api.project_info(tmp_path)
+        mamplan_file = tmp_path / "test-proj-mamplan.json"
+        mamplan_file.touch()
+        result = api.project_info(mamplan_file)
         assert "projects" in result
 
     def test_single_mamplan_in_result(self, patched_api, tmp_path):
         api, mamplan, mampok = patched_api
-        result = api.project_info(tmp_path)
+        mamplan_file = tmp_path / "test-proj-mamplan.json"
+        mamplan_file.touch()
+        result = api.project_info(mamplan_file)
         assert "test-proj" in result["projects"]
 
-    def test_includes_mamplan_data(self, patched_api, tmp_path):
+    def test_includes_flat_project_fields(self, patched_api, tmp_path):
         api, mamplan, mampok = patched_api
-        result = api.project_info(tmp_path)
-        assert "mamplan" in result["projects"]["test-proj"]
+        mamplan_file = tmp_path / "test-proj-mamplan.json"
+        mamplan_file.touch()
+        result = api.project_info(mamplan_file)
+        proj = result["projects"]["test-proj"]
+        assert "mamplan" not in proj
+        assert proj["bucket"] == "test-bucket"
+        assert proj["owner"] == "alice"
+        assert proj["lifetime"] == "2099-12-31T00:00:00+00:00"
 
     def test_includes_status_from_kube(self, patched_api, tmp_path):
         api, mamplan, mampok = patched_api
+        mamplan_file = tmp_path / "test-proj-mamplan.json"
+        mamplan_file.touch()
         mampok.check_status.return_value["actually_deployed"] = True
-        result = api.project_info(tmp_path)
+        result = api.project_info(mamplan_file)
         assert result["projects"]["test-proj"]["status"] is True
 
     def test_writes_output_file_when_provided(self, patched_api, tmp_path):
         api, mamplan, mampok = patched_api
+        mamplan_file = tmp_path / "test-proj-mamplan.json"
+        mamplan_file.touch()
         output = tmp_path / "info.json"
-        api.project_info(tmp_path, output=output)
+        api.project_info(mamplan_file, output=output)
         assert output.exists()
         data = json.loads(output.read_text())
         assert "projects" in data
 
     def test_no_output_file_by_default(self, patched_api, tmp_path):
         api, mamplan, mampok = patched_api
+        mamplan_file = tmp_path / "test-proj-mamplan.json"
+        mamplan_file.touch()
         output = tmp_path / "info.json"
-        api.project_info(tmp_path)
+        api.project_info(mamplan_file)
         assert not output.exists()
-
-
-# ---------------------------------------------------------------------------
-# TestAPICheckStatusReport
-# ---------------------------------------------------------------------------
-
-
-class TestAPICheckStatusReport:
-    """Tests für API.check_status_report()."""
-
-    def test_returns_list(self, patched_api, tmp_path):
-        api, mamplan, mampok = patched_api
-        result = api.check_status_report(tmp_path)
-        assert isinstance(result, list)
-
-    def test_contains_status_for_each_mamplan(self, patched_api, tmp_path):
-        api, mamplan, mampok = patched_api
-        result = api.check_status_report(tmp_path)
-        assert len(result) == 1
-        assert result[0]["project_id"] == "test-proj"
-
-    def test_delegates_to_mampok_check_status(self, patched_api, tmp_path):
-        api, mamplan, mampok = patched_api
-        api.check_status_report(tmp_path)
-        mampok.check_status.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -477,6 +420,8 @@ class TestAPICopyResults:
 
     def test_calls_s3_copy_for_each_downloadpath(self, patched_api, tmp_path):
         api, mamplan, mampok = patched_api
+        mamplan_file = tmp_path / "test-proj-mamplan.json"
+        mamplan_file.touch()
         mamplan.merge_container_config.return_value = {
             "main": {
                 "downloadpaths": {
@@ -486,26 +431,30 @@ class TestAPICopyResults:
             }
         }
 
-        api.copy_results(tmp_path, dest_bucket="archive-bucket")
+        api.copy_results(mamplan_file, dest_bucket="archive-bucket")
 
         assert mampok.s3.copy.call_count == 2
 
     def test_uses_dest_prefix(self, patched_api, tmp_path):
         api, mamplan, mampok = patched_api
+        mamplan_file = tmp_path / "test-proj-mamplan.json"
+        mamplan_file.touch()
         mamplan.merge_container_config.return_value = {
             "main": {"downloadpaths": {"result.h5": "/output/result.h5"}}
         }
 
-        api.copy_results(tmp_path, dest_bucket="archive-bucket", dest_prefix="proj/")
+        api.copy_results(mamplan_file, dest_bucket="archive-bucket", dest_prefix="proj/")
 
         call_args = mampok.s3.copy.call_args[0]
         assert call_args[3] == "proj/result.h5"
 
     def test_no_copy_when_no_downloadpaths(self, patched_api, tmp_path):
         api, mamplan, mampok = patched_api
+        mamplan_file = tmp_path / "test-proj-mamplan.json"
+        mamplan_file.touch()
         mamplan.merge_container_config.return_value = {"main": {}}
 
-        api.copy_results(tmp_path, dest_bucket="archive-bucket")
+        api.copy_results(mamplan_file, dest_bucket="archive-bucket")
 
         mampok.s3.copy.assert_not_called()
 

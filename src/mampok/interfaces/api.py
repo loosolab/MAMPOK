@@ -24,7 +24,6 @@ class API:
     - Kein interaktiver User-Input
     - deploy() / redeploy() geben Fortschritts-Iteratoren zurück
     - Explizite Edit-Methoden (edit_lifetime, edit_sharing) statt String-Parsing
-    - check_status_report() gibt list[dict] zurück statt zu drucken
     - Keine Error Tolerance — Exceptions propagieren direkt
 
     Args:
@@ -47,25 +46,25 @@ class API:
         """Load MampokConfig from config_path."""
         return MampokConfig.from_file(self.config_path)
 
-    def _load_mamplans(self, path: Path) -> list[Mamplan]:
-        """Load Mamplan(s) from a file or directory.
+    def _load_mamplan(self, path: Path) -> Mamplan:
+        """Load a single Mamplan from a file.
 
         Args:
-            path: Path to a single Mamplan JSON file or a directory.
-                  Directories are scanned recursively for *-mamplan.json files.
+            path: Path to a Mamplan JSON file.
 
         Returns:
-            List of loaded and validated Mamplan instances.
+            Loaded and validated Mamplan instance.
 
         Raises:
             FileNotFoundError: If path does not exist.
+            IsADirectoryError: If path is a directory.
         """
         p = Path(path)
         if not p.exists():
             raise FileNotFoundError(f"Path not found: {p}")
-        if p.is_file():
-            return [Mamplan.read_in(p)]
-        return [Mamplan.read_in(f) for f in sorted(p.rglob("*-mamplan.json"))]
+        if p.is_dir():
+            raise IsADirectoryError(f"mamplan_path must be a file, got directory: {p}")
+        return Mamplan.read_in(p)
 
     def _load_mamplates(self, config: MampokConfig) -> dict[str, Mamplate]:
         """Load all Mamplates from config.mamplates_path.
@@ -82,19 +81,19 @@ class API:
             result[m.data["tool"]] = m
         return result
 
-    def _load(self, path: Path) -> tuple[list[Mamplan], dict[str, Mamplate], MampokConfig]:
-        """Load Mamplans, Mamplates and MampokConfig in one call.
+    def _load(self, path: Path) -> tuple[Mamplan, dict[str, Mamplate], MampokConfig]:
+        """Load a Mamplan, Mamplates and MampokConfig in one call.
 
         Args:
-            path: Path to Mamplan file or directory.
+            path: Path to a Mamplan file.
 
         Returns:
-            Tuple of (mamplans, mamplates, config).
+            Tuple of (mamplan, mamplates, config).
         """
         config = self._load_config()
-        mamplans = self._load_mamplans(path)
+        mamplan = self._load_mamplan(path)
         mamplates = self._load_mamplates(config)
-        return mamplans, mamplates, config
+        return mamplan, mamplates, config
 
     # ---------------------------------------------------------------------------
     # core operations
@@ -120,39 +119,29 @@ class API:
 
         Raises:
             FileNotFoundError: If mamplan_path does not exist.
+            IsADirectoryError: If mamplan_path is a directory.
             KeyError: If the tool has no matching Mamplate.
             TimeoutError: If pods are not ready within the timeout.
         """
-        mamplans, mamplates, config = self._load(mamplan_path)
-        for mamplan in mamplans:
-            mampok = create_mampok_instance(config, mamplan, mamplates)
-            yield from mampok.deploy(config, timeout=timeout, cleanup=cleanup)
-            mamplan.write(mamplan.source_path)
+        mamplan, mamplates, config = self._load(mamplan_path)
+        mampok = create_mampok_instance(config, mamplan, mamplates)
+        yield from mampok.deploy(config, timeout=timeout, cleanup=cleanup)
+        mamplan.write(mamplan.source_path)
 
     def stop(self, mamplan_path: Path) -> None:
         """Stop a deployment (removes K8s resources, S3 bucket remains).
 
         Args:
             mamplan_path: Path to the Mamplan file.
-        """
-        mamplans, mamplates, config = self._load(mamplan_path)
-        for mamplan in mamplans:
-            mampok = create_mampok_instance(config, mamplan, mamplates)
-            mampok.stop(config)
-            mamplan.write(mamplan.source_path)
 
-    def stop_expired(self, repository: Path) -> None:
-        """Stop all expired active deployments in a repository.
-
-        Args:
-            repository: Path to the Mamplan repository directory.
+        Raises:
+            FileNotFoundError: If mamplan_path does not exist.
+            IsADirectoryError: If mamplan_path is a directory.
         """
-        all_mamplans, mamplates, config = self._load(repository)
-        expired = [m for m in all_mamplans if m.is_expired]
-        for mamplan in expired:
-            mampok = create_mampok_instance(config, mamplan, mamplates)
-            mampok.stop(config)
-            mamplan.write(mamplan.source_path)
+        mamplan, mamplates, config = self._load(mamplan_path)
+        mampok = create_mampok_instance(config, mamplan, mamplates)
+        mampok.stop(config)
+        mamplan.write(mamplan.source_path)
 
     def redeploy(self, mamplan_path: Path) -> Iterator[dict]:
         """Stop and redeploy a project.
@@ -165,18 +154,21 @@ class API:
         Yields:
             {"stage": "stop", "status": "done", "project_id": str}
             followed by all yields from deploy().
+
+        Raises:
+            FileNotFoundError: If mamplan_path does not exist.
+            IsADirectoryError: If mamplan_path is a directory.
         """
-        mamplans, mamplates, config = self._load(mamplan_path)
-        for mamplan in mamplans:
-            mampok = create_mampok_instance(config, mamplan, mamplates)
-            mampok.stop(config)
-            yield {
-                "stage": "stop",
-                "status": "done",
-                "project_id": mamplan.data["project"]["project_id"],
-            }
-            yield from mampok.deploy(config)
-            mamplan.write(mamplan.source_path)
+        mamplan, mamplates, config = self._load(mamplan_path)
+        mampok = create_mampok_instance(config, mamplan, mamplates)
+        mampok.stop(config)
+        yield {
+            "stage": "stop",
+            "status": "done",
+            "project_id": mamplan.data["project"]["project_id"],
+        }
+        yield from mampok.deploy(config)
+        mamplan.write(mamplan.source_path)
 
     def create_mamplan(self, output: Path, metadata_files: list[Path] | None = None, **kwargs) -> None:
         """Create a new Mamplan from keyword arguments and write it to disk.
@@ -264,24 +256,6 @@ class API:
         within = timedelta(days=within_days)
         return [r for m in load_mamplans(Path(repository)) if (r := _mamplan_expiry_info(m, within))]
 
-    def check_status_report(self, repository: Path) -> list[dict]:
-        """Return a status report for all Mamplans in a repository.
-
-        Args:
-            repository: Path to the Mamplan repository directory.
-
-        Returns:
-            List of status dicts:
-            [{"project_id": str, "expected_active": bool,
-              "actually_deployed": bool, "healthy": bool}, ...]
-        """
-        mamplans, mamplates, config = self._load(repository)
-        rows: list[dict] = []
-        for mamplan in mamplans:
-            mampok = create_mampok_instance(config, mamplan, mamplates)
-            rows.append(mampok.check_status(config))
-        return rows
-
     # ---------------------------------------------------------------------------
     # API-specific edit methods
     # ---------------------------------------------------------------------------
@@ -309,18 +283,18 @@ class API:
         users: list[str] | None = None,
         organizations: list[str] | None = None,
     ) -> Iterator[dict]:
-        """Update the sharing tags of a Mamplan and optionally refresh the auth secret.
+        """Update the sharing config of a Mamplan and optionally refresh the auth secret.
 
         Two-phase operation:
-        1. Update tags.user / tags.organization and save to disk.
+        1. Update service.user / service.organization and save to disk.
         2. If auth=True and status=True (running deployment): update the K8s
            auth secret to reflect the new user list. On failure, the Mamplan
            is rolled back to its original state before the exception is re-raised.
 
         Args:
             mamplan_path: Path to the Mamplan file.
-            users: New user list for tags.user (replaces existing).
-            organizations: New organization list for tags.organization (replaces existing).
+            users: New user list for service.user (replaces existing).
+            organizations: New organization list for service.organization (replaces existing).
 
         Yields:
             {"stage": "edit_sharing", "status": "saved", "project_id": str}
@@ -330,7 +304,7 @@ class API:
 
         Raises:
             FileNotFoundError: If mamplan_path does not exist.
-            jsonschema.ValidationError: If the new tags violate the schema (no file written).
+            jsonschema.ValidationError: If the new values violate the schema (no file written).
             Exception: Re-raised K8s exception after rollback if auth secret update fails.
         """
         mamplan_path = Path(mamplan_path)
@@ -338,11 +312,11 @@ class API:
         original_data = copy.deepcopy(mamplan.data)
         project_id = mamplan.data["project"]["project_id"]
 
-        # Phase 1: update tags (MamplanBase.edit() is atomic — rolls back on ValidationError)
+        # Phase 1: update service (MamplanBase.edit() is atomic — rolls back on ValidationError)
         if users is not None:
-            mamplan.edit(tags__user=users)
+            mamplan.edit(service__user=users)
         if organizations is not None:
-            mamplan.edit(tags__organization=organizations)
+            mamplan.edit(service__organization=organizations)
         mamplan.write(mamplan_path)
         yield {"stage": "edit_sharing", "status": "saved", "project_id": project_id}
 
@@ -375,31 +349,56 @@ class API:
         mamplan_path: Path,
         output: Path | None = None,
     ) -> dict:
-        """Return project metadata and K8s status for one or more Mamplans.
+        """Return project metadata and K8s status for a Mamplan.
 
         Args:
-            mamplan_path: Path to a Mamplan file or directory.
-                          If a file, returns info for that single Mamplan.
-                          If a directory, returns info for all Mamplans found.
+            mamplan_path: Path to the Mamplan file.
             output: Optional path to write the result as a JSON file.
 
         Returns:
             Dict with structure:
-            {"projects": {project_id: {"mamplan": dict, "tags": dict,
-                                       "url": str, "status": bool}}}
+            {"projects": {project_id: {flat MongoDB-compatible dict}}}
+            Keys correspond directly to MongoDB field names per mampok_v2 schema.
+
+        Raises:
+            FileNotFoundError: If mamplan_path does not exist.
+            IsADirectoryError: If mamplan_path is a directory.
         """
-        mamplans, mamplates, config = self._load(mamplan_path)
-        projects: dict = {}
-        for mamplan in mamplans:
-            mampok = create_mampok_instance(config, mamplan, mamplates)
-            k8s_status = mampok.check_status(config)
-            project_id = mamplan.data["project"]["project_id"]
-            projects[project_id] = {
-                "mamplan": mamplan.data,
-                "tags": mamplan.data.get("tags", {}),
-                "url": mamplan.data["deployment"].get("url", ""),
-                "status": k8s_status["actually_deployed"],
+        mamplan, mamplates, config = self._load(mamplan_path)
+        mampok = create_mampok_instance(config, mamplan, mamplates)
+        k8s_status = mampok.check_status(config)
+        project_id = mamplan.data["project"]["project_id"]
+        p = mamplan.data["project"]
+        d = mamplan.data["deployment"]
+        s = mamplan.data["service"]
+        tags = mamplan.data.get("tags", {})
+        projects: dict = {
+            project_id: {
+                # project section
+                "project_id":    p["project_id"],
+                "tool":          p["tool"],
+                "files":         p.get("files", []),
+                "creation_date": p.get("creation_date", ""),
+                "project_size":  p.get("project_size"),
+                # deployment section
+                "cluster":          d["cluster"],
+                "status":           k8s_status["actually_deployed"],
+                "auth":             d.get("auth", False),
+                "bucket":           d.get("bucket", ""),
+                "url":              d.get("url", ""),
+                "lifetime":         d.get("lifetime", ""),
+                # service section
+                "owner":            s["owner"],
+                "analyst":          s.get("analyst", []),
+                "organization":     s.get("organization", []),
+                "datatype":         s.get("datatype", []),
+                "metadata":         s.get("metadata", []),
+                "download_allowed": s.get("download_allowed", False),
+                "user":             s.get("user", []),
+                # freie Tags (gse, pubmedid, etc.) – user/organization nicht doppelt
+                **{k: v for k, v in tags.items() if k not in ("user", "organization")},
             }
+        }
         result = {"projects": projects}
         if output is not None:
             output = Path(output)
@@ -425,17 +424,17 @@ class API:
 
         Raises:
             FileNotFoundError: If mamplan_path does not exist.
+            IsADirectoryError: If mamplan_path is a directory.
             KeyError: If the tool has no matching Mamplate.
         """
-        mamplans, mamplates, config = self._load(mamplan_path)
-        for mamplan in mamplans:
-            mampok = create_mampok_instance(config, mamplan, mamplates)
-            merged = mamplan.merge_container_config(mampok.mamplate)
-            downloadpaths: dict[str, str] = merged["main"].get("downloadpaths", {})
-            src_bucket = mampok.s3.bucket
-            for label, container_path in downloadpaths.items():
-                src_key = Path(container_path).name
-                dest_key = f"{dest_prefix}{label}" if dest_prefix else label
-                mampok.s3.copy(src_bucket, src_key, dest_bucket, dest_key)
+        mamplan, mamplates, config = self._load(mamplan_path)
+        mampok = create_mampok_instance(config, mamplan, mamplates)
+        merged = mamplan.merge_container_config(mampok.mamplate)
+        downloadpaths: dict[str, str] = merged["main"].get("downloadpaths", {})
+        src_bucket = mampok.s3.bucket
+        for label, container_path in downloadpaths.items():
+            src_key = Path(container_path).name
+            dest_key = f"{dest_prefix}{label}" if dest_prefix else label
+            mampok.s3.copy(src_bucket, src_key, dest_bucket, dest_key)
 
 
