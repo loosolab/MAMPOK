@@ -491,7 +491,7 @@ class CLI:
         mamplan_path: Path,
         selection: list[str] | None = None,
         regex_selection: list[str] | None = None,
-        timeout: int = 300,
+        timeout: int = 900,
         dry_run: bool = False,
         throw_error: bool = False,
         no_cleanup: bool = False,
