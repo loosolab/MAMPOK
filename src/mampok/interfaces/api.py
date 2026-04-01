@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
@@ -14,6 +14,13 @@ from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
 from mampok.mamplan.metadata import _merge_unique, parse_metadata_files
 from mampok.mamplan.shmamplan import SHMamplan
+
+
+def _parse_iso_to_datetime(value: str) -> datetime | None:
+    """ISO 8601 UTC string → timezone-aware datetime. Leer/None → None."""
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 class API:
@@ -355,18 +362,17 @@ class API:
     def project_info(
         self,
         mamplan_path: Path,
-        output: Path | None = None,
     ) -> dict:
         """Return project metadata and K8s status for a Mamplan.
 
         Args:
             mamplan_path: Path to the Mamplan file.
-            output: Optional path to write the result as a JSON file.
 
         Returns:
             Dict with structure:
             {"projects": {project_id: {flat MongoDB-compatible dict}}}
             Keys correspond directly to MongoDB field names per mampok_v2 schema.
+            Date fields (creation_date, lifetime) are timezone-aware datetime objects.
 
         Raises:
             FileNotFoundError: If mamplan_path does not exist.
@@ -386,7 +392,7 @@ class API:
                 "project_id":    p["project_id"],
                 "tool":          p["tool"],
                 "files":         p.get("files", []),
-                "creation_date": p.get("creation_date", ""),
+                "creation_date": _parse_iso_to_datetime(p.get("creation_date", "")),
                 "project_size":  p.get("project_size"),
                 # deployment section
                 "cluster":          d["cluster"],
@@ -394,7 +400,7 @@ class API:
                 "auth":             d.get("auth", False),
                 "bucket":           d.get("bucket", ""),
                 "url":              d.get("url", ""),
-                "lifetime":         d.get("lifetime", ""),
+                "lifetime":         _parse_iso_to_datetime(d.get("lifetime", "")),
                 # service section
                 "owner":            s["owner"],
                 "analyst":          s.get("analyst", []),
@@ -407,12 +413,7 @@ class API:
                 **{k: v for k, v in tags.items() if k not in ("user", "organization")},
             }
         }
-        result = {"projects": projects}
-        if output is not None:
-            output = Path(output)
-            with output.open("w", encoding="utf-8") as f:
-                json.dump(result, f, indent=2, ensure_ascii=False)
-        return result
+        return {"projects": projects}
 
     def create_sh_mamplan(
         self,
