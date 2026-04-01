@@ -9,9 +9,11 @@ from typing import Iterator
 
 from mampok.config.config import MampokConfig
 from mampok.interfaces.cli import create_mampok_instance
+from mampok.mamplan.base import MamplanBase
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
 from mampok.mamplan.metadata import _merge_unique, parse_metadata_files
+from mampok.mamplan.shmamplan import SHMamplan
 
 
 class API:
@@ -46,14 +48,18 @@ class API:
         """Load MampokConfig from config_path."""
         return MampokConfig.from_file(self.config_path)
 
-    def _load_mamplan(self, path: Path) -> Mamplan:
-        """Load a single Mamplan from a file.
+    def _load_mamplan(self, path: Path) -> MamplanBase:
+        """Load a Mamplan or SHMamplan from a file.
+
+        Detects Software Hub mamplans by the ``-shmamplan.json`` filename suffix
+        and loads them as ``SHMamplan`` instances. All other files are loaded
+        as standard ``Mamplan`` instances.
 
         Args:
-            path: Path to a Mamplan JSON file.
+            path: Path to a Mamplan or SHMamplan JSON file.
 
         Returns:
-            Loaded and validated Mamplan instance.
+            Loaded and validated MamplanBase instance (Mamplan or SHMamplan).
 
         Raises:
             FileNotFoundError: If path does not exist.
@@ -64,6 +70,8 @@ class API:
             raise FileNotFoundError(f"Path not found: {p}")
         if p.is_dir():
             raise IsADirectoryError(f"mamplan_path must be a file, got directory: {p}")
+        if p.name.endswith("-shmamplan.json"):
+            return SHMamplan.read_in(p)
         return Mamplan.read_in(p)
 
     def _load_mamplates(self, config: MampokConfig) -> dict[str, Mamplate]:
@@ -81,11 +89,11 @@ class API:
             result[m.data["tool"]] = m
         return result
 
-    def _load(self, path: Path) -> tuple[Mamplan, dict[str, Mamplate], MampokConfig]:
-        """Load a Mamplan, Mamplates and MampokConfig in one call.
+    def _load(self, path: Path) -> tuple[MamplanBase, dict[str, Mamplate], MampokConfig]:
+        """Load a Mamplan or SHMamplan, Mamplates and MampokConfig in one call.
 
         Args:
-            path: Path to a Mamplan file.
+            path: Path to a Mamplan or SHMamplan file.
 
         Returns:
             Tuple of (mamplan, mamplates, config).
@@ -273,7 +281,7 @@ class API:
             jsonschema.ValidationError: If the value violates the schema.
         """
         mamplan_path = Path(mamplan_path)
-        mamplan = Mamplan.read_in(mamplan_path)
+        mamplan = self._load_mamplan(mamplan_path)
         mamplan.edit(deployment__lifetime=lifetime)
         mamplan.write(mamplan_path)
 
@@ -405,6 +413,76 @@ class API:
             with output.open("w", encoding="utf-8") as f:
                 json.dump(result, f, indent=2, ensure_ascii=False)
         return result
+
+    def create_sh_mamplan(
+        self,
+        output: Path,
+        username: str,
+        tool: str,
+        bucket: str,
+        cluster: str | None = None,
+        lifetime: str | None = None,
+    ) -> str:
+        """Create a Software Hub mamplan and write it to disk.
+
+        Validates input against shmamplan_schema.json and writes a
+        ``{project_id}-shmamplan.json`` file. auth=True and generate_url=True
+        are implicit — they are set automatically and not required as arguments.
+
+        Args:
+            output: Output path (file or directory). If directory, filename is
+                    auto-generated as ``{project_id}-shmamplan.json``.
+            username: Username of the container owner.
+            tool: Mampok tool name (must exist as mamplate).
+            bucket: S3 bucket name for user data.
+            cluster: Target cluster identifier. If None, uses config.default_cluster.
+            lifetime: ISO 8601 expiry datetime. If None, uses config default
+                      (now + lifetime_days).
+
+        Returns:
+            Normalized project_id string (e.g. "alice-cellxgene").
+
+        Raises:
+            ValueError: If cluster is not specified and no default_cluster in config,
+                        or if tool not in mamplates, or if cluster not in config.
+            jsonschema.ValidationError: If input violates shmamplan_schema.json.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        config = self._load_config()
+
+        if cluster is None:
+            cluster = config.default_cluster
+            if cluster is None:
+                raise ValueError(
+                    "No cluster specified and no default_cluster configured. "
+                    "Pass cluster explicitly or set default_cluster in the config."
+                )
+
+        mamplates = self._load_mamplates(config)
+        if tool not in mamplates:
+            raise ValueError(
+                f"No mamplate for tool '{tool}'. Available: {sorted(mamplates)}"
+            )
+        if cluster not in config.clusters:
+            raise ValueError(
+                f"Cluster '{cluster}' not found in config. Available: {sorted(config.clusters)}"
+            )
+
+        if lifetime is None:
+            lifetime = (
+                datetime.now(timezone.utc) + timedelta(days=config.lifetime_days)
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        project_id = f"{username}-{tool}".replace("_", "-")
+
+        sh = SHMamplan.create(
+            project={"project_id": project_id, "tool": tool},
+            deployment={"cluster": cluster, "bucket": bucket, "lifetime": lifetime},
+            service={"owner": username},
+        )
+        sh.write(Path(output))
+        return project_id
 
     def copy_results(
         self,

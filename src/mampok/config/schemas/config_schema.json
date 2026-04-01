@@ -55,6 +55,10 @@
       "type": "integer",
       "description": "Default deployment lifetime in days.",
       "minimum": 1
+    },
+    "default_cluster": {
+      "type": "string",
+      "description": "Default cluster name used when no cluster is specified (e.g. for Software Hub deployments). Must match a key in the 'cluster' object."
     }
   },
   "definitions": {

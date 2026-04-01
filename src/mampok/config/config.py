@@ -100,6 +100,7 @@ class MampokConfig:
     mamplan_repo: Path
     mamplates_path: Path
     lifetime_days: int
+    default_cluster: str | None = None
 
     _schema_cache: ClassVar[dict | None] = None
 
@@ -226,6 +227,7 @@ class MampokConfig:
             mamplan_repo=Path(data["mamplan_repo"]),
             mamplates_path=Path(data["mamplates_path"]),
             lifetime_days=data["lifetime_days"],
+            default_cluster=data.get("default_cluster"),
         )
 
     @classmethod

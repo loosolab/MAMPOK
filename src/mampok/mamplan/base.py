@@ -7,11 +7,20 @@ import importlib.resources
 import json
 import logging
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import jsonschema
 from referencing import Registry, Resource
+
+if TYPE_CHECKING:
+    from mampok.mamplan.mamplate import Mamplate
+
+# Dict-Felder: bei merge_container_config deep-mergen statt ersetzen
+_DICT_FIELDS = {"resources", "volume", "downloadpaths", "annotation", "readinessProbe"}
+# Listen-Felder: bei merge_container_config komplett ersetzen
+_LIST_FIELDS = {"args", "command", "env"}
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +157,95 @@ class MamplanBase(ABC):
         Returns:
             Dateiname, z.B. 'my-project-mamplan.json' oder 'cellxgene-mamplate.json'.
         """
+
+    @property
+    def is_expired(self) -> bool:
+        """True wenn deployment.status=True und deployment.lifetime abgelaufen.
+
+        Returns:
+            True wenn das Deployment aktiv und abgelaufen ist.
+        """
+        deployment = self.data["deployment"]
+        if not deployment.get("status", False):
+            return False
+        lifetime = datetime.fromisoformat(deployment["lifetime"])
+        if lifetime.tzinfo is None:
+            lifetime = lifetime.replace(tzinfo=timezone.utc)
+        return lifetime < datetime.now(timezone.utc)
+
+    def merge_container_config(
+        self,
+        mamplate: "Mamplate",
+        init_mamplates: "list[Mamplate] | None" = None,
+    ) -> dict:
+        """Merged die Container-Konfiguration von Mamplate mit Mamplan-Overrides.
+
+        Mamplan-Werte haben Vorrang. Dicts werden gemergt, Listen ersetzt.
+
+        Args:
+            mamplate: Das zugehörige Mamplate mit Container-Blueprint.
+            init_mamplates: Optionale Liste von Mamplates für custom Init-Container.
+
+        Returns:
+            Dict mit 'main'-Key (und optional 'init'-Key als Liste), bereit für
+            den Mampok-Orchestrator zur Umwandlung in DeploymentConfig.
+            Beispiel: {'main': {tool, image, ports, resources, ...}, 'init': [{...}, ...]}
+        """
+        mamplan_container = self.data.get("container", {})
+
+        main_base = copy.deepcopy(mamplate.data)
+        main_overrides = mamplan_container.get("main", {})
+        merged_main = _deep_merge_container(main_base, main_overrides)
+
+        result: dict = {"main": merged_main}
+
+        # Init-Container: nur wenn Mamplan container.init oder project.init_container hat
+        init_overrides = mamplan_container.get("init", {})
+        resolved_init_mamplates = init_mamplates or []
+        if resolved_init_mamplates or init_overrides:
+            init_list = []
+            for init_mt in resolved_init_mamplates:
+                base = copy.deepcopy(init_mt.data)
+                init_list.append(_deep_merge_container(base, init_overrides))
+            if not resolved_init_mamplates and init_overrides:
+                init_list.append(_deep_merge_container({}, init_overrides))
+            result["init"] = init_list
+
+        return result
+
+
+def _deep_merge_container(base: dict, overrides: dict) -> dict:
+    """Merged override-Dict in base-Dict gemäß Container-Merge-Regeln.
+
+    Dicts werden rekursiv gemergt, Listen vom Override ersetzt, Skalare ersetzt.
+
+    Args:
+        base: Basis-Dict (Mamplate-Daten).
+        overrides: Override-Dict (Mamplan container.main oder container.init).
+
+    Returns:
+        Gemergtes Dict.
+    """
+    result = copy.deepcopy(base)
+    for key, value in overrides.items():
+        if key in _LIST_FIELDS:
+            result[key] = copy.deepcopy(value)
+        elif key in _DICT_FIELDS and isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _merge_dicts(result[key], value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return result
+
+
+def _merge_dicts(base: dict, override: dict) -> dict:
+    """Rekursiver Dict-Merge: override-Werte überschreiben base-Werte."""
+    result = copy.deepcopy(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _merge_dicts(result[key], value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return result
 
 
 def _build_registry() -> Registry:
