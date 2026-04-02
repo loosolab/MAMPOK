@@ -336,7 +336,7 @@ class API:
         yield {"stage": "edit_sharing", "status": "saved", "project_id": project_id}
 
         # Phase 2: auth secret update (only for active, auth-protected deployments)
-        auth = mamplan.data["deployment"].get("auth", False)
+        auth = mamplan.auth
         status = mamplan.data["deployment"].get("status", False)
 
         if auth and status:

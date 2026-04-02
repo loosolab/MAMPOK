@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "SHMamplan",
-  "description": "Software Hub deployment configuration. Minimal format for self-service tool deployments. auth=True is an implicit constant not stored in this schema.",
+  "description": "Software Hub deployment configuration. Minimal format for self-service tool deployments. auth=True is an implicit Python-level constant, not stored in this schema.",
   "type": "object",
   "required": ["project", "deployment", "service"],
   "additionalProperties": false,
@@ -20,19 +20,13 @@
         "tool": {
           "type": "string",
           "description": "Name of the MaMplate tool to use."
-        },
-        "files": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "File paths to upload. Always empty for Software Hub deployments.",
-          "default": []
         }
       }
     },
     "deployment": {
       "type": "object",
       "description": "Deployment configuration.",
-      "required": ["cluster", "bucket", "lifetime"],
+      "required": ["cluster", "bucket", "lifetime", "url"],
       "additionalProperties": false,
       "properties": {
         "cluster": {
@@ -57,18 +51,7 @@
         "url": {
           "type": "string",
           "description": "Deployment access URL. Set by deploy(). No capital letters allowed.",
-          "pattern": "^[^A-Z_]*$",
-          "default": ""
-        },
-        "auth": {
-          "type": "boolean",
-          "description": "Login protection. Always true for Software Hub deployments.",
-          "default": true
-        },
-        "random_url_suffix": {
-          "type": "boolean",
-          "description": "Append random characters to the deployment URL.",
-          "default": false
+          "pattern": "^[^A-Z_]*$"
         }
       }
     },

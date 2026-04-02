@@ -125,7 +125,7 @@ class Mampok:
         yield step
 
         # S3 upload per file
-        files = self.mamplan.data["project"]["files"]
+        files = self.mamplan.data["project"].get("files", [])
         for file_path in files:
             local = Path(file_path)
             key = local.name
@@ -350,7 +350,7 @@ class Mampok:
             command=main.get("command", []),
             url=url,
             host=cluster_cfg.host,
-            auth=self.mamplan.data["deployment"]["auth"],
+            auth=self.mamplan.auth,
             volume_mounts=volume_mounts,
             volumes=volumes,
             readiness_probe=main.get("readinessProbe"),

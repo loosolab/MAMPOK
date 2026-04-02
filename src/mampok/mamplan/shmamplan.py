@@ -35,6 +35,15 @@ class SHMamplan(MamplanBase):
     _registry: ClassVar[object | None] = None
 
     @property
+    def auth(self) -> bool:
+        """Immer True — SHMamplans sind stets auth-geschützt.
+
+        Returns:
+            True
+        """
+        return True
+
+    @property
     def is_expired(self) -> bool:
         """True wenn deployment.status=True und deployment.lifetime abgelaufen.
 
@@ -85,16 +94,10 @@ class SHMamplan(MamplanBase):
             pid = data["project"]["project_id"]
             data["project"]["project_id"] = pid.lower().replace("_", "-")
 
-        # project.files: immer leere Liste für SH (kein S3-Upload)
-        data.setdefault("project", {})
-        data["project"].setdefault("files", [])
-
         # deployment defaults
         data.setdefault("deployment", {})
         data["deployment"].setdefault("status", False)
         data["deployment"].setdefault("url", "")
-        data["deployment"].setdefault("auth", True)
-        data["deployment"].setdefault("random_url_suffix", False)
 
         return cls(data)
 
@@ -115,9 +118,5 @@ class SHMamplan(MamplanBase):
         """
         instance = super().read_in(path)
         # Pipeline-Defaults nach dem Laden sicherstellen
-        instance.data["project"].setdefault("files", [])
         instance.data["deployment"].setdefault("status", False)
-        instance.data["deployment"].setdefault("url", "")
-        instance.data["deployment"].setdefault("auth", True)
-        instance.data["deployment"].setdefault("random_url_suffix", False)
         return instance  # type: ignore[return-value]

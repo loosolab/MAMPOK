@@ -193,6 +193,15 @@ class MamplanBase(ABC):
         """
 
     @property
+    def auth(self) -> bool:
+        """True wenn das Deployment auth-geschützt ist.
+
+        Returns:
+            deployment.auth aus dem Konfigurations-Dict.
+        """
+        return self.data["deployment"]["auth"]
+
+    @property
     def is_expired(self) -> bool:
         """True wenn deployment.status=True und deployment.lifetime abgelaufen.
 
