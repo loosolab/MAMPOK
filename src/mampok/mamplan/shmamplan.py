@@ -18,7 +18,6 @@ class SHMamplan(MamplanBase):
     Im Gegensatz zu ``Mamplan`` enthält SHMamplan keine Analyse-Metadaten
     (datatype, analyst, metadata, organization). Folgende Werte sind implizit:
     - deployment.auth = True (immer auth-geschützt)
-    - deployment.generate_url = True (URL wird immer generiert)
     - service.user = [] (kein Sharing; Owner-Zugriff via deployment auth secret)
     - service.organization = [] (kein Sharing)
 
@@ -95,7 +94,6 @@ class SHMamplan(MamplanBase):
         data["deployment"].setdefault("status", False)
         data["deployment"].setdefault("url", "")
         data["deployment"].setdefault("auth", True)
-        data["deployment"].setdefault("generate_url", True)
         data["deployment"].setdefault("random_url_suffix", False)
 
         return cls(data)
@@ -121,6 +119,5 @@ class SHMamplan(MamplanBase):
         instance.data["deployment"].setdefault("status", False)
         instance.data["deployment"].setdefault("url", "")
         instance.data["deployment"].setdefault("auth", True)
-        instance.data["deployment"].setdefault("generate_url", True)
         instance.data["deployment"].setdefault("random_url_suffix", False)
         return instance  # type: ignore[return-value]

@@ -11,7 +11,6 @@
     "status": false,
     "auth": false,
     "bucket": "",
-    "generate_url": true,
     "lifetime": "2027-01-01T00:00:00Z",
     "url": ""
   },

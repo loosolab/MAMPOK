@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "SHMamplan",
-  "description": "Software Hub deployment configuration. Minimal format for self-service tool deployments. auth=True and generate_url=True are implicit constants not stored in this schema.",
+  "description": "Software Hub deployment configuration. Minimal format for self-service tool deployments. auth=True is an implicit constant not stored in this schema.",
   "type": "object",
   "required": ["project", "deployment", "service"],
   "additionalProperties": false,
@@ -63,11 +63,6 @@
         "auth": {
           "type": "boolean",
           "description": "Login protection. Always true for Software Hub deployments.",
-          "default": true
-        },
-        "generate_url": {
-          "type": "boolean",
-          "description": "Auto-generate deployment URL. Always true for Software Hub deployments.",
           "default": true
         },
         "random_url_suffix": {

@@ -13,7 +13,6 @@ from mampok.mamplan.base import MamplanBase
 _DEPLOYMENT_DEFAULTS: dict = {
     "status": False,
     "auth": False,
-    "generate_url": True,
     "random_url_suffix": False,
 }
 

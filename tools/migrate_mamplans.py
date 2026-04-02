@@ -152,7 +152,6 @@ def convert(old: dict, source_path: Path) -> tuple[dict, list[str], list[str]]:
     deployment["status"] = deployment_old.get("active", False)
     deployment["auth"] = deployment_old.get("auth", False)
     deployment["bucket"] = deployment_old.get("bucket", "")
-    deployment["generate_url"] = deployment_old.get("mampok_url", True)
     deployment["random_url_suffix"] = deployment_old.get("random", False)
     deployment["url"] = deployment_old.get("url", "")
 

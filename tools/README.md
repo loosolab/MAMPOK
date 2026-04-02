@@ -99,7 +99,7 @@ Die Gesamtzahl aller Dateien bleibt immer in der Zusammenfassung sichtbar.
 | `project.id` | `project.project_id` | |
 | `project.init_container: s3download` | *(weggelassen)* | `s3download` ist v2-Default |
 | `deployment.active` | `deployment.status` | |
-| `deployment.mampok_url` | `deployment.generate_url` | |
+| `deployment.mampok_url` | *(entfernt)* | wird nicht mehr benötigt |
 | `deployment.random` | `deployment.random_url_suffix` | |
 | `deployment.lifetime: DD/MM/YYYY` | ISO 8601 datetime | |
 | `tags.creationdate: DD/MM/YY` | `project.creation_date` ISO 8601 | fehlt → mtime als Fallback |

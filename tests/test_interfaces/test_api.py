@@ -47,7 +47,6 @@ def mock_mamplan_data():
             "url": "https://test-proj.example.com",
             "status": False,
             "auth": False,
-            "generate_url": True,
         },
         "service": {
             "analyst": "alice",

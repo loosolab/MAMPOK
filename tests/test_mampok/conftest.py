@@ -25,7 +25,6 @@ def mock_mamplan():
             "status": False,
             "auth": False,
             "bucket": "test-bucket",
-            "generate_url": True,
             "lifetime": "2030-12-31T00:00:00+00:00",
             "url": "",
             "cluster": "BN",

@@ -427,8 +427,8 @@ class API:
         """Create a Software Hub mamplan and write it to disk.
 
         Validates input against shmamplan_schema.json and writes a
-        ``{project_id}-shmamplan.json`` file. auth=True and generate_url=True
-        are implicit — they are set automatically and not required as arguments.
+        ``{project_id}-shmamplan.json`` file. auth=True is implicit — it is set
+        automatically and not required as an argument.
 
         Args:
             output: Output path (file or directory). If directory, filename is

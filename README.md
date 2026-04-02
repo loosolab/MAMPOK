@@ -284,8 +284,7 @@ mampok edit-mamplan /data/mamplans/my-project-mamplan.json \
 
 # Edit multiple fields at once
 mampok edit-mamplan /data/mamplans/my-project-mamplan.json \
-  -e deployment:cluster:BN_public \
-  -e deployment:generate_url:false
+  -e deployment:cluster:BN_public
 ```
 
 ---

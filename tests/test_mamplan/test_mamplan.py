@@ -26,7 +26,6 @@ MINIMAL_MAMPLAN = {
         "status": False,
         "auth": False,
         "bucket": "mampok-my-project-cellxgene",
-        "generate_url": True,
         "lifetime": "2026-12-31T00:00:00Z",
         "url": "",
     },
@@ -333,7 +332,6 @@ class TestMamplan:
         )
         assert mp.data["deployment"]["status"] is False
         assert mp.data["deployment"]["auth"] is False
-        assert mp.data["deployment"]["generate_url"] is True
 
     def test_create_fills_service_defaults(self):
         mp = Mamplan.create(

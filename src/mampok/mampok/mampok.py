@@ -325,15 +325,15 @@ class Mampok:
         files = self.mamplan.data["project"].get("files", [])
         include_s3download = bool(files)
 
-        url = self.mamplan.data["deployment"]["url"]
-        generate_url = self.mamplan.data["deployment"]["generate_url"]
+        custom_url_id = self.mamplan.data["deployment"].get("custom_url_id")
         random_url_suffix = self.mamplan.data["deployment"].get("random_url_suffix", False)
-        if not url and generate_url and cluster_cfg.host:
-            path = f"/{cluster_cfg.namespace}/{project_id}/{tool}"
-            if random_url_suffix:
-                suffix = "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(5))
-                path = f"{path}-{suffix}"
-            url = f"https://{cluster_cfg.host}{path}/"
+        base = custom_url_id if custom_url_id else project_id
+        if random_url_suffix:
+            suffix = "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(5))
+            path_segment = f"{base}-{suffix}"
+        else:
+            path_segment = base
+        url = f"https://{cluster_cfg.host}/{cluster_cfg.namespace}/{path_segment}/{tool}/" if cluster_cfg.host else ""
 
         return DeploymentConfig(
             project_id=project_id,
@@ -350,7 +350,6 @@ class Mampok:
             command=main.get("command", []),
             url=url,
             host=cluster_cfg.host,
-            generate_url=generate_url,
             auth=self.mamplan.data["deployment"]["auth"],
             volume_mounts=volume_mounts,
             volumes=volumes,
