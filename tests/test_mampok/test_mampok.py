@@ -575,3 +575,9 @@ class TestBuildDeploymentConfigAuthProxy:
         assert cfg.proxy_port == 8080
         assert cfg.auth_annotations == {}
         assert cfg.image_pull_secrets == []
+
+    def test_build_passes_mamplan_data_to_merge(self, mampok, mock_config):
+        """merge_container_config wird mit mamplan.data als zweitem Argument aufgerufen."""
+        mampok._build_deployment_config(mock_config)
+        call_args = mampok.mamplan.merge_container_config.call_args
+        assert call_args.args[1] is mampok.mamplan.data

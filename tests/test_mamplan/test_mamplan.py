@@ -400,8 +400,8 @@ class TestMamplan:
 
     # --- merge_container_config ---
 
-    def test_merge_uses_mamplate_as_base(self, mamplan, mamplate):
-        result = mamplan.merge_container_config(mamplate)
+    def test_merge_uses_mamplate_as_base(self, mamplan, mamplan_data, mamplate):
+        result = mamplan.merge_container_config(mamplate, mamplan_data)
         assert result["main"]["image"] == mamplate.data["image"]
         assert result["main"]["ports"] == mamplate.data["ports"]
 
@@ -409,7 +409,7 @@ class TestMamplan:
         mamplan_data["container"] = {"main": {"image": "custom-image:latest"}}
         mp = Mamplan(mamplan_data)
         mt = Mamplate(mamplate_data)
-        result = mp.merge_container_config(mt)
+        result = mp.merge_container_config(mt, mamplan_data)
         assert result["main"]["image"] == "custom-image:latest"
 
     def test_merge_deep_merges_resources_dict(self, mamplan_data, mamplate_data):
@@ -418,7 +418,7 @@ class TestMamplan:
         }
         mp = Mamplan(mamplan_data)
         mt = Mamplate(mamplate_data)
-        result = mp.merge_container_config(mt)
+        result = mp.merge_container_config(mt, mamplan_data)
         # cpu überschrieben, memory aus Mamplate erhalten
         assert result["main"]["resources"]["limits"]["cpu"] == "8"
         assert result["main"]["resources"]["limits"]["memory"] == "4Gi"
@@ -430,18 +430,18 @@ class TestMamplan:
         mamplan_data["container"] = {"main": {"args": ["--my-file", "data.h5ad"]}}
         mp = Mamplan(mamplan_data)
         mt = Mamplate(mamplate_data)
-        result = mp.merge_container_config(mt)
+        result = mp.merge_container_config(mt, mamplan_data)
         assert result["main"]["args"] == ["--my-file", "data.h5ad"]
 
     def test_merge_mamplate_list_when_no_mamplan_override(self, mamplan_data, mamplate_data):
         mamplate_data["args"] = ["--default"]
         mp = Mamplan(mamplan_data)
         mt = Mamplate(mamplate_data)
-        result = mp.merge_container_config(mt)
+        result = mp.merge_container_config(mt, mamplan_data)
         assert result["main"]["args"] == ["--default"]
 
-    def test_merge_no_init_container_by_default(self, mamplan, mamplate):
-        result = mamplan.merge_container_config(mamplate)
+    def test_merge_no_init_container_by_default(self, mamplan, mamplan_data, mamplate):
+        result = mamplan.merge_container_config(mamplate, mamplan_data)
         assert "init" not in result
 
     def test_merge_init_container_from_project_init_container(self, mamplan_data, mamplate_data):
@@ -450,7 +450,7 @@ class TestMamplan:
         mt = Mamplate(mamplate_data)
         init_mamplate_data = {**mamplate_data, "tool": "s3download", "image": "s3download:1.0"}
         init_mt = Mamplate(init_mamplate_data)
-        result = mp.merge_container_config(mt, [init_mt])
+        result = mp.merge_container_config(mt, mamplan_data, [init_mt])
         assert "init" in result
         assert isinstance(result["init"], list)
         assert result["init"][0]["image"] == "s3download:1.0"
@@ -460,7 +460,7 @@ class TestMamplan:
         mamplan_data["container"] = {"init": {"image": "init-image:latest"}}
         mp = Mamplan(mamplan_data)
         mt = Mamplate(mamplate_data)
-        result = mp.merge_container_config(mt)
+        result = mp.merge_container_config(mt, mamplan_data)
         assert "init" in result
         assert isinstance(result["init"], list)
         assert result["init"][0]["image"] == "init-image:latest"
@@ -470,7 +470,7 @@ class TestMamplan:
         mp = Mamplan(mamplan_data)
         mt = Mamplate(mamplate_data)
         original_mamplate_image = mt.data["image"]
-        mp.merge_container_config(mt)
+        mp.merge_container_config(mt, mamplan_data)
         assert mt.data["image"] == original_mamplate_image
         assert mp.data["container"]["main"]["image"] == "override:latest"
 
@@ -587,3 +587,92 @@ class TestMamplanIsExpired:
         mamplan_data["deployment"]["status"] = True
         mamplan_data["deployment"]["lifetime"] = "2099-01-01T00:00:00+02:00"
         assert Mamplan(mamplan_data).is_expired is False
+
+
+# ---------------------------------------------------------------------------
+# TestTemplateSubstitution
+# ---------------------------------------------------------------------------
+
+class TestTemplateSubstitution:
+    """Tests für __key.subkey__-Template-Substitution in merge_container_config."""
+
+    def _make_mamplate_with_args(self, mamplate_data, args):
+        data = copy.deepcopy(mamplate_data)
+        data["args"] = args
+        return Mamplate(data)
+
+    def _make_mamplate_with_command(self, mamplate_data, command):
+        data = copy.deepcopy(mamplate_data)
+        data["command"] = command
+        return Mamplate(data)
+
+    def test_string_value_substituted_in_args(self, mamplan_data, mamplate_data):
+        mt = self._make_mamplate_with_args(mamplate_data, ["--owner", "__service.owner__"])
+        mp = Mamplan(mamplan_data)
+        result = mp.merge_container_config(mt, mamplan_data)
+        assert result["main"]["args"] == ["--owner", "jdoe"]
+
+    def test_list_value_comma_separated(self, mamplan_data, mamplate_data):
+        mamplan_data["project"]["files"] = ["a.h5ad", "b.h5ad"]
+        mt = self._make_mamplate_with_args(mamplate_data, ["--files", "__project.files__"])
+        mp = Mamplan(mamplan_data)
+        result = mp.merge_container_config(mt, mamplan_data)
+        assert result["main"]["args"] == ["--files", "a.h5ad,b.h5ad"]
+
+    def test_list_with_single_element(self, mamplan_data, mamplate_data):
+        mt = self._make_mamplate_with_args(mamplate_data, ["--file", "__project.files__"])
+        mp = Mamplan(mamplan_data)
+        result = mp.merge_container_config(mt, mamplan_data)
+        assert result["main"]["args"] == ["--file", "data.h5ad"]
+
+    def test_token_in_path_prefix(self, mamplan_data, mamplate_data):
+        mt = self._make_mamplate_with_args(mamplate_data, ["/DOWNLOADS3/__project.files__"])
+        mp = Mamplan(mamplan_data)
+        result = mp.merge_container_config(mt, mamplan_data)
+        assert result["main"]["args"] == ["/DOWNLOADS3/data.h5ad"]
+
+    def test_substitution_in_command_field(self, mamplan_data, mamplate_data):
+        mt = self._make_mamplate_with_command(mamplate_data, ["launch", "__project.files__"])
+        mp = Mamplan(mamplan_data)
+        result = mp.merge_container_config(mt, mamplan_data)
+        assert result["main"]["command"] == ["launch", "data.h5ad"]
+
+    def test_multiple_tokens_in_same_string(self, mamplan_data, mamplate_data):
+        mt = self._make_mamplate_with_args(
+            mamplate_data, ["__service.owner__:__project.files__"]
+        )
+        mp = Mamplan(mamplan_data)
+        result = mp.merge_container_config(mt, mamplan_data)
+        assert result["main"]["args"] == ["jdoe:data.h5ad"]
+
+    def test_unknown_path_raises_value_error(self, mamplan_data, mamplate_data):
+        mt = self._make_mamplate_with_args(mamplate_data, ["__nonexistent.key__"])
+        mp = Mamplan(mamplan_data)
+        with pytest.raises(ValueError, match="nonexistent.key"):
+            mp.merge_container_config(mt, mamplan_data)
+
+    def test_nested_path_via_tags(self, mamplan_data, mamplate_data):
+        mamplan_data["tags"] = {"gse": "GSE123456"}
+        mt = self._make_mamplate_with_args(mamplate_data, ["--gse", "__tags.gse__"])
+        mp = Mamplan(mamplan_data)
+        result = mp.merge_container_config(mt, mamplan_data)
+        assert result["main"]["args"] == ["--gse", "GSE123456"]
+
+    def test_bool_value_lowercase_string(self, mamplan_data, mamplate_data):
+        mt = self._make_mamplate_with_args(mamplate_data, ["--auth", "__deployment.auth__"])
+        mp = Mamplan(mamplan_data)
+        result = mp.merge_container_config(mt, mamplan_data)
+        assert result["main"]["args"] == ["--auth", "false"]
+
+    def test_no_tokens_args_unchanged(self, mamplan_data, mamplate_data):
+        mt = self._make_mamplate_with_args(mamplate_data, ["--plain", "value"])
+        mp = Mamplan(mamplan_data)
+        result = mp.merge_container_config(mt, mamplan_data)
+        assert result["main"]["args"] == ["--plain", "value"]
+
+    def test_substitution_does_not_mutate_mamplate(self, mamplan_data, mamplate_data):
+        mamplate_data["args"] = ["__project.files__"]
+        mt = Mamplate(mamplate_data)
+        mp = Mamplan(mamplan_data)
+        mp.merge_container_config(mt, mamplan_data)
+        assert mt.data["args"] == ["__project.files__"]

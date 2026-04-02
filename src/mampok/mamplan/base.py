@@ -6,6 +6,7 @@ import copy
 import importlib.resources
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +22,39 @@ if TYPE_CHECKING:
 _DICT_FIELDS = {"resources", "volume", "downloadpaths", "annotation", "readinessProbe"}
 # Listen-Felder: bei merge_container_config komplett ersetzen
 _LIST_FIELDS = {"args", "command", "env"}
+
+_TEMPLATE_PATTERN = re.compile(r"__([a-zA-Z0-9_.]+)__")
+
+
+def _resolve_path(data: dict, path: str) -> str:
+    """Löst einen Punkt-separierten Pfad im Dict auf und gibt String zurück."""
+    keys = path.split(".")
+    current = data
+    for key in keys:
+        if not isinstance(current, dict) or key not in current:
+            raise ValueError(f"Template-Pfad '{path}' nicht im Mamplan gefunden")
+        current = current[key]
+    if isinstance(current, list):
+        return ",".join(str(v) for v in current)
+    if isinstance(current, bool):
+        return "true" if current else "false"
+    if current is None:
+        raise ValueError(f"Template-Pfad '{path}' ist None")
+    return str(current)
+
+
+def _apply_template_substitution(merged: dict, mamplan_data: dict) -> dict:
+    """Ersetzt __key.subkey__-Tokens in args und command."""
+    for field in ("args", "command"):
+        if field not in merged:
+            continue
+        new_list = []
+        for item in merged[field]:
+            def replace_token(match, _data=mamplan_data):
+                return _resolve_path(_data, match.group(1))
+            new_list.append(_TEMPLATE_PATTERN.sub(replace_token, item))
+        merged[field] = new_list
+    return merged
 
 logger = logging.getLogger(__name__)
 
@@ -176,14 +210,18 @@ class MamplanBase(ABC):
     def merge_container_config(
         self,
         mamplate: "Mamplate",
+        mamplan_data: dict,
         init_mamplates: "list[Mamplate] | None" = None,
     ) -> dict:
         """Merged die Container-Konfiguration von Mamplate mit Mamplan-Overrides.
 
         Mamplan-Werte haben Vorrang. Dicts werden gemergt, Listen ersetzt.
+        Template-Tokens der Form __key.subkey__ in args/command werden durch
+        die entsprechenden Werte aus mamplan_data ersetzt.
 
         Args:
             mamplate: Das zugehörige Mamplate mit Container-Blueprint.
+            mamplan_data: Das vollständige Mamplan-Dict für Template-Substitution.
             init_mamplates: Optionale Liste von Mamplates für custom Init-Container.
 
         Returns:
@@ -197,7 +235,7 @@ class MamplanBase(ABC):
         main_overrides = mamplan_container.get("main", {})
         merged_main = _deep_merge_container(main_base, main_overrides)
 
-        result: dict = {"main": merged_main}
+        result: dict = {"main": _apply_template_substitution(merged_main, mamplan_data)}
 
         # Init-Container: nur wenn Mamplan container.init oder project.init_container hat
         init_overrides = mamplan_container.get("init", {})

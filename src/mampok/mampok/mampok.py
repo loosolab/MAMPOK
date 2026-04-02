@@ -285,7 +285,9 @@ class Mampok:
         cluster_cfg = config.get_cluster(cluster_name)
         auth_proxy = cluster_cfg.auth_proxy
 
-        merged = self.mamplan.merge_container_config(self.mamplate, self.init_mamplates)
+        merged = self.mamplan.merge_container_config(
+            self.mamplate, self.mamplan.data, self.init_mamplates
+        )
         main = merged["main"]
 
         # ports: Mamplate-Schema verwendet einzelnen int → zu Liste konvertieren

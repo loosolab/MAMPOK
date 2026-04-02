@@ -6,7 +6,7 @@
   "command": [
     "cellxgene",
     "launch",
-    "/DOWNLOADS3/data.h5ad",
+    "/DOWNLOADS3/__project.files__",
     "--host", "0.0.0.0",
     "--port", "5005"
   ],
