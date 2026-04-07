@@ -43,7 +43,7 @@ class ManifestBuilder:
 
         Args:
             cfg: Deployment configuration.
-            s3_credentials: Dict with s3_endpoint, s3_key, s3_secret, s3_files.
+            s3_credentials: Dict with s3_key, s3_secret.
 
         Returns:
             Complete K8s Secret manifest (type: Opaque).
@@ -54,10 +54,8 @@ class ManifestBuilder:
             "metadata": {"name": cfg.secret_name, "namespace": cfg.namespace},
             "type": "Opaque",
             "data": {
-                "s3_endpoint": self._b64(s3_credentials["s3_endpoint"]),
                 "s3_key": self._b64(s3_credentials["s3_key"]),
                 "s3_secret": self._b64(s3_credentials["s3_secret"]),
-                "s3_files": self._b64(s3_credentials["s3_files"]),
             },
         }
 
@@ -100,8 +98,17 @@ class ManifestBuilder:
             },
         }
 
-        if cfg.env:
-            container["env"] = cfg.env
+        env = list(cfg.env)
+        if cfg.direct_s3_access:
+            env = [
+                {"name": "AWS_ACCESS_KEY_ID",
+                 "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_key"}}},
+                {"name": "AWS_SECRET_ACCESS_KEY",
+                 "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_secret"}}},
+                {"name": "AWS_ENDPOINT_URL", "value": cfg.endpoint},
+            ] + env
+        if env:
+            container["env"] = env
         if cfg.args:
             container["args"] = cfg.args
         if cfg.command:
@@ -126,8 +133,7 @@ class ManifestBuilder:
                      "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_key"}}},
                     {"name": "AWS_SECRET_ACCESS_KEY",
                      "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_secret"}}},
-                    {"name": "s3endpoint",
-                     "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_endpoint"}}},
+                    {"name": "s3endpoint", "value": cfg.endpoint},
                     {"name": "s3bucket", "value": cfg.bucket},
                 ],
                 "resources": _S3DOWNLOAD_RESOURCES,
