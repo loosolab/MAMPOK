@@ -137,28 +137,19 @@ class TestBuildDeploymentConfig:
         with pytest.raises(KeyError):
             mampok._build_deployment_config(mock_config)
 
-    def test_generates_url_when_generate_url_true(self, mampok, mock_config):
-        # generate_url=True, url="" → URL auto-generated from host/project_id/tool
-        mampok.mamplan.data["deployment"]["url"] = ""
-        mampok.mamplan.data["deployment"]["generate_url"] = True
+    def test_generates_url_from_project_id(self, mampok, mock_config):
+        # Kein custom_url_id → project_id wird als URL-Segment genutzt
         cfg = mampok._build_deployment_config(mock_config)
         assert cfg.url == "https://bioinformatics-cluster.example.com/mampok-bn/test-proj/cellxgene/"
 
-    def test_no_url_generated_when_url_already_set(self, mampok, mock_config):
-        # url already set → keep as-is, ignore generate_url
-        mampok.mamplan.data["deployment"]["url"] = "https://custom.example.com/my/path"
-        mampok.mamplan.data["deployment"]["generate_url"] = True
+    def test_custom_url_id_replaces_project_id(self, mampok, mock_config):
+        # custom_url_id gesetzt → ersetzt project_id im URL-Pfad
+        mampok.mamplan.data["deployment"]["custom_url_id"] = "my-custom-slug"
         cfg = mampok._build_deployment_config(mock_config)
-        assert cfg.url == "https://custom.example.com/my/path"
+        assert cfg.url == "https://bioinformatics-cluster.example.com/mampok-bn/my-custom-slug/cellxgene/"
 
-    def test_no_url_generated_when_generate_url_false(self, mampok, mock_config):
-        mampok.mamplan.data["deployment"]["url"] = ""
-        mampok.mamplan.data["deployment"]["generate_url"] = False
-        cfg = mampok._build_deployment_config(mock_config)
-        assert cfg.url == ""
-
-    def test_no_url_generated_when_host_empty(self, mampok, mock_config):
-        from mampok.config.config import ClusterConfig, S3Config, MampokConfig
+    def test_no_url_when_host_empty(self, mampok, mock_config):
+        from mampok.config.config import ClusterConfig, MampokConfig
         cluster_no_host = ClusterConfig(
             host="",
             namespace="mampok-bn",
@@ -171,17 +162,25 @@ class TestBuildDeploymentConfig:
             mamplates_path=mock_config.mamplates_path,
             lifetime_days=10,
         )
-        mampok.mamplan.data["deployment"]["url"] = ""
-        mampok.mamplan.data["deployment"]["generate_url"] = True
         cfg = mampok._build_deployment_config(config_no_host)
         assert cfg.url == ""
 
-    def test_random_url_suffix_appended(self, mampok, mock_config):
-        mampok.mamplan.data["deployment"]["url"] = ""
-        mampok.mamplan.data["deployment"]["generate_url"] = True
+    def test_random_url_suffix_appended_to_project_id(self, mampok, mock_config):
         mampok.mamplan.data["deployment"]["random_url_suffix"] = True
         cfg = mampok._build_deployment_config(mock_config)
-        base = "https://bioinformatics-cluster.example.com/mampok-bn/test-proj/cellxgene-"
+        base = "https://bioinformatics-cluster.example.com/mampok-bn/test-proj-"
+        assert cfg.url.startswith(base)
+        assert cfg.url.endswith("/")
+        suffix = cfg.url[len(base):].rstrip("/")
+        assert len(suffix) == 5
+        assert suffix.isalnum()
+
+    def test_random_url_suffix_appended_to_custom_url_id(self, mampok, mock_config):
+        # custom_url_id + random_url_suffix → suffix wird an custom_url_id angehängt
+        mampok.mamplan.data["deployment"]["custom_url_id"] = "my-slug"
+        mampok.mamplan.data["deployment"]["random_url_suffix"] = True
+        cfg = mampok._build_deployment_config(mock_config)
+        base = "https://bioinformatics-cluster.example.com/mampok-bn/my-slug-"
         assert cfg.url.startswith(base)
         assert cfg.url.endswith("/")
         suffix = cfg.url[len(base):].rstrip("/")
@@ -511,3 +510,9 @@ class TestBuildDeploymentConfigAuthProxy:
         assert cfg.proxy_port == 8080
         assert cfg.auth_annotations == {}
         assert cfg.image_pull_secrets == []
+
+    def test_build_passes_mamplan_data_to_merge(self, mampok, mock_config):
+        """merge_container_config wird mit mamplan.data als zweitem Argument aufgerufen."""
+        mampok._build_deployment_config(mock_config)
+        call_args = mampok.mamplan.merge_container_config.call_args
+        assert call_args.args[1] is mampok.mamplan.data

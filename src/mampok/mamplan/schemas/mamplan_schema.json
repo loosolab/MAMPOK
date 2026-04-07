@@ -46,7 +46,7 @@
     "deployment": {
       "type": "object",
       "description": "Deployment configuration. If omitted, Mampok auto-generates it on first run. Cluster has no default and must always be set explicitly.",
-      "required": ["cluster", "status", "auth", "bucket", "generate_url", "lifetime", "url"],
+      "required": ["cluster", "status", "auth", "bucket", "lifetime", "url"],
       "additionalProperties": false,
       "properties": {
         "status": {
@@ -68,10 +68,11 @@
           "type": "string",
           "description": "Target cluster identifier. Must always be set explicitly — no default."
         },
-        "generate_url": {
-          "type": "boolean",
-          "description": "Auto-generate deployment URL.",
-          "default": true
+        "custom_url_id": {
+          "type": "string",
+          "description": "Optionaler Ersatz für die project-id im URL-Pfad. Wenn gesetzt, ersetzt dieser Wert die project-id in der URL. Domain, Namespace und Tool kommen immer aus der Config. Keine Großbuchstaben oder Unterstriche erlaubt.",
+          "minLength": 1,
+          "pattern": "^[^A-Z_]*$"
         },
         "lifetime": {
           "type": "string",
@@ -85,7 +86,7 @@
         },
         "url": {
           "type": "string",
-          "description": "Custom deployment access URL. No capital letters allowed. Empty string allowed (URL auto-generated when generate_url is true).",
+          "description": "Vollständige Deployment-URL (wird automatisch aus Config-Komponenten konstruiert und hier gespeichert). No capital letters or underscores allowed.",
           "pattern": "^[^A-Z_]*$"
         }
       }

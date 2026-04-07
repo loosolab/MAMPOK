@@ -65,9 +65,6 @@ class DeploymentConfig:
     host: str = ""
     """Ingress host (from ClusterConfig)."""
 
-    generate_url: bool = True
-    """Whether Mampok auto-generates the URL."""
-
     auth: bool = False
     """Whether basic auth is enabled."""
 

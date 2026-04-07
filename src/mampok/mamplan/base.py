@@ -6,12 +6,55 @@ import copy
 import importlib.resources
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import jsonschema
 from referencing import Registry, Resource
+
+if TYPE_CHECKING:
+    from mampok.mamplan.mamplate import Mamplate
+
+# Dict-Felder: bei merge_container_config deep-mergen statt ersetzen
+_DICT_FIELDS = {"resources", "volume", "downloadpaths", "annotation", "readinessProbe"}
+# Listen-Felder: bei merge_container_config komplett ersetzen
+_LIST_FIELDS = {"args", "command", "env"}
+
+_TEMPLATE_PATTERN = re.compile(r"__([a-zA-Z0-9_.]+)__")
+
+
+def _resolve_path(data: dict, path: str) -> str:
+    """Löst einen Punkt-separierten Pfad im Dict auf und gibt String zurück."""
+    keys = path.split(".")
+    current = data
+    for key in keys:
+        if not isinstance(current, dict) or key not in current:
+            raise ValueError(f"Template-Pfad '{path}' nicht im Mamplan gefunden")
+        current = current[key]
+    if isinstance(current, list):
+        return ",".join(str(v) for v in current)
+    if isinstance(current, bool):
+        return "true" if current else "false"
+    if current is None:
+        raise ValueError(f"Template-Pfad '{path}' ist None")
+    return str(current)
+
+
+def _apply_template_substitution(merged: dict, mamplan_data: dict) -> dict:
+    """Ersetzt __key.subkey__-Tokens in args und command."""
+    for field in ("args", "command"):
+        if field not in merged:
+            continue
+        new_list = []
+        for item in merged[field]:
+            def replace_token(match, _data=mamplan_data):
+                return _resolve_path(_data, match.group(1))
+            new_list.append(_TEMPLATE_PATTERN.sub(replace_token, item))
+        merged[field] = new_list
+    return merged
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +191,108 @@ class MamplanBase(ABC):
         Returns:
             Dateiname, z.B. 'my-project-mamplan.json' oder 'cellxgene-mamplate.json'.
         """
+
+    @property
+    def auth(self) -> bool:
+        """True wenn das Deployment auth-geschützt ist.
+
+        Returns:
+            deployment.auth aus dem Konfigurations-Dict.
+        """
+        return self.data["deployment"]["auth"]
+
+    @property
+    def is_expired(self) -> bool:
+        """True wenn deployment.status=True und deployment.lifetime abgelaufen.
+
+        Returns:
+            True wenn das Deployment aktiv und abgelaufen ist.
+        """
+        deployment = self.data["deployment"]
+        if not deployment.get("status", False):
+            return False
+        lifetime = datetime.fromisoformat(deployment["lifetime"])
+        if lifetime.tzinfo is None:
+            lifetime = lifetime.replace(tzinfo=timezone.utc)
+        return lifetime < datetime.now(timezone.utc)
+
+    def merge_container_config(
+        self,
+        mamplate: "Mamplate",
+        mamplan_data: dict,
+        init_mamplates: "list[Mamplate] | None" = None,
+    ) -> dict:
+        """Merged die Container-Konfiguration von Mamplate mit Mamplan-Overrides.
+
+        Mamplan-Werte haben Vorrang. Dicts werden gemergt, Listen ersetzt.
+        Template-Tokens der Form __key.subkey__ in args/command werden durch
+        die entsprechenden Werte aus mamplan_data ersetzt.
+
+        Args:
+            mamplate: Das zugehörige Mamplate mit Container-Blueprint.
+            mamplan_data: Das vollständige Mamplan-Dict für Template-Substitution.
+            init_mamplates: Optionale Liste von Mamplates für custom Init-Container.
+
+        Returns:
+            Dict mit 'main'-Key (und optional 'init'-Key als Liste), bereit für
+            den Mampok-Orchestrator zur Umwandlung in DeploymentConfig.
+            Beispiel: {'main': {tool, image, ports, resources, ...}, 'init': [{...}, ...]}
+        """
+        mamplan_container = self.data.get("container", {})
+
+        main_base = copy.deepcopy(mamplate.data)
+        main_overrides = mamplan_container.get("main", {})
+        merged_main = _deep_merge_container(main_base, main_overrides)
+
+        result: dict = {"main": _apply_template_substitution(merged_main, mamplan_data)}
+
+        # Init-Container: nur wenn Mamplan container.init oder project.init_container hat
+        init_overrides = mamplan_container.get("init", {})
+        resolved_init_mamplates = init_mamplates or []
+        if resolved_init_mamplates or init_overrides:
+            init_list = []
+            for init_mt in resolved_init_mamplates:
+                base = copy.deepcopy(init_mt.data)
+                init_list.append(_deep_merge_container(base, init_overrides))
+            if not resolved_init_mamplates and init_overrides:
+                init_list.append(_deep_merge_container({}, init_overrides))
+            result["init"] = init_list
+
+        return result
+
+
+def _deep_merge_container(base: dict, overrides: dict) -> dict:
+    """Merged override-Dict in base-Dict gemäß Container-Merge-Regeln.
+
+    Dicts werden rekursiv gemergt, Listen vom Override ersetzt, Skalare ersetzt.
+
+    Args:
+        base: Basis-Dict (Mamplate-Daten).
+        overrides: Override-Dict (Mamplan container.main oder container.init).
+
+    Returns:
+        Gemergtes Dict.
+    """
+    result = copy.deepcopy(base)
+    for key, value in overrides.items():
+        if key in _LIST_FIELDS:
+            result[key] = copy.deepcopy(value)
+        elif key in _DICT_FIELDS and isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _merge_dicts(result[key], value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return result
+
+
+def _merge_dicts(base: dict, override: dict) -> dict:
+    """Rekursiver Dict-Merge: override-Werte überschreiben base-Werte."""
+    result = copy.deepcopy(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _merge_dicts(result[key], value)
+        else:
+            result[key] = copy.deepcopy(value)
+    return result
 
 
 def _build_registry() -> Registry:

@@ -3,15 +3,24 @@
 from __future__ import annotations
 
 import copy
-import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
 from mampok.config.config import MampokConfig
 from mampok.interfaces.cli import create_mampok_instance
+from mampok.mamplan.base import MamplanBase
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
 from mampok.mamplan.metadata import _merge_unique, parse_metadata_files
+from mampok.mamplan.shmamplan import SHMamplan
+
+
+def _parse_iso_to_datetime(value: str) -> datetime | None:
+    """ISO 8601 UTC string → timezone-aware datetime. Leer/None → None."""
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 class API:
@@ -46,14 +55,18 @@ class API:
         """Load MampokConfig from config_path."""
         return MampokConfig.from_file(self.config_path)
 
-    def _load_mamplan(self, path: Path) -> Mamplan:
-        """Load a single Mamplan from a file.
+    def _load_mamplan(self, path: Path) -> MamplanBase:
+        """Load a Mamplan or SHMamplan from a file.
+
+        Detects Software Hub mamplans by the ``-shmamplan.json`` filename suffix
+        and loads them as ``SHMamplan`` instances. All other files are loaded
+        as standard ``Mamplan`` instances.
 
         Args:
-            path: Path to a Mamplan JSON file.
+            path: Path to a Mamplan or SHMamplan JSON file.
 
         Returns:
-            Loaded and validated Mamplan instance.
+            Loaded and validated MamplanBase instance (Mamplan or SHMamplan).
 
         Raises:
             FileNotFoundError: If path does not exist.
@@ -64,6 +77,8 @@ class API:
             raise FileNotFoundError(f"Path not found: {p}")
         if p.is_dir():
             raise IsADirectoryError(f"mamplan_path must be a file, got directory: {p}")
+        if p.name.endswith("-shmamplan.json"):
+            return SHMamplan.read_in(p)
         return Mamplan.read_in(p)
 
     def _load_mamplates(self, config: MampokConfig) -> dict[str, Mamplate]:
@@ -81,11 +96,11 @@ class API:
             result[m.data["tool"]] = m
         return result
 
-    def _load(self, path: Path) -> tuple[Mamplan, dict[str, Mamplate], MampokConfig]:
-        """Load a Mamplan, Mamplates and MampokConfig in one call.
+    def _load(self, path: Path) -> tuple[MamplanBase, dict[str, Mamplate], MampokConfig]:
+        """Load a Mamplan or SHMamplan, Mamplates and MampokConfig in one call.
 
         Args:
-            path: Path to a Mamplan file.
+            path: Path to a Mamplan or SHMamplan file.
 
         Returns:
             Tuple of (mamplan, mamplates, config).
@@ -273,7 +288,7 @@ class API:
             jsonschema.ValidationError: If the value violates the schema.
         """
         mamplan_path = Path(mamplan_path)
-        mamplan = Mamplan.read_in(mamplan_path)
+        mamplan = self._load_mamplan(mamplan_path)
         mamplan.edit(deployment__lifetime=lifetime)
         mamplan.write(mamplan_path)
 
@@ -321,7 +336,7 @@ class API:
         yield {"stage": "edit_sharing", "status": "saved", "project_id": project_id}
 
         # Phase 2: auth secret update (only for active, auth-protected deployments)
-        auth = mamplan.data["deployment"].get("auth", False)
+        auth = mamplan.auth
         status = mamplan.data["deployment"].get("status", False)
 
         if auth and status:
@@ -347,18 +362,17 @@ class API:
     def project_info(
         self,
         mamplan_path: Path,
-        output: Path | None = None,
     ) -> dict:
         """Return project metadata and K8s status for a Mamplan.
 
         Args:
             mamplan_path: Path to the Mamplan file.
-            output: Optional path to write the result as a JSON file.
 
         Returns:
             Dict with structure:
             {"projects": {project_id: {flat MongoDB-compatible dict}}}
             Keys correspond directly to MongoDB field names per mampok_v2 schema.
+            Date fields (creation_date, lifetime) are timezone-aware datetime objects.
 
         Raises:
             FileNotFoundError: If mamplan_path does not exist.
@@ -378,7 +392,7 @@ class API:
                 "project_id":    p["project_id"],
                 "tool":          p["tool"],
                 "files":         p.get("files", []),
-                "creation_date": p.get("creation_date", ""),
+                "creation_date": _parse_iso_to_datetime(p.get("creation_date", "")),
                 "project_size":  p.get("project_size"),
                 # deployment section
                 "cluster":          d["cluster"],
@@ -386,7 +400,7 @@ class API:
                 "auth":             d.get("auth", False),
                 "bucket":           d.get("bucket", ""),
                 "url":              d.get("url", ""),
-                "lifetime":         d.get("lifetime", ""),
+                "lifetime":         _parse_iso_to_datetime(d.get("lifetime", "")),
                 # service section
                 "owner":            s["owner"],
                 "analyst":          s.get("analyst", []),
@@ -399,12 +413,77 @@ class API:
                 **{k: v for k, v in tags.items() if k not in ("user", "organization")},
             }
         }
-        result = {"projects": projects}
-        if output is not None:
-            output = Path(output)
-            with output.open("w", encoding="utf-8") as f:
-                json.dump(result, f, indent=2, ensure_ascii=False)
-        return result
+        return {"projects": projects}
+
+    def create_sh_mamplan(
+        self,
+        output: Path,
+        username: str,
+        tool: str,
+        bucket: str,
+        cluster: str | None = None,
+        lifetime: str | None = None,
+    ) -> str:
+        """Create a Software Hub mamplan and write it to disk.
+
+        Validates input against shmamplan_schema.json and writes a
+        ``{project_id}-shmamplan.json`` file. auth=True is implicit — it is set
+        automatically and not required as an argument.
+
+        Args:
+            output: Output path (file or directory). If directory, filename is
+                    auto-generated as ``{project_id}-shmamplan.json``.
+            username: Username of the container owner.
+            tool: Mampok tool name (must exist as mamplate).
+            bucket: S3 bucket name for user data.
+            cluster: Target cluster identifier. If None, uses config.default_cluster.
+            lifetime: ISO 8601 expiry datetime. If None, uses config default
+                      (now + lifetime_days).
+
+        Returns:
+            Normalized project_id string (e.g. "alice-cellxgene").
+
+        Raises:
+            ValueError: If cluster is not specified and no default_cluster in config,
+                        or if tool not in mamplates, or if cluster not in config.
+            jsonschema.ValidationError: If input violates shmamplan_schema.json.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        config = self._load_config()
+
+        if cluster is None:
+            cluster = config.default_cluster
+            if cluster is None:
+                raise ValueError(
+                    "No cluster specified and no default_cluster configured. "
+                    "Pass cluster explicitly or set default_cluster in the config."
+                )
+
+        mamplates = self._load_mamplates(config)
+        if tool not in mamplates:
+            raise ValueError(
+                f"No mamplate for tool '{tool}'. Available: {sorted(mamplates)}"
+            )
+        if cluster not in config.clusters:
+            raise ValueError(
+                f"Cluster '{cluster}' not found in config. Available: {sorted(config.clusters)}"
+            )
+
+        if lifetime is None:
+            lifetime = (
+                datetime.now(timezone.utc) + timedelta(days=config.lifetime_days)
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        project_id = f"{username}-{tool}".replace("_", "-")
+
+        sh = SHMamplan.create(
+            project={"project_id": project_id, "tool": tool},
+            deployment={"cluster": cluster, "bucket": bucket, "lifetime": lifetime},
+            service={"owner": username},
+        )
+        sh.write(Path(output))
+        return project_id
 
     def copy_results(
         self,

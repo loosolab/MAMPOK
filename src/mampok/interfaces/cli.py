@@ -6,7 +6,7 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Callable
+from typing import Annotated, Callable, Optional
 
 import typer
 
@@ -1086,7 +1086,7 @@ def create_mamplan(
     metadata_file: Annotated[list[Path], typer.Option(help="YAML metadata file(s) to populate the service section (repeatable).")] = [],
     bucket: Annotated[str, typer.Option(help="S3 bucket name (auto-generated if empty).")] = "",
     auth: Annotated[bool, typer.Option(help="Enable login protection.")] = False,
-    generate_url: Annotated[bool, typer.Option(help="Auto-generate deployment URL.")] = True,
+    custom_url_id: Annotated[Optional[str], typer.Option(help="Custom URL path segment replacing project-id in the deployment URL. If omitted, project-id is used.")] = None,
 ) -> None:
     """Create a new mamplan file."""
     yaml_svc = parse_metadata_files(metadata_file) if metadata_file else {}
@@ -1141,7 +1141,7 @@ def create_mamplan(
             "bucket": bucket,
             "url": "",
             "auth": auth,
-            "generate_url": generate_url,
+            **({"custom_url_id": custom_url_id} if custom_url_id else {}),
         },
         service={
             "analyst": _merge_unique(analyst, yaml_svc.get("analyst", [])) or [resolved_owner],
