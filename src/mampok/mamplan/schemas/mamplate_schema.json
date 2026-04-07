@@ -61,49 +61,27 @@
         },
         "env": {
           "type": "array",
-          "description": "Environment variables for the container. Each entry is either a secret reference or a direct key-value pair.",
+          "description": "Environment variables for the container.",
           "items": {
-            "oneOf": [
-              {
-                "title": "SecretEnvVar",
-                "description": "References a K8s secret by name or scope keyword.",
-                "type": "object",
-                "required": ["key", "name", "secret_ref"],
-                "additionalProperties": false,
-                "properties": {
-                  "key": {
-                    "type": "string",
-                    "description": "The environment variable name inside the container."
-                  },
-                  "name": {
-                    "type": "string",
-                    "description": "The secret key reference name."
-                  },
-                  "secret_ref": {
-                    "type": "string",
-                    "description": "K8s secret name. Use 'project' for the auto-created project secret or 'cluster' for the shared cluster secret."
-                  }
-                }
+            "type": "object",
+            "required": ["name", "value"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The environment variable name inside the container."
               },
-              {
-                "title": "DirectEnvVar",
-                "description": "Sets an environment variable to a literal value.",
-                "type": "object",
-                "required": ["name", "value"],
-                "additionalProperties": false,
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "The environment variable name inside the container."
-                  },
-                  "value": {
-                    "type": "string",
-                    "description": "The literal value of the environment variable."
-                  }
-                }
+              "value": {
+                "type": "string",
+                "description": "The literal value of the environment variable."
               }
-            ]
+            }
           }
+        },
+        "direct_s3_access": {
+          "type": "boolean",
+          "description": "If true, injects AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_ENDPOINT_URL from the project S3 secret into the main container.",
+          "default": false
         },
         "resources": {
           "type": "object",

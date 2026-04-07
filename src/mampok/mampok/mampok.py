@@ -140,13 +140,10 @@ class Mampok:
 
         # K8s deploy
         s3_credentials = {
-            "s3_endpoint": config.s3.endpoint,
             "s3_key": config.s3.access_key,
             "s3_secret": config.s3.secret_key,
-            "s3_files": ",".join(Path(f).name for f in files),
         }
-        logger.debug("s3_credentials: endpoint=%s, key=%s, secret=***, files=%s",
-                     s3_credentials["s3_endpoint"], s3_credentials["s3_key"], s3_credentials["s3_files"])
+        logger.debug("s3_credentials: key=%s, secret=***", s3_credentials["s3_key"])
         k8s_started = False
         try:
             for step in self.kube.deploy(cfg, s3_credentials):
@@ -306,19 +303,12 @@ class Mampok:
             volume_mounts = []
             volumes = []
 
-        # env: Mamplate-Format → K8s-natives Format
         project_id = self.mamplan.data["project"]["project_id"]
         tool = self.mamplan.data["project"]["tool"]
-        project_secret_name = f"{project_id}-sc-{tool}"
-        cluster_secret_name = config.s3.secretname
-        env = _transform_env(main.get("env", []), project_secret_name, cluster_secret_name)
+        env = main.get("env", [])
 
         raw_init_list = merged.get("init", [])
-        init_containers = []
-        for ic in raw_init_list:
-            if "env" in ic:
-                ic = {**ic, "env": _transform_env(ic["env"], project_secret_name, cluster_secret_name)}
-            init_containers.append(ic)
+        init_containers = list(raw_init_list)
 
         files = self.mamplan.data["project"].get("files", [])
         include_s3download = bool(files)
@@ -361,53 +351,14 @@ class Mampok:
             init_containers=init_containers,
             include_s3download=include_s3download,
             bucket=self.s3.bucket,
+            endpoint=config.s3.endpoint,
+            direct_s3_access=bool(main.get("direct_s3_access", False)),
             auth_proxy_image=auth_proxy.auth_proxy_image if auth_proxy else "",
             proxy_port=auth_proxy.proxy_port if auth_proxy else 8080,
             auth_annotations=auth_proxy.auth_annotations if auth_proxy else {},
             image_pull_secrets=auth_proxy.image_pull_secrets if auth_proxy else [],
         )
 
-
-def _transform_env(
-    env_items: list, project_secret_name: str, cluster_secret_name: str
-) -> list:
-    """Transformiert Mamplate-env-Einträge in K8s-natives Format.
-
-    secret_ref: 'project' → Projekt-Secret ({project_id}-sc-{tool}, von Mampok erstellt)
-    secret_ref: 'cluster' → Cluster-Secret (config.s3.secretname, pre-existing in K8s)
-    secret_ref: <anderer string> → Custom Secret-Name
-
-    Args:
-        env_items: Liste von Mamplate-env-Einträgen.
-        project_secret_name: Name des Projekt-Secrets ({project_id}-sc-{tool}).
-        cluster_secret_name: Name des Cluster-Secrets (config.s3.secretname).
-
-    Returns:
-        Liste von K8s-nativen env-Einträgen.
-    """
-    result = []
-    for item in env_items:
-        if "value" in item:
-            # DirectEnvVar: {name, value} → bereits K8s-kompatibel
-            result.append({"name": item["name"], "value": item["value"]})
-        else:
-            # SecretEnvVar: {key, name, secret_ref}
-            secret_ref = item["secret_ref"]
-            if secret_ref == "project":
-                secret_name = project_secret_name
-            elif secret_ref == "cluster":
-                secret_name = cluster_secret_name
-            else:
-                secret_name = secret_ref
-            result.append(
-                {
-                    "name": item["key"],
-                    "valueFrom": {
-                        "secretKeyRef": {"name": secret_name, "key": item["name"]}
-                    },
-                }
-            )
-    return result
 
 
 def _generate_secret_key(length: int = 32) -> str:

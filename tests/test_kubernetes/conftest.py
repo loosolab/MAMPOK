@@ -31,10 +31,8 @@ def make_config():
 def sample_s3_credentials() -> dict:
     """S3 credentials dict for testing."""
     return {
-        "s3_endpoint": "https://s3.example.com",
         "s3_key": "AKIAIOSFODNN7EXAMPLE",
         "s3_secret": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-        "s3_files": "bucket1/file1.txt,bucket1/file2.txt",
     }
 
 

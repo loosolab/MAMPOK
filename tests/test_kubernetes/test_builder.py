@@ -110,9 +110,11 @@ class TestBuildSecret:
         builder = ManifestBuilder()
         secret = builder.build_secret(make_config(), sample_s3_credentials)
 
-        for key in ("s3_endpoint", "s3_key", "s3_secret", "s3_files"):
+        for key in ("s3_key", "s3_secret"):
             decoded = base64.b64decode(secret["data"][key]).decode()
             assert decoded == sample_s3_credentials[key]
+        assert "s3_endpoint" not in secret["data"]
+        assert "s3_files" not in secret["data"]
 
 
 class TestBuildAuthSecret:

@@ -128,6 +128,14 @@ class DeploymentConfig:
     bucket: str = ""
     """S3 bucket name — injected as env var into the s3download init container."""
 
+    endpoint: str = ""
+    """S3 endpoint URL — as literal value in the s3download init container and
+    injected into the main container when direct_s3_access is True."""
+
+    direct_s3_access: bool = False
+    """If True, inject AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_ENDPOINT_URL
+    from the project secret into the main container."""
+
     def __post_init__(self) -> None:
         if self.auth and self.proxy_port in self.ports:
             raise ValueError(

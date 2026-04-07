@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from mampok.kubernetes.config import DeploymentConfig
-from mampok.mampok.mampok import Mampok, _generate_password, _transform_env
+from mampok.mampok.mampok import Mampok
 
 
 class TestMampokInit:
@@ -189,51 +189,6 @@ class TestBuildDeploymentConfig:
         assert suffix.isalnum()
 
 
-class TestTransformEnv:
-    """Tests für _transform_env Hilfsfunktion."""
-
-    def test_direct_env_var_passed_through(self):
-        items = [{"name": "MY_VAR", "value": "hello"}]
-        result = _transform_env(items, "proj-sc-tool", "mpis")
-        assert result == [{"name": "MY_VAR", "value": "hello"}]
-
-    def test_secret_env_var_project_uses_project_secret(self):
-        items = [{"key": "MY_KEY", "name": "s3_key", "secret_ref": "project"}]
-        result = _transform_env(items, "test-proj-sc-cellxgene", "mpis")
-        assert result == [
-            {
-                "name": "MY_KEY",
-                "valueFrom": {"secretKeyRef": {"name": "test-proj-sc-cellxgene", "key": "s3_key"}},
-            }
-        ]
-
-    def test_secret_env_var_cluster_uses_cluster_secret(self):
-        items = [{"key": "CLUSTER_KEY", "name": "some_key", "secret_ref": "cluster"}]
-        result = _transform_env(items, "test-proj-sc-cellxgene", "mpis")
-        assert result == [
-            {
-                "name": "CLUSTER_KEY",
-                "valueFrom": {"secretKeyRef": {"name": "mpis", "key": "some_key"}},
-            }
-        ]
-
-    def test_secret_env_var_custom_string_secret_ref(self):
-        items = [{"key": "CUSTOM_KEY", "name": "key_ref", "secret_ref": "my-custom-secret"}]
-        result = _transform_env(items, "proj-sc", "mpis")
-        assert result[0]["valueFrom"]["secretKeyRef"]["name"] == "my-custom-secret"
-
-    def test_empty_list_returns_empty(self):
-        assert _transform_env([], "proj-sc", "mpis") == []
-
-    def test_mixed_env_vars(self):
-        items = [
-            {"name": "DIRECT", "value": "val"},
-            {"key": "FROM_SECRET", "name": "key", "secret_ref": "project"},
-        ]
-        result = _transform_env(items, "proj-sc", "mpis")
-        assert len(result) == 2
-        assert result[0] == {"name": "DIRECT", "value": "val"}
-        assert result[1]["name"] == "FROM_SECRET"
 
 
 class TestIsExpired:
@@ -282,9 +237,10 @@ class TestDeploy:
         list(mampok.deploy(mock_config))
         mock_kube.deploy.assert_called_once()
         _, s3_creds = mock_kube.deploy.call_args[0]
-        assert s3_creds["s3_endpoint"] == "https://s3.example.com"
         assert s3_creds["s3_key"] == "mampok-service"
         assert s3_creds["s3_secret"] == "secret123"
+        assert "s3_endpoint" not in s3_creds
+        assert "s3_files" not in s3_creds
 
     def test_calls_wait_for_ready(self, mampok, mock_config, mock_kube):
         list(mampok.deploy(mock_config, timeout=120))
@@ -299,12 +255,12 @@ class TestDeploy:
         kwargs = mampok.mamplan.edit.call_args[1]
         assert kwargs["deployment__status"] is True
 
-    def test_s3_files_string_in_credentials(self, mampok, mock_config, mock_kube, mock_s3):
+    def test_no_s3_files_in_credentials(self, mampok, mock_config, mock_kube, mock_s3):
         mampok.mamplan.data["project"]["files"] = ["/data/a.h5", "/data/b.csv"]
         mock_s3.compare_size.return_value = False
         list(mampok.deploy(mock_config))
         _, s3_creds = mock_kube.deploy.call_args[0]
-        assert s3_creds["s3_files"] == "a.h5,b.csv"
+        assert "s3_files" not in s3_creds
 
     def test_yields_init_stage(self, mampok, mock_config):
         events = list(mampok.deploy(mock_config))
@@ -523,26 +479,6 @@ class TestUpdateAuthSecret:
         assert manifest["metadata"]["name"] == "test-proj-sc-cellxgene-auth"
 
 
-class TestGeneratePassword:
-    """Tests für _generate_password Hilfsfunktion."""
-
-    def test_default_length_is_16(self):
-        pw = _generate_password()
-        assert len(pw) == 16
-
-    def test_custom_length(self):
-        pw = _generate_password(32)
-        assert len(pw) == 32
-
-    def test_alphanumeric_only(self):
-        import string
-        allowed = set(string.ascii_letters + string.digits)
-        pw = _generate_password(100)
-        assert all(c in allowed for c in pw)
-
-    def test_passwords_are_unique(self):
-        passwords = {_generate_password() for _ in range(20)}
-        assert len(passwords) > 1
 
 
 # ---------------------------------------------------------------------------
