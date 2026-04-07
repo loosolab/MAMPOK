@@ -12,15 +12,8 @@
       "required": ["project_id", "tool", "files", "creation_date"],
       "additionalProperties": false,
       "properties": {
-        "project_id": {
-          "type": "string",
-          "description": "Unique project identifier. No capital letters or underscores allowed.",
-          "pattern": "^[^A-Z_]+$"
-        },
-        "tool": {
-          "type": "string",
-          "description": "Name of the MaMplate tool to use."
-        },
+        "project_id": { "$ref": "#/definitions/project_id" },
+        "tool": { "$ref": "#/definitions/tool" },
         "files": {
           "type": "array",
           "items": { "type": "string" },
@@ -49,46 +42,27 @@
       "required": ["cluster", "status", "auth", "bucket", "lifetime", "url"],
       "additionalProperties": false,
       "properties": {
-        "status": {
-          "type": "boolean",
-          "description": "Indicates whether the deployment is currently active.",
-          "default": false
-        },
+        "status": { "$ref": "#/definitions/status" },
         "auth": {
           "type": "boolean",
           "description": "Enables login protection.",
           "default": false
         },
-        "bucket": {
-          "type": "string",
-          "description": "S3 storage bucket name. No capital letters or underscores allowed.",
-          "pattern": "^[^A-Z_]*$"
-        },
-        "cluster": {
-          "type": "string",
-          "description": "Target cluster identifier. Must always be set explicitly — no default."
-        },
+        "bucket": { "$ref": "#/definitions/bucket" },
+        "cluster": { "$ref": "#/definitions/cluster" },
         "custom_url_id": {
           "type": "string",
           "description": "Optionaler Ersatz für die project-id im URL-Pfad. Wenn gesetzt, ersetzt dieser Wert die project-id in der URL. Domain, Namespace und Tool kommen immer aus der Config. Keine Großbuchstaben oder Unterstriche erlaubt.",
           "minLength": 1,
           "pattern": "^[^A-Z_]*$"
         },
-        "lifetime": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Project expiration date in ISO 8601 UTC datetime format (e.g. 2024-12-31T00:00:00Z)."
-        },
+        "lifetime": { "$ref": "#/definitions/lifetime" },
         "random_url_suffix": {
           "type": "boolean",
           "description": "Append 5 random characters to the deployment URL.",
           "default": false
         },
-        "url": {
-          "type": "string",
-          "description": "Vollständige Deployment-URL (wird automatisch aus Config-Komponenten konstruiert und hier gespeichert). No capital letters or underscores allowed.",
-          "pattern": "^[^A-Z_]*$"
-        }
+        "url": { "$ref": "#/definitions/url" }
       }
     },
     "container": {
@@ -139,10 +113,7 @@
           "items": { "type": "string" },
           "description": "Organization or department names. Use 'public' for publicly accessible projects."
         },
-        "owner": {
-          "type": "string",
-          "description": "Username of the project owner. Must be 'public' if organization contains 'public'."
-        },
+        "owner": { "$ref": "#/definitions/owner" },
         "user": {
           "type": "array",
           "items": { "type": "string" },
@@ -166,6 +137,44 @@
       }
     }
   },
-  "definitions": {}
+  "definitions": {
+    "project_id": {
+      "type": "string",
+      "description": "Unique project identifier. No capital letters or underscores allowed.",
+      "pattern": "^[^A-Z_]+$"
+    },
+    "tool": {
+      "type": "string",
+      "description": "Name of the MaMplate tool to use."
+    },
+    "lifetime": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Project expiration date in ISO 8601 UTC datetime format (e.g. 2024-12-31T00:00:00Z)."
+    },
+    "status": {
+      "type": "boolean",
+      "description": "Indicates whether the deployment is currently active.",
+      "default": false
+    },
+    "url": {
+      "type": "string",
+      "description": "Vollständige Deployment-URL (wird automatisch aus Config-Komponenten konstruiert und hier gespeichert). No capital letters or underscores allowed.",
+      "pattern": "^[^A-Z_]*$"
+    },
+    "cluster": {
+      "type": "string",
+      "description": "Target cluster identifier. Must always be set explicitly — no default."
+    },
+    "bucket": {
+      "type": "string",
+      "description": "S3 storage bucket name. No capital letters or underscores allowed.",
+      "pattern": "^[^A-Z_]*$"
+    },
+    "owner": {
+      "type": "string",
+      "description": "Username of the project owner."
+    }
+  }
 
 }

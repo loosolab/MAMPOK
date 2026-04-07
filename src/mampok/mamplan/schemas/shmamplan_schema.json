@@ -12,15 +12,8 @@
       "required": ["project_id", "tool"],
       "additionalProperties": false,
       "properties": {
-        "project_id": {
-          "type": "string",
-          "description": "Normalized identifier: {username}-{tool}. No capital letters or underscores allowed.",
-          "pattern": "^[^A-Z_]+$"
-        },
-        "tool": {
-          "type": "string",
-          "description": "Name of the MaMplate tool to use."
-        }
+        "project_id": { "$ref": "mamplan_schema.json#/definitions/project_id" },
+        "tool": { "$ref": "mamplan_schema.json#/definitions/tool" }
       }
     },
     "deployment": {
@@ -29,30 +22,11 @@
       "required": ["cluster", "bucket", "lifetime", "url"],
       "additionalProperties": false,
       "properties": {
-        "cluster": {
-          "type": "string",
-          "description": "Target cluster identifier. Must match a key in the Mampok config."
-        },
-        "bucket": {
-          "type": "string",
-          "description": "S3 storage bucket name for user data. No capital letters or underscores allowed.",
-          "pattern": "^[^A-Z_]*$"
-        },
-        "lifetime": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Project expiration date in ISO 8601 UTC datetime format."
-        },
-        "status": {
-          "type": "boolean",
-          "description": "Indicates whether the deployment is currently active.",
-          "default": false
-        },
-        "url": {
-          "type": "string",
-          "description": "Deployment access URL. Set by deploy(). No capital letters allowed.",
-          "pattern": "^[^A-Z_]*$"
-        }
+        "cluster": { "$ref": "mamplan_schema.json#/definitions/cluster" },
+        "bucket": { "$ref": "mamplan_schema.json#/definitions/bucket" },
+        "lifetime": { "$ref": "mamplan_schema.json#/definitions/lifetime" },
+        "status": { "$ref": "mamplan_schema.json#/definitions/status" },
+        "url": { "$ref": "mamplan_schema.json#/definitions/url" }
       }
     },
     "service": {
@@ -61,10 +35,7 @@
       "required": ["owner"],
       "additionalProperties": false,
       "properties": {
-        "owner": {
-          "type": "string",
-          "description": "Username of the container owner. Has sole access via the auth secret."
-        }
+        "owner": { "$ref": "mamplan_schema.json#/definitions/owner" }
       }
     },
     "container": {
