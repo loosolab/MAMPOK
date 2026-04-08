@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Iterator
 
@@ -212,16 +213,69 @@ class DeploymentManager:
             "message": "Pods nicht innerhalb des Timeouts gestartet",
         }
 
+    def _check_and_yield_pod_warning(
+        self,
+        cfg: DeploymentConfig,
+        warned_reasons: set,
+        fail_fast_reasons: set,
+        threshold: int,
+    ) -> Iterator[dict]:
+        """Diagnose pod failure and yield a k8s_pod_warning step if a failure is detected.
+
+        Calls _diagnose_pod_failure() and yields a warning step on the first occurrence
+        of each failure reason. Raises TimeoutError immediately on fatal conditions.
+
+        Args:
+            cfg: Deployment configuration.
+            warned_reasons: Mutable set tracking already-warned reasons (shared across calls).
+            fail_fast_reasons: Set of reason strings that are always fatal (e.g. ImagePullBackOff).
+            threshold: restart_count at or above which OOM/Crash failures become fatal.
+
+        Yields:
+            {"stage": "k8s_pod_warning", ...} on first occurrence of each failure reason.
+
+        Raises:
+            TimeoutError: On fatal failure condition.
+        """
+        diagnosis = self._diagnose_pod_failure(cfg)
+        reason = diagnosis.get("reason", "")
+        restart_count = diagnosis.get("restart_count", 0)
+
+        if reason not in ("Timeout", "Unknown"):
+            is_fatal = reason in fail_fast_reasons or restart_count >= threshold
+            if reason not in warned_reasons:
+                warned_reasons.add(reason)
+                logger.warning("Pod warning for %s: %s (fatal=%s)",
+                               cfg.project_id, reason, is_fatal)
+                yield {
+                    "stage": "k8s_pod_warning",
+                    "reason": reason,
+                    "container": diagnosis.get("container", ""),
+                    "restart_count": restart_count,
+                    "message": diagnosis.get("message", ""),
+                    "fatal": is_fatal,
+                }
+            if is_fatal:
+                raise TimeoutError(
+                    f"Deployment '{cfg.deployment_name}' aborted early. "
+                    f"{reason}: {diagnosis['message']}"
+                )
+
     def wait_for_ready(self, cfg: DeploymentConfig, timeout: int = 900) -> Iterator[dict]:
         """Wait until all replicas are ready via the Kubernetes Watch API.
 
         Streams Deployment events until ready_replicas >= cfg.replicas.
         Yields a progress dict for each event that reports ready replicas.
-        On each event, also checks pod status for failure conditions (OOMKilled,
-        CrashLoopBackOff, ImagePullBackOff) and yields k8s_pod_warning steps.
+        On each Watch event and after every poll interval, checks pod status for
+        failure conditions (OOMKilled, CrashLoopBackOff, ImagePullBackOff) and
+        yields k8s_pod_warning steps.
 
-        Fatal conditions (ImagePullBackOff, or restart_count >= 5 for OOM/Crash)
-        trigger an early abort instead of waiting for the full timeout.
+        Uses short Watch intervals (_POLL_INTERVAL seconds) so that pod failures
+        are detected proactively during CrashLoopBackOff back-off periods, when
+        no Deployment Watch events would otherwise fire (ready_replicas stays None).
+
+        Fatal conditions (ImagePullBackOff, or restart_count >= _FAIL_FAST_RESTART_THRESHOLD
+        for OOM/Crash) trigger an early abort instead of waiting for the full timeout.
 
         Args:
             cfg: Deployment configuration.
@@ -241,63 +295,50 @@ class DeploymentManager:
         import kubernetes.watch
 
         _FAIL_FAST_REASONS = {"ImagePullBackOff", "ErrImagePull"}
-        _FAIL_FAST_RESTART_THRESHOLD = 5
+        _FAIL_FAST_RESTART_THRESHOLD = 3
+        _POLL_INTERVAL = 10
 
         apps_v1 = kubernetes.client.AppsV1Api(api_client=self._kube._api_client)
-        w = kubernetes.watch.Watch()
         warned_reasons: set[str] = set()
+        deadline = time.monotonic() + timeout
 
         logger.debug("wait_for_ready: deployment=%s, replicas=%s, timeout=%s",
                      cfg.deployment_name, cfg.replicas, timeout)
 
-        for event in w.stream(
-            apps_v1.list_namespaced_deployment,
-            namespace=cfg.namespace,
-            field_selector=f"metadata.name={cfg.deployment_name}",
-            timeout_seconds=timeout,
-        ):
-            status = event["object"].status
-            if status is not None and status.ready_replicas is not None:
-                logger.debug("ready_replicas=%s/%s", status.ready_replicas, cfg.replicas)
-                yield {
-                    "stage": "k8s_ready",
-                    "status": "running",
-                    "ready_replicas": status.ready_replicas,
-                }
-                if status.ready_replicas >= cfg.replicas:
-                    w.stop()
-                    return
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            poll_seconds = min(_POLL_INTERVAL, remaining)
 
-            # Check pod status on each deployment event
-            diagnosis = self._diagnose_pod_failure(cfg)
-            reason = diagnosis.get("reason", "")
-            restart_count = diagnosis.get("restart_count", 0)
-
-            if reason not in ("Timeout", "Unknown"):
-                is_fatal = (
-                    reason in _FAIL_FAST_REASONS
-                    or restart_count >= _FAIL_FAST_RESTART_THRESHOLD
-                )
-                if reason not in warned_reasons:
-                    warned_reasons.add(reason)
-                    logger.warning("Pod warning for %s: %s (fatal=%s)",
-                                   cfg.project_id, reason, is_fatal)
+            for event in kubernetes.watch.Watch().stream(
+                apps_v1.list_namespaced_deployment,
+                namespace=cfg.namespace,
+                field_selector=f"metadata.name={cfg.deployment_name}",
+                timeout_seconds=poll_seconds,
+            ):
+                status = event["object"].status
+                if status is not None and status.ready_replicas is not None:
+                    logger.debug("ready_replicas=%s/%s", status.ready_replicas, cfg.replicas)
                     yield {
-                        "stage": "k8s_pod_warning",
-                        "reason": reason,
-                        "container": diagnosis.get("container", ""),
-                        "restart_count": restart_count,
-                        "message": diagnosis.get("message", ""),
-                        "fatal": is_fatal,
+                        "stage": "k8s_ready",
+                        "status": "running",
+                        "ready_replicas": status.ready_replicas,
                     }
-                if is_fatal:
-                    w.stop()
-                    raise TimeoutError(
-                        f"Deployment '{cfg.deployment_name}' aborted early. "
-                        f"{reason}: {diagnosis['message']}"
-                    )
+                    if status.ready_replicas >= cfg.replicas:
+                        return
 
-        # Stream ended — timeout reached
+                # On-event pod diagnosis
+                yield from self._check_and_yield_pod_warning(
+                    cfg, warned_reasons, _FAIL_FAST_REASONS, _FAIL_FAST_RESTART_THRESHOLD
+                )
+
+            # Poll interval elapsed without Watch events — proactively check pod state.
+            # This catches CrashLoopBackOff during back-off periods, when the Deployment's
+            # ready_replicas stays None and no Watch events are fired by Kubernetes.
+            yield from self._check_and_yield_pod_warning(
+                cfg, warned_reasons, _FAIL_FAST_REASONS, _FAIL_FAST_RESTART_THRESHOLD
+            )
+
+        # Total timeout reached
         diagnosis = self._diagnose_pod_failure(cfg)
         raise TimeoutError(
             f"Deployment '{cfg.deployment_name}' not ready within {timeout}s. "
