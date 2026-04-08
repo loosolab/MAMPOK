@@ -167,7 +167,7 @@ class DeploymentManager:
         try:
             pods = v1.list_namespaced_pod(
                 namespace=cfg.namespace,
-                label_selector=f"app={cfg.project_id}",
+                label_selector=f"app={cfg.app_label}",
             )
         except Exception as e:
             logger.warning("Could not list pods for %s: %s", cfg.project_id, e)
