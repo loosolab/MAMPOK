@@ -478,7 +478,7 @@ def main() -> None:
     # Locate schema
     schema_path = (
         Path(__file__).parent.parent
-        / "mampok_v2/src/mampok/mamplan/schemas/mamplan_schema.json"
+        / "src/mampok/mamplan/schemas/mamplan_schema.json"
     )
     if not schema_path.exists():
         print(f"Schema nicht gefunden: {schema_path}", file=sys.stderr)

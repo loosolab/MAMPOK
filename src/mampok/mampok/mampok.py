@@ -129,9 +129,12 @@ class Mampok:
         yield step
 
         # S3 upload per file
+        mamplan_dir = self.mamplan.source_path.parent if self.mamplan.source_path else Path.cwd()
         files = self.mamplan.data["project"].get("files", [])
         for file_path in files:
             local = Path(file_path)
+            if not local.is_absolute():
+                local = mamplan_dir / local
             key = local.name
             if not self.s3.compare_size(key, local):
                 self.s3.upload(local, key)
