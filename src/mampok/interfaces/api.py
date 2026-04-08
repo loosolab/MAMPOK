@@ -114,7 +114,7 @@ class API:
     # core operations
     # ---------------------------------------------------------------------------
 
-    def deploy(self, mamplan_path: Path, timeout: int = 300, cleanup: bool = True) -> Iterator[dict]:
+    def deploy(self, mamplan_path: Path, timeout: int = 900, cleanup: bool = True) -> Iterator[dict]:
         """Deploy a project to Kubernetes.
 
         Yields progress dicts for each stage of the deployment:

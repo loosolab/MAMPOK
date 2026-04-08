@@ -69,7 +69,7 @@ class Mampok:
         """
         return self.mamplan.is_expired
 
-    def deploy(self, config: MampokConfig, timeout: int = 300, cleanup: bool = True) -> Iterator[dict]:
+    def deploy(self, config: MampokConfig, timeout: int = 900, cleanup: bool = True) -> Iterator[dict]:
         """Deployt das Projekt auf Kubernetes.
 
         Ablauf:
@@ -94,10 +94,14 @@ class Mampok:
             - {"stage": "s3_bucket", "status": "created"|"exists"}
             - {"stage": "s3_upload", "status": "done", "file": str}
             - {"stage": "s3_upload", "status": "complete", "total_files": int}
+            - {"stage": "k8s_validate", "status": "done", "count": int}
             - {"stage": "k8s_apply", "status": "done", "resource": str}
             - {"stage": "k8s_ready", "status": "running", "ready_replicas": int}
+            - {"stage": "k8s_pod_warning", "reason": str, "container": str,
+               "restart_count": int, "message": str, "fatal": bool}  (bei Pod-Fehlern)
             - {"stage": "k8s_cleanup", "status": "done", "project_id": str}  (nur bei Fehler+cleanup)
-            - {"stage": "done", "selfservice": {"url": str, "project_id": str, "auth": bool}}
+            - {"stage": "done", "selfservice": {"url": str, "token_url": str|None,
+               "project_id": str, "auth": bool}}
         """
         cfg = self._build_deployment_config(config)
         project_id = cfg.project_id
