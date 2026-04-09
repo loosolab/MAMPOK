@@ -166,7 +166,7 @@ class S3:
                     {
                         "ID": "abort-incomplete-multipart",
                         "Status": "Enabled",
-                        "Filter": {},
+                        "Filter": {"Prefix": ""},
                         "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7},
                     }
                 ]
