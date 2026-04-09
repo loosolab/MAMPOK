@@ -691,3 +691,24 @@ class TestTemplateSubstitution:
         mp = Mamplan(mamplan_data)
         mp.merge_container_config(mt, mamplan_data)
         assert mt.data["args"] == ["__project.files__"]
+
+    def test_token_substituted_in_env_value(self, mamplan_data, mamplate_data):
+        mamplate_data["env"] = [{"name": "DATASET_PATH", "value": "/mnt/data/__project.files__"}]
+        mt = Mamplate(mamplate_data)
+        mp = Mamplan(mamplan_data)
+        result = mp.merge_container_config(mt, mamplan_data)
+        assert result["main"]["env"] == [{"name": "DATASET_PATH", "value": "/mnt/data/data.h5ad"}]
+
+    def test_env_without_token_unchanged(self, mamplan_data, mamplate_data):
+        mamplate_data["env"] = [{"name": "PORT", "value": "3838"}]
+        mt = Mamplate(mamplate_data)
+        mp = Mamplan(mamplan_data)
+        result = mp.merge_container_config(mt, mamplan_data)
+        assert result["main"]["env"] == [{"name": "PORT", "value": "3838"}]
+
+    def test_substitution_does_not_mutate_mamplate_env(self, mamplan_data, mamplate_data):
+        mamplate_data["env"] = [{"name": "DATASET_PATH", "value": "/mnt/data/__project.files__"}]
+        mt = Mamplate(mamplate_data)
+        mp = Mamplan(mamplan_data)
+        mp.merge_container_config(mt, mamplan_data)
+        assert mt.data["env"] == [{"name": "DATASET_PATH", "value": "/mnt/data/__project.files__"}]
