@@ -44,16 +44,26 @@ def _resolve_path(data: dict, path: str) -> str:
 
 
 def _apply_template_substitution(merged: dict, mamplan_data: dict) -> dict:
-    """Ersetzt __key.subkey__-Tokens in args und command."""
+    """Ersetzt __key.subkey__-Tokens in args, command und env-Werten."""
+    def replace_token(match, _data=mamplan_data):
+        return _resolve_path(_data, match.group(1))
+
     for field in ("args", "command"):
         if field not in merged:
             continue
-        new_list = []
-        for item in merged[field]:
-            def replace_token(match, _data=mamplan_data):
-                return _resolve_path(_data, match.group(1))
-            new_list.append(_TEMPLATE_PATTERN.sub(replace_token, item))
-        merged[field] = new_list
+        merged[field] = [
+            _TEMPLATE_PATTERN.sub(replace_token, item)
+            for item in merged[field]
+        ]
+
+    if "env" in merged:
+        merged["env"] = [
+            {**entry, "value": _TEMPLATE_PATTERN.sub(replace_token, entry["value"])}
+            if "value" in entry
+            else entry
+            for entry in merged["env"]
+        ]
+
     return merged
 
 logger = logging.getLogger(__name__)
