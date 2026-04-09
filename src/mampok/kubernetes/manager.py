@@ -243,8 +243,11 @@ class DeploymentManager:
 
         if reason not in ("Timeout", "Unknown"):
             is_fatal = reason in fail_fast_reasons or restart_count >= threshold
-            if reason not in warned_reasons:
-                warned_reasons.add(reason)
+            # Track (reason, is_fatal) so the fatal transition always gets its own step,
+            # even if the same reason was previously warned as non-fatal.
+            warned_key = (reason, is_fatal)
+            if warned_key not in warned_reasons:
+                warned_reasons.add(warned_key)
                 logger.warning("Pod warning for %s: %s (fatal=%s)",
                                cfg.project_id, reason, is_fatal)
                 yield {
