@@ -250,3 +250,11 @@ class TestS3SetLifecyclePolicy:
         assert len(rules) == 1
         assert rules[0]["Status"] == "Enabled"
         assert rules[0]["AbortIncompleteMultipartUpload"]["DaysAfterInitiation"] == 7
+
+    def test_ignores_client_error(self, s3: S3, mock_client: MagicMock) -> None:
+        from botocore.exceptions import ClientError
+
+        mock_client.put_bucket_lifecycle_configuration.side_effect = ClientError(
+            {"Error": {"Code": "InvalidArgument", "Message": "XML schema"}}, "PutBucketLifecycleConfiguration"
+        )
+        s3.set_lifecycle_policy()  # must not raise

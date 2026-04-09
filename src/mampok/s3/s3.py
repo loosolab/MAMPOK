@@ -156,22 +156,26 @@ class S3:
 
         Verhindert unbeabsichtigte Storage-Kosten durch unterbrochene Uploads
         (z.B. wenn der preStop-Sync per SIGKILL abgebrochen wurde).
-        Kompatibel mit AWS S3 und MinIO self-hosted.
+        Schlägt auf älteren MinIO-Versionen fehl (kein Support für
+        AbortIncompleteMultipartUpload) — Fehler werden geloggt, nicht geworfen.
         """
         logger.debug("set_lifecycle_policy: %s", self.bucket)
-        self.client.put_bucket_lifecycle_configuration(
-            Bucket=self.bucket,
-            LifecycleConfiguration={
-                "Rules": [
-                    {
-                        "ID": "abort-incomplete-multipart",
-                        "Status": "Enabled",
-                        "Filter": {"Prefix": "container_data/"},
-                        "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7},
-                    }
-                ]
-            },
-        )
+        try:
+            self.client.put_bucket_lifecycle_configuration(
+                Bucket=self.bucket,
+                LifecycleConfiguration={
+                    "Rules": [
+                        {
+                            "ID": "abort-incomplete-multipart",
+                            "Status": "Enabled",
+                            "Filter": {"Prefix": "container_data/"},
+                            "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7},
+                        }
+                    ]
+                },
+            )
+        except ClientError as e:
+            logger.warning("set_lifecycle_policy fehlgeschlagen (MinIO-Kompatibilität): %s", e)
 
     def delete_bucket(self) -> None:
         """Leert den Bucket und löscht ihn (idempotent).
