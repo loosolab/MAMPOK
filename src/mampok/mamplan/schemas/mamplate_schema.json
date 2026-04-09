@@ -116,8 +116,11 @@
           "properties": {
             "paths": {
               "type": "array",
-              "description": "Container paths to sync to s3://bucket/container_data/ (e.g. '/app/.cellxgene/annotations/').",
-              "items": { "type": "string" },
+              "description": "Container paths to sync to s3://bucket/container_data/ (e.g. '/app/.cellxgene/annotations/'). Must be absolute paths (start with '/').",
+              "items": {
+                "type": "string",
+                "pattern": "^/"
+              },
               "minItems": 1
             },
             "restore_on_deploy": {

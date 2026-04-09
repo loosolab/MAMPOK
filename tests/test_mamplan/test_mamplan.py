@@ -557,6 +557,23 @@ class TestMamplate:
         assert mamplate.data["image"] == original_image
         assert mamplate.data["containertype"] == "maincontainer"
 
+    # --- container_data ---
+
+    def test_container_data_absolute_path_valid(self, mamplate_data):
+        mamplate_data["container_data"] = {"paths": ["/app/annotation_dir/"]}
+        mt = Mamplate(mamplate_data)
+        assert mt.data["container_data"]["paths"] == ["/app/annotation_dir/"]
+
+    def test_container_data_relative_path_raises(self, mamplate_data):
+        mamplate_data["container_data"] = {"paths": ["./annotation_dir/"]}
+        with pytest.raises(jsonschema.ValidationError):
+            Mamplate(mamplate_data)
+
+    def test_container_data_relative_path_without_dot_raises(self, mamplate_data):
+        mamplate_data["container_data"] = {"paths": ["annotation_dir/"]}
+        with pytest.raises(jsonschema.ValidationError):
+            Mamplate(mamplate_data)
+
 
 class TestMamplanIsExpired:
     """Tests für Mamplan.is_expired Property."""
