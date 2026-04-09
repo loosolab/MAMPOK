@@ -124,18 +124,19 @@ class Mampok:
         # S3 bucket
         bucket_existed = self.s3.bucket_exists()
         self.s3.create_bucket()
+        self.s3.set_lifecycle_policy()
         step = {"stage": "s3_bucket", "status": "exists" if bucket_existed else "created"}
         logger.debug("step: %s", step)
         yield step
 
-        # S3 upload per file
+        # S3 upload per file — stored under analysis_data/ prefix
         mamplan_dir = self.mamplan.source_path.parent if self.mamplan.source_path else Path.cwd()
         files = self.mamplan.data["project"].get("files", [])
         for file_path in files:
             local = Path(file_path)
             if not local.is_absolute():
                 local = mamplan_dir / local
-            key = local.name
+            key = f"analysis_data/{local.name}"
             if not self.s3.compare_size(key, local):
                 self.s3.upload(local, key)
             step = {"stage": "s3_upload", "status": "done", "file": key}
@@ -144,6 +145,13 @@ class Mampok:
         step = {"stage": "s3_upload", "status": "complete", "total_files": len(files)}
         logger.debug("step: %s", step)
         yield step
+
+        # Container data sync setup
+        container_data = cfg.container_data_paths
+        if container_data:
+            step = {"stage": "s3_sync_setup", "status": "done", "paths": container_data}
+            logger.debug("step: %s", step)
+            yield step
 
         # K8s deploy
         s3_credentials = {
@@ -332,6 +340,14 @@ class Mampok:
             path_segment = base
         url = f"https://{cluster_cfg.host}/{cluster_cfg.namespace}/{path_segment}/{tool}/" if cluster_cfg.host else ""
 
+        container_data = main.get("container_data", {})
+        container_data_paths = container_data.get("paths", [])
+        container_data_restore = bool(container_data.get("restore_on_deploy", False))
+        container_data_sync_interval = int(container_data.get("sync_interval_seconds", 300))
+        container_data_termination_grace_period = int(
+            container_data.get("termination_grace_period_seconds", 3600)
+        )
+
         return DeploymentConfig(
             project_id=project_id,
             tool=tool,
@@ -365,6 +381,10 @@ class Mampok:
             proxy_port=auth_proxy.proxy_port if auth_proxy else 8080,
             auth_annotations=auth_proxy.auth_annotations if auth_proxy else {},
             image_pull_secrets=auth_proxy.image_pull_secrets if auth_proxy else [],
+            container_data_paths=container_data_paths,
+            container_data_restore=container_data_restore,
+            container_data_sync_interval=container_data_sync_interval,
+            container_data_termination_grace_period=container_data_termination_grace_period,
         )
 
 

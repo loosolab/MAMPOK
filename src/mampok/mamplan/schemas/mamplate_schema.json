@@ -108,10 +108,36 @@
             }
           }
         },
-        "downloadpaths": {
+        "container_data": {
           "type": "object",
-          "description": "Mapping of local labels to container paths for data extraction (label: container_path).",
-          "additionalProperties": { "type": "string" }
+          "description": "Configuration for persisting container-generated files to S3 (e.g. annotations, outputs).",
+          "required": ["paths"],
+          "additionalProperties": false,
+          "properties": {
+            "paths": {
+              "type": "array",
+              "description": "Container paths to sync to s3://bucket/container_data/ (e.g. '/app/.cellxgene/annotations/').",
+              "items": { "type": "string" },
+              "minItems": 1
+            },
+            "restore_on_deploy": {
+              "type": "boolean",
+              "description": "If true, container_data/ from S3 is downloaded back into the container on deploy (round-trip).",
+              "default": false
+            },
+            "sync_interval_seconds": {
+              "type": "integer",
+              "description": "How often the sidecar syncs container paths to S3 (in seconds).",
+              "default": 300,
+              "minimum": 30
+            },
+            "termination_grace_period_seconds": {
+              "type": "integer",
+              "description": "Pod terminationGracePeriodSeconds — time for the final preStop sync. Pod stops earlier if sync completes sooner.",
+              "default": 3600,
+              "minimum": 30
+            }
+          }
         },
         "readinessProbe": {
           "type": "object",

@@ -237,3 +237,16 @@ class TestS3DeleteBucket:
 
         mock_client.delete_object.assert_not_called()
         mock_client.delete_bucket.assert_not_called()
+
+
+class TestS3SetLifecyclePolicy:
+    def test_puts_lifecycle_configuration(self, s3: S3, mock_client: MagicMock) -> None:
+        s3.set_lifecycle_policy()
+
+        mock_client.put_bucket_lifecycle_configuration.assert_called_once()
+        call_kwargs = mock_client.put_bucket_lifecycle_configuration.call_args[1]
+        assert call_kwargs["Bucket"] == "test-bucket"
+        rules = call_kwargs["LifecycleConfiguration"]["Rules"]
+        assert len(rules) == 1
+        assert rules[0]["Status"] == "Enabled"
+        assert rules[0]["AbortIncompleteMultipartUpload"]["DaysAfterInitiation"] == 7

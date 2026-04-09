@@ -725,3 +725,141 @@ class TestBuildIngressWithAuth:
         annotations = manifest["metadata"]["annotations"]
         assert "nginx.ingress.kubernetes.io/auth-type" not in annotations
         assert annotations["kubernetes.io/ingress.class"] == "nginx"
+
+
+# ---------------------------------------------------------------------------
+# Container Data — Sidecar, emptyDir Volumes, terminationGracePeriodSeconds
+# ---------------------------------------------------------------------------
+
+
+class TestBuildDeploymentContainerData:
+    """Tests für container_data Sidecar-Sync-Feature."""
+
+    def test_sidecar_added_when_container_data_paths_set(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            container_data_paths=["/app/.cellxgene/annotations/"],
+            bucket="my-bucket",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        containers = dep["spec"]["template"]["spec"]["containers"]
+        sidecar_names = [c["name"] for c in containers]
+        assert "mampok-s3-sync" in sidecar_names
+
+    def test_no_sidecar_without_container_data_paths(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config()
+        dep = builder.build_deployment(cfg)
+        containers = dep["spec"]["template"]["spec"]["containers"]
+        assert all(c["name"] != "mampok-s3-sync" for c in containers)
+
+    def test_emptydir_volume_created_for_each_path(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            container_data_paths=["/app/annotations/", "/app/results/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        volumes = dep["spec"]["template"]["spec"]["volumes"]
+        vol_names = [v["name"] for v in volumes]
+        assert "mampok-sync-app-annotations" in vol_names
+        assert "mampok-sync-app-results" in vol_names
+
+    def test_main_container_mounts_at_native_path(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        main = dep["spec"]["template"]["spec"]["containers"][0]
+        mounts = {m["mountPath"]: m["name"] for m in main.get("volumeMounts", [])}
+        assert "/app/annotations" in mounts
+        assert mounts["/app/annotations"] == "mampok-sync-app-annotations"
+
+    def test_sidecar_mounts_at_sync_subpath(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
+        mounts = {m["mountPath"]: m["name"] for m in sidecar.get("volumeMounts", [])}
+        assert "/sync/app-annotations" in mounts
+
+    def test_sidecar_has_prestop_hook(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
+        assert "lifecycle" in sidecar
+        assert "preStop" in sidecar["lifecycle"]
+        assert "exec" in sidecar["lifecycle"]["preStop"]
+
+    def test_termination_grace_period_set_on_pod_spec(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            container_data_termination_grace_period=1800,
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        pod_spec = dep["spec"]["template"]["spec"]
+        assert pod_spec["terminationGracePeriodSeconds"] == 1800
+
+    def test_no_termination_grace_period_without_container_data(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config()
+        dep = builder.build_deployment(cfg)
+        assert "terminationGracePeriodSeconds" not in dep["spec"]["template"]["spec"]
+
+    def test_restore_init_container_added_when_restore_on_deploy(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            include_s3download=True,
+            container_data_paths=["/app/annotations/"],
+            container_data_restore=True,
+            bucket="my-bucket",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        init_containers = dep["spec"]["template"]["spec"]["initContainers"]
+        init_names = [ic["name"] for ic in init_containers]
+        assert "init-container-restore" in init_names
+
+    def test_no_restore_init_container_without_restore_flag(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            include_s3download=True,
+            container_data_paths=["/app/annotations/"],
+            container_data_restore=False,
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        init_containers = dep["spec"]["template"]["spec"]["initContainers"]
+        init_names = [ic["name"] for ic in init_containers]
+        assert "init-container-restore" not in init_names
+
+    def test_sidecar_sync_interval_env_var(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            container_data_sync_interval=120,
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
+        env = {e["name"]: e.get("value") for e in sidecar["env"]}
+        assert env["MAMPOK_SYNC_INTERVAL"] == "120"

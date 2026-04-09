@@ -133,6 +133,18 @@ class DeploymentConfig:
     """If True, inject AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_ENDPOINT_URL
     from the project secret into the main container."""
 
+    container_data_paths: list[str] = field(default_factory=list)
+    """Container paths to sync to s3://bucket/container_data/ (e.g. '/app/.cellxgene/annotations/')."""
+
+    container_data_restore: bool = False
+    """If True, download container_data/ from S3 back into the container on deploy (round-trip)."""
+
+    container_data_sync_interval: int = 300
+    """Sidecar sync interval in seconds."""
+
+    container_data_termination_grace_period: int = 3600
+    """Pod terminationGracePeriodSeconds — time for the final preStop sync."""
+
     def __post_init__(self) -> None:
         if self.auth and self.proxy_port in self.ports:
             raise ValueError(

@@ -151,6 +151,27 @@ class S3:
             logger.debug("create_bucket: %s", self.bucket)
             self.client.create_bucket(Bucket=self.bucket)
 
+    def set_lifecycle_policy(self) -> None:
+        """Setzt eine Lifecycle-Rule zum Abbruch unvollständiger Multipart-Uploads nach 7 Tagen.
+
+        Verhindert unbeabsichtigte Storage-Kosten durch unterbrochene Uploads
+        (z.B. wenn der preStop-Sync per SIGKILL abgebrochen wurde).
+        Kompatibel mit AWS S3 und MinIO self-hosted.
+        """
+        logger.debug("set_lifecycle_policy: %s", self.bucket)
+        self.client.put_bucket_lifecycle_configuration(
+            Bucket=self.bucket,
+            LifecycleConfiguration={
+                "Rules": [
+                    {
+                        "ID": "abort-incomplete-multipart",
+                        "Status": "Enabled",
+                        "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 7},
+                    }
+                ]
+            },
+        )
+
     def delete_bucket(self) -> None:
         """Leert den Bucket und löscht ihn (idempotent).
 

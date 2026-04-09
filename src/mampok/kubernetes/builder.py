@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 from urllib.parse import urlparse
 
 from mampok.kubernetes.config import DeploymentConfig
@@ -14,15 +15,21 @@ logger = logging.getLogger(__name__)
 _S3DOWNLOAD_IMAGE = "amazon/aws-cli"
 _S3DOWNLOAD_COMMAND = ["/bin/sh", "-c"]
 _S3DOWNLOAD_ARGS = [
-    "aws --endpoint-url $(s3endpoint) s3 cp s3://$(s3bucket)/ /DOWNLOADS3/ --recursive"
+    "aws --endpoint-url $(s3endpoint) s3 cp s3://$(s3bucket)/analysis_data/ /analysis_data/ --recursive"
 ]
 _S3DOWNLOAD_RESOURCES = {
     "limits": {"cpu": "1", "memory": "1Gi"},
     "requests": {"cpu": "0.5", "memory": "0.5Gi"},
 }
 _FILEDIR_VOLUME_NAME = "filedir"
-_FILEDIR_MOUNT_PATH = "/DOWNLOADS3"
-_MAMPOK_FIELDS = {"tool", "containertype", "downloadpaths", "volume"}
+_FILEDIR_MOUNT_PATH = "/analysis_data"
+_MAMPOK_FIELDS = {"tool", "containertype", "container_data", "volume"}
+_S3SYNC_IMAGE = "amazon/aws-cli"
+_S3SYNC_SIDECAR_NAME = "mampok-s3-sync"
+_S3SYNC_RESOURCES = {
+    "limits": {"cpu": "200m", "memory": "256Mi"},
+    "requests": {"cpu": "50m", "memory": "64Mi"},
+}
 
 
 class ManifestBuilder:
@@ -122,7 +129,51 @@ class ManifestBuilder:
 
         init_containers = []
 
+        # --- emptyDir volumes for container_data paths ---
+        # Mount at native app path in main container, at /sync/<subpath>/ in sidecar
+        sync_volume_mounts_main = []
+        sync_volume_mounts_sidecar = []
+        for cpath in cfg.container_data_paths:
+            vol_name = _sync_volume_name(cpath)
+            subpath = _sync_sidecar_subpath(cpath)
+            sync_volume_mounts_main.append({"name": vol_name, "mountPath": cpath.rstrip("/")})
+            sync_volume_mounts_sidecar.append({"name": vol_name, "mountPath": f"/sync/{subpath}"})
+            pod_spec.setdefault("volumes", []).append({"name": vol_name, "emptyDir": {}})
+
+        if sync_volume_mounts_main:
+            container.setdefault("volumeMounts", []).extend(sync_volume_mounts_main)
+
         if cfg.include_s3download:
+            s3_download_volume_mounts = [{"name": _FILEDIR_VOLUME_NAME, "mountPath": _FILEDIR_MOUNT_PATH}]
+            if cfg.container_data_restore and cfg.container_data_paths:
+                # Restore init container mounts all sync volumes at native paths too
+                restore_mounts = [
+                    {"name": _sync_volume_name(p), "mountPath": p.rstrip("/")}
+                    for p in cfg.container_data_paths
+                ]
+                restore_cmd_parts = " && ".join(
+                    f"aws --endpoint-url $(s3endpoint) s3 cp "
+                    f"s3://$(s3bucket)/container_data/{_sync_sidecar_subpath(p)}/ {p.rstrip('/')}/ "
+                    f"--recursive || true"
+                    for p in cfg.container_data_paths
+                )
+                init_containers.append({
+                    "name": "init-container-restore",
+                    "image": _S3DOWNLOAD_IMAGE,
+                    "command": _S3DOWNLOAD_COMMAND,
+                    "args": [restore_cmd_parts],
+                    "env": [
+                        {"name": "AWS_ACCESS_KEY_ID",
+                         "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_key"}}},
+                        {"name": "AWS_SECRET_ACCESS_KEY",
+                         "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_secret"}}},
+                        {"name": "s3endpoint", "value": cfg.endpoint},
+                        {"name": "s3bucket", "value": cfg.bucket},
+                    ],
+                    "resources": _S3DOWNLOAD_RESOURCES,
+                    "volumeMounts": restore_mounts,
+                })
+
             init_containers.append({
                 "name": "init-container",
                 "image": _S3DOWNLOAD_IMAGE,
@@ -137,7 +188,7 @@ class ManifestBuilder:
                     {"name": "s3bucket", "value": cfg.bucket},
                 ],
                 "resources": _S3DOWNLOAD_RESOURCES,
-                "volumeMounts": [{"name": _FILEDIR_VOLUME_NAME, "mountPath": _FILEDIR_MOUNT_PATH}],
+                "volumeMounts": s3_download_volume_mounts,
             })
             filedir_vol = {"name": _FILEDIR_VOLUME_NAME, "emptyDir": {}}
             if not any(v.get("name") == _FILEDIR_VOLUME_NAME for v in pod_spec.get("volumes", [])):
@@ -207,6 +258,44 @@ class ManifestBuilder:
 
             if cfg.image_pull_secrets:
                 pod_spec["imagePullSecrets"] = [{"name": s} for s in cfg.image_pull_secrets]
+
+        # --- S3 sync sidecar (appended after auth container setup) ---
+        if cfg.container_data_paths:
+            sync_cmd = (
+                "while true; do "
+                "aws s3 sync /sync/ s3://$s3bucket/container_data/ "
+                "--endpoint-url $s3endpoint --only-show-errors; "
+                "sleep $MAMPOK_SYNC_INTERVAL; "
+                "done"
+            )
+            prestop_cmd = (
+                "aws s3 sync /sync/ s3://$s3bucket/container_data/ "
+                "--endpoint-url $s3endpoint --only-show-errors"
+            )
+            sidecar: dict = {
+                "name": _S3SYNC_SIDECAR_NAME,
+                "image": _S3SYNC_IMAGE,
+                "command": ["/bin/sh", "-c"],
+                "args": [sync_cmd],
+                "lifecycle": {
+                    "preStop": {
+                        "exec": {"command": ["/bin/sh", "-c", prestop_cmd]}
+                    }
+                },
+                "env": [
+                    {"name": "AWS_ACCESS_KEY_ID",
+                     "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_key"}}},
+                    {"name": "AWS_SECRET_ACCESS_KEY",
+                     "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_secret"}}},
+                    {"name": "s3endpoint", "value": cfg.endpoint},
+                    {"name": "s3bucket", "value": cfg.bucket},
+                    {"name": "MAMPOK_SYNC_INTERVAL", "value": str(cfg.container_data_sync_interval)},
+                ],
+                "resources": _S3SYNC_RESOURCES,
+                "volumeMounts": sync_volume_mounts_sidecar,
+            }
+            pod_spec["containers"].append(sidecar)
+            pod_spec["terminationGracePeriodSeconds"] = cfg.container_data_termination_grace_period
 
         return {
             "apiVersion": "apps/v1",
@@ -355,6 +444,32 @@ class ManifestBuilder:
         logger.debug("build_all: built %d manifests: %s", len(result), [m.get("kind") for m in result])
         logger.debug("build_all: manifests=%s", result)
         return result
+
+
+def _sync_volume_name(container_path: str) -> str:
+    """Generate a K8s-safe emptyDir volume name from a container path.
+
+    Examples:
+        '/app/.cellxgene/annotations/' → 'mampok-sync-app-cellxgene-annotations'
+        '/app/results/'                → 'mampok-sync-app-results'
+    """
+    clean = container_path.strip("/ ")
+    clean = re.sub(r"[^a-z0-9]+", "-", clean.lower()).strip("-")
+    return f"mampok-sync-{clean}"[:63]
+
+
+def _sync_sidecar_subpath(container_path: str) -> str:
+    """Generate the sidecar mount subdirectory name from a container path.
+
+    This is the subdirectory under /sync/ where the sidecar mounts the volume,
+    which also becomes the S3 key prefix under container_data/.
+
+    Examples:
+        '/app/.cellxgene/annotations/' → 'app-cellxgene-annotations'
+        '/app/results/'                → 'app-results'
+    """
+    clean = container_path.strip("/ ")
+    return re.sub(r"[^a-z0-9]+", "-", clean.lower()).strip("-")
 
 
 def _has_capture_group_rewrite(annotations: dict) -> bool:

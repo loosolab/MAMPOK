@@ -794,48 +794,6 @@ class CLI:
 
         run_with_error_tolerance(mamplans, _update, throw_error=throw_error)
 
-    # I14
-    def download(
-        self,
-        mamplan_path: Path,
-        output: Path,
-        throw_error: bool = False,
-    ) -> None:
-        """Download output files from S3 to local filesystem.
-
-        Uses ``downloadpaths`` from the Mamplate to determine which S3 keys
-        to download. Each entry maps a local label to the file's base name
-        in the S3 bucket.
-
-        Args:
-            mamplan_path: Path to a single Mamplan file.
-            output: Local output directory.
-            throw_error: If True, disable error tolerance.
-        """
-        output = Path(output)
-        output.mkdir(parents=True, exist_ok=True)
-
-        mamplans, mamplates = self._load(mamplan_path)
-        config = self.config
-
-        def _download(mamplan: Mamplan) -> None:
-            mampok = create_mampok_instance(config, mamplan, mamplates)
-            merged = mamplan.merge_container_config(mampok.mamplate)
-            downloadpaths: dict[str, str] = merged["main"].get("downloadpaths", {})
-            if not downloadpaths:
-                typer.echo(
-                    f"[WARNING] No downloadpaths defined for "
-                    f"{mamplan.data['project']['project_id']}"
-                )
-                return
-            for label, container_path in downloadpaths.items():
-                s3_key = Path(container_path).name
-                local_file = output / label
-                mampok.s3.download_to_local(s3_key, local_file)
-                typer.echo(f"Downloaded: {s3_key} → {local_file}")
-
-        run_with_error_tolerance(mamplans, _download, throw_error=throw_error)
-
 
 # ---------------------------------------------------------------------------
 # Lifetime parsing helper
@@ -1188,14 +1146,3 @@ def update_auth(
     CLI(cfg).update_auth(mamplan, throw_error=throw_error)
 
 
-@app.command()
-def download(
-    mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
-    output: Annotated[Path, typer.Argument(help="Local output directory.")],
-    config: Annotated[Path, _OPT_CONFIG],
-    throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
-) -> None:
-    """Download output files from S3 to local filesystem."""
-    logger.info("download: mamplan=%s, output=%s, config=%s, throw_error=%s", mamplan, output, config, throw_error)
-    cfg = MampokConfig.from_file(config.expanduser())
-    CLI(cfg).download(mamplan, output, throw_error=throw_error)

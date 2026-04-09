@@ -209,6 +209,18 @@ class TestDeploy:
         list(mampok.deploy(mock_config))
         mock_s3.create_bucket.assert_called_once()
 
+    def test_sets_lifecycle_policy(self, mampok, mock_config, mock_s3):
+        mampok.mamplan.auth = False
+        list(mampok.deploy(mock_config))
+        mock_s3.set_lifecycle_policy.assert_called_once()
+
+    def test_compare_size_uses_analysis_data_prefix(self, mampok, mock_config, mock_s3):
+        mampok.mamplan.auth = False
+        mampok.mamplan.data["project"]["files"] = ["/data/file.h5"]
+        mock_s3.compare_size.return_value = True
+        list(mampok.deploy(mock_config))
+        mock_s3.compare_size.assert_called_once_with("analysis_data/file.h5", Path("/data/file.h5"))
+
     def test_skips_upload_when_compare_size_true(self, mampok, mock_config, mock_s3):
         mampok.mamplan.data["project"]["files"] = ["/data/file.h5"]
         mock_s3.compare_size.return_value = True
@@ -219,7 +231,7 @@ class TestDeploy:
         mampok.mamplan.data["project"]["files"] = ["/data/file.h5"]
         mock_s3.compare_size.return_value = False
         list(mampok.deploy(mock_config))
-        mock_s3.upload.assert_called_once_with(Path("/data/file.h5"), "file.h5")
+        mock_s3.upload.assert_called_once_with(Path("/data/file.h5"), "analysis_data/file.h5")
 
     def test_uploads_multiple_files(self, mampok, mock_config, mock_s3):
         mampok.mamplan.data["project"]["files"] = ["/data/a.h5", "/data/b.csv"]

@@ -410,55 +410,6 @@ class TestAPIProjectInfo:
 
 
 # ---------------------------------------------------------------------------
-# TestAPICopyResults
-# ---------------------------------------------------------------------------
-
-
-class TestAPICopyResults:
-    """Tests für API.copy_results()."""
-
-    def test_calls_s3_copy_for_each_downloadpath(self, patched_api, tmp_path):
-        api, mamplan, mampok = patched_api
-        mamplan_file = tmp_path / "test-proj-mamplan.json"
-        mamplan_file.touch()
-        mamplan.merge_container_config.return_value = {
-            "main": {
-                "downloadpaths": {
-                    "result.h5": "/output/result.h5",
-                    "log.txt": "/output/log.txt",
-                }
-            }
-        }
-
-        api.copy_results(mamplan_file, dest_bucket="archive-bucket")
-
-        assert mampok.s3.copy.call_count == 2
-
-    def test_uses_dest_prefix(self, patched_api, tmp_path):
-        api, mamplan, mampok = patched_api
-        mamplan_file = tmp_path / "test-proj-mamplan.json"
-        mamplan_file.touch()
-        mamplan.merge_container_config.return_value = {
-            "main": {"downloadpaths": {"result.h5": "/output/result.h5"}}
-        }
-
-        api.copy_results(mamplan_file, dest_bucket="archive-bucket", dest_prefix="proj/")
-
-        call_args = mampok.s3.copy.call_args[0]
-        assert call_args[3] == "proj/result.h5"
-
-    def test_no_copy_when_no_downloadpaths(self, patched_api, tmp_path):
-        api, mamplan, mampok = patched_api
-        mamplan_file = tmp_path / "test-proj-mamplan.json"
-        mamplan_file.touch()
-        mamplan.merge_container_config.return_value = {"main": {}}
-
-        api.copy_results(mamplan_file, dest_bucket="archive-bucket")
-
-        mampok.s3.copy.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
 # TestAPICreateMamplan
 # ---------------------------------------------------------------------------
 

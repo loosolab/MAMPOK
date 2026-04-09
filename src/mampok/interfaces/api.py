@@ -485,35 +485,4 @@ class API:
         sh.write(Path(output))
         return project_id
 
-    def copy_results(
-        self,
-        mamplan_path: Path,
-        dest_bucket: str,
-        dest_prefix: str = "",
-    ) -> None:
-        """Copy result files from the project S3 bucket to another bucket (S3→S3).
-
-        The list of files to copy is taken from the ``downloadpaths`` field in
-        the Mamplate/Mamplan container config. No local storage is used.
-
-        Args:
-            mamplan_path: Path to the Mamplan file.
-            dest_bucket: Name of the destination S3 bucket.
-            dest_prefix: Optional key prefix in the destination bucket.
-
-        Raises:
-            FileNotFoundError: If mamplan_path does not exist.
-            IsADirectoryError: If mamplan_path is a directory.
-            KeyError: If the tool has no matching Mamplate.
-        """
-        mamplan, mamplates, config = self._load(mamplan_path)
-        mampok = create_mampok_instance(config, mamplan, mamplates)
-        merged = mamplan.merge_container_config(mampok.mamplate)
-        downloadpaths: dict[str, str] = merged["main"].get("downloadpaths", {})
-        src_bucket = mampok.s3.bucket
-        for label, container_path in downloadpaths.items():
-            src_key = Path(container_path).name
-            dest_key = f"{dest_prefix}{label}" if dest_prefix else label
-            mampok.s3.copy(src_bucket, src_key, dest_bucket, dest_key)
-
 
