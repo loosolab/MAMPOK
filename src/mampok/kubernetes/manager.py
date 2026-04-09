@@ -216,23 +216,26 @@ class DeploymentManager:
     def _check_and_yield_pod_warning(
         self,
         cfg: DeploymentConfig,
-        warned_reasons: set,
+        last_restart_counts: dict,
         fail_fast_reasons: set,
         threshold: int,
     ) -> Iterator[dict]:
-        """Diagnose pod failure and yield a k8s_pod_warning step if a failure is detected.
+        """Diagnose pod failure and yield a k8s_pod_warning step if restart_count increased.
 
-        Calls _diagnose_pod_failure() and yields a warning step on the first occurrence
-        of each failure reason. Raises TimeoutError immediately on fatal conditions.
+        Calls _diagnose_pod_failure() and yields a new warning step whenever restart_count
+        exceeds the previously seen count for that reason. This produces one step per crash
+        cycle (rc=1, rc=2, rc=3, ...) so the user sees the count incrementing in the UI.
+        Raises TimeoutError immediately on fatal conditions.
 
         Args:
             cfg: Deployment configuration.
-            warned_reasons: Mutable set tracking already-warned reasons (shared across calls).
+            last_restart_counts: Mutable dict mapping reason → highest restart_count seen
+                                  (shared across calls, updated in place).
             fail_fast_reasons: Set of reason strings that are always fatal (e.g. ImagePullBackOff).
             threshold: restart_count at or above which OOM/Crash failures become fatal.
 
         Yields:
-            {"stage": "k8s_pod_warning", ...} on first occurrence of each failure reason.
+            {"stage": "k8s_pod_warning", ...} whenever restart_count increases for a reason.
 
         Raises:
             TimeoutError: On fatal failure condition.
@@ -243,13 +246,12 @@ class DeploymentManager:
 
         if reason not in ("Timeout", "Unknown"):
             is_fatal = reason in fail_fast_reasons or restart_count >= threshold
-            # Track (reason, is_fatal) so the fatal transition always gets its own step,
-            # even if the same reason was previously warned as non-fatal.
-            warned_key = (reason, is_fatal)
-            if warned_key not in warned_reasons:
-                warned_reasons.add(warned_key)
-                logger.warning("Pod warning for %s: %s (fatal=%s)",
-                               cfg.project_id, reason, is_fatal)
+            # Emit a step whenever restart_count increased since last check.
+            # This produces one warning per crash cycle (rc=1, rc=2, rc=3, ...).
+            if restart_count > last_restart_counts.get(reason, -1):
+                last_restart_counts[reason] = restart_count
+                logger.warning("Pod warning for %s: %s rc=%d (fatal=%s)",
+                               cfg.project_id, reason, restart_count, is_fatal)
                 yield {
                     "stage": "k8s_pod_warning",
                     "reason": reason,
@@ -302,7 +304,7 @@ class DeploymentManager:
         _POLL_INTERVAL = 10
 
         apps_v1 = kubernetes.client.AppsV1Api(api_client=self._kube._api_client)
-        warned_reasons: set[str] = set()
+        last_restart_counts: dict[str, int] = {}
         deadline = time.monotonic() + timeout
 
         logger.debug("wait_for_ready: deployment=%s, replicas=%s, timeout=%s",
@@ -331,14 +333,14 @@ class DeploymentManager:
 
                 # On-event pod diagnosis
                 yield from self._check_and_yield_pod_warning(
-                    cfg, warned_reasons, _FAIL_FAST_REASONS, _FAIL_FAST_RESTART_THRESHOLD
+                    cfg, last_restart_counts, _FAIL_FAST_REASONS, _FAIL_FAST_RESTART_THRESHOLD
                 )
 
             # Poll interval elapsed without Watch events — proactively check pod state.
             # This catches CrashLoopBackOff during back-off periods, when the Deployment's
             # ready_replicas stays None and no Watch events are fired by Kubernetes.
             yield from self._check_and_yield_pod_warning(
-                cfg, warned_reasons, _FAIL_FAST_REASONS, _FAIL_FAST_RESTART_THRESHOLD
+                cfg, last_restart_counts, _FAIL_FAST_REASONS, _FAIL_FAST_RESTART_THRESHOLD
             )
 
         # Total timeout reached
