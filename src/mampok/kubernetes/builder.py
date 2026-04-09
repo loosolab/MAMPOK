@@ -262,10 +262,12 @@ class ManifestBuilder:
         # --- S3 sync sidecar (appended after auth container setup) ---
         if cfg.container_data_paths:
             sync_cmd = (
+                "trap 'exit 0' TERM INT; "
                 "while true; do "
                 "aws s3 sync /sync/ s3://$s3bucket/container_data/ "
                 "--endpoint-url $s3endpoint --only-show-errors; "
-                "sleep $MAMPOK_SYNC_INTERVAL; "
+                "sleep $MAMPOK_SYNC_INTERVAL & "
+                "wait $!; "
                 "done"
             )
             prestop_cmd = (

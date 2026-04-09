@@ -863,3 +863,29 @@ class TestBuildDeploymentContainerData:
         sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
         env = {e["name"]: e.get("value") for e in sidecar["env"]}
         assert env["MAMPOK_SYNC_INTERVAL"] == "120"
+
+    def test_sidecar_sync_cmd_has_sigterm_trap(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
+        sync_script = sidecar["args"][0]
+        assert "trap 'exit 0' TERM INT" in sync_script
+
+    def test_sidecar_sync_cmd_uses_background_sleep(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
+        sync_script = sidecar["args"][0]
+        # sleep runs in background so SIGTERM trap fires during sleep phase
+        assert "sleep $MAMPOK_SYNC_INTERVAL &" in sync_script
+        assert "wait $!" in sync_script
