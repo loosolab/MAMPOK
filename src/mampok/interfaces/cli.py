@@ -474,7 +474,13 @@ def _confirm_mamplans(
     for m in mamplans:
         project_id = m.data["project"]["project_id"]
         cluster = m.data["deployment"]["cluster"]
-        typer.echo(f"  - {project_id} (Cluster: {cluster})")
+        owner = m.data.get("service", {}).get("owner", "")
+        url = m.data["deployment"].get("url", "")
+        path_str = str(m.source_path) if m.source_path else "(unbekannt)"
+        typer.echo(f"  - {project_id} (Cluster: {cluster}, Owner: {owner})")
+        typer.echo(f"    Pfad: {path_str}")
+        if url:
+            typer.echo(f"    URL:  {url}")
     if yes:
         return True
     confirmed = typer.confirm("Fortfahren?")
