@@ -266,6 +266,35 @@ class DeploymentManager:
                     f"{reason}: {diagnosis['message']}"
                 )
 
+    def _get_pod_phase(self, cfg: DeploymentConfig) -> str | None:
+        """Query pod status to determine the current startup phase.
+
+        Returns:
+            "init_containers" if any init container is currently running,
+            "starting" if init containers completed but readiness probe not yet passed,
+            None if phase cannot be determined or pods are already ready.
+        """
+        import kubernetes.client
+
+        v1 = kubernetes.client.CoreV1Api(api_client=self._kube._api_client)
+        try:
+            pods = v1.list_namespaced_pod(
+                namespace=cfg.namespace,
+                label_selector=f"app={cfg.app_label}",
+            )
+        except Exception as e:
+            logger.debug("Could not get pod phase for %s: %s", cfg.project_id, e)
+            return None
+
+        for pod in pods.items:
+            for cs in (pod.status.init_container_statuses or []):
+                if cs.state and cs.state.running is not None:
+                    return "init_containers"
+            for cs in (pod.status.container_statuses or []):
+                if cs.state and cs.state.running is not None and not cs.ready:
+                    return "starting"
+        return None
+
     def wait_for_ready(self, cfg: DeploymentConfig, timeout: int = 900) -> Iterator[dict]:
         """Wait until all replicas are ready via the Kubernetes Watch API.
 
@@ -305,6 +334,7 @@ class DeploymentManager:
 
         apps_v1 = kubernetes.client.AppsV1Api(api_client=self._kube._api_client)
         last_restart_counts: dict[str, int] = {}
+        last_ready: int = -1  # sentinel: -1 = not yet reported; triggers yield on first event
         deadline = time.monotonic() + timeout
 
         logger.debug("wait_for_ready: deployment=%s, replicas=%s, timeout=%s",
@@ -321,15 +351,17 @@ class DeploymentManager:
                 timeout_seconds=poll_seconds,
             ):
                 status = event["object"].status
-                if status is not None and status.ready_replicas is not None:
-                    logger.debug("ready_replicas=%s/%s", status.ready_replicas, cfg.replicas)
-                    yield {
-                        "stage": "k8s_ready",
-                        "status": "running",
-                        "ready_replicas": status.ready_replicas,
-                    }
-                    if status.ready_replicas >= cfg.replicas:
-                        return
+                ready = status.ready_replicas if (status and status.ready_replicas is not None) else 0
+                if ready != last_ready:
+                    logger.debug("ready_replicas=%s/%s (was %s)", ready, cfg.replicas, last_ready)
+                    phase = self._get_pod_phase(cfg) if ready == 0 else None
+                    step: dict = {"stage": "k8s_ready", "status": "running", "ready_replicas": ready}
+                    if phase:
+                        step["phase"] = phase
+                    yield step
+                    last_ready = ready
+                if ready >= cfg.replicas:
+                    return
 
                 # On-event pod diagnosis
                 yield from self._check_and_yield_pod_warning(
