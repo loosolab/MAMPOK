@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import textwrap
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Callable, Optional
@@ -471,39 +472,42 @@ def _confirm_mamplans(
     if not mamplans:
         return True
 
-    rows = []
-    for m in mamplans:
-        rows.append({
-            "project_id": m.data["project"]["project_id"],
-            "cluster": m.data["deployment"]["cluster"],
-            "owner": m.data.get("service", {}).get("owner", ""),
-            "url": m.data["deployment"].get("url", ""),
-            "path": str(m.source_path) if m.source_path else "",
-        })
-
-    col_id = max(max(len(r["project_id"]) for r in rows), len("Project ID"))
-    col_cluster = max(max(len(r["cluster"]) for r in rows), len("Cluster"))
-    col_owner = max(max(len(r["owner"]) for r in rows), len("Owner"))
-    col_url = max(max(len(r["url"]) for r in rows), len("URL"))
+    _W_ID, _W_CLUSTER, _W_OWNER, _W_URL, _W_PATH = 20, 12, 12, 48, 40
 
     header = (
-        f"{'Project ID':<{col_id}}  "
-        f"{'Cluster':<{col_cluster}}  "
-        f"{'Owner':<{col_owner}}  "
-        f"{'URL':<{col_url}}  "
-        f"Pfad"
+        f"  {'Project ID':<{_W_ID}}  {'Cluster':<{_W_CLUSTER}}  "
+        f"{'Owner':<{_W_OWNER}}  {'URL':<{_W_URL}}  Pfad"
     )
+    separator = "  " + "-" * (len(header) - 2)
+
     typer.echo(f"\nDie folgenden {len(mamplans)} Mamplan(s) werden {action}:")
     typer.echo(header)
-    typer.echo("-" * len(header))
-    for r in rows:
-        typer.echo(
-            f"{r['project_id']:<{col_id}}  "
-            f"{r['cluster']:<{col_cluster}}  "
-            f"{r['owner']:<{col_owner}}  "
-            f"{r['url']:<{col_url}}  "
-            f"{r['path']}"
-        )
+    typer.echo(separator)
+
+    for m in mamplans:
+        project_id = m.data["project"]["project_id"]
+        cluster = m.data["deployment"]["cluster"]
+        owner = m.data.get("service", {}).get("owner", "")
+        url = m.data["deployment"].get("url", "")
+        path_str = str(m.source_path) if m.source_path else ""
+
+        url_lines = textwrap.wrap(url, _W_URL) or [""]
+        path_lines = textwrap.wrap(path_str, _W_PATH) or [""]
+        n_lines = max(len(url_lines), len(path_lines))
+
+        for i in range(n_lines):
+            if i == 0:
+                id_col = f"{project_id:<{_W_ID}}"
+                cluster_col = f"{cluster:<{_W_CLUSTER}}"
+                owner_col = f"{owner:<{_W_OWNER}}"
+            else:
+                id_col = " " * _W_ID
+                cluster_col = " " * _W_CLUSTER
+                owner_col = " " * _W_OWNER
+            url_col = (url_lines[i] if i < len(url_lines) else "")
+            path_col = (path_lines[i] if i < len(path_lines) else "")
+            typer.echo(f"  {id_col}  {cluster_col}  {owner_col}  {url_col:<{_W_URL}}  {path_col}")
+
     typer.echo("")
 
     if yes:
