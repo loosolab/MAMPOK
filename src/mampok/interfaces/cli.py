@@ -449,6 +449,41 @@ def _derive_users(mamplan: Mamplan) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# I5b — Interactive Confirmation
+# ---------------------------------------------------------------------------
+
+
+def _confirm_mamplans(
+    mamplans: list[Mamplan],
+    action: str,
+    yes: bool = False,
+) -> bool:
+    """Zeigt betroffene Mamplans und fragt nach Bestätigung.
+
+    Args:
+        mamplans: Betroffene Mamplans.
+        action: Beschreibung der Aktion (z. B. 'deployed', 'gestoppt').
+        yes: Wenn True, wird der Prompt übersprungen.
+
+    Returns:
+        True wenn bestätigt oder yes=True, sonst False.
+    """
+    if not mamplans:
+        return True
+    typer.echo(f"Die folgenden {len(mamplans)} Mamplan(s) werden {action}:")
+    for m in mamplans:
+        project_id = m.data["project"]["project_id"]
+        cluster = m.data["deployment"]["cluster"]
+        typer.echo(f"  - {project_id} (Cluster: {cluster})")
+    if yes:
+        return True
+    confirmed = typer.confirm("Fortfahren?")
+    if not confirmed:
+        typer.echo("Abgebrochen.")
+    return confirmed
+
+
+# ---------------------------------------------------------------------------
 # CLI class (I6–I14)
 # ---------------------------------------------------------------------------
 
@@ -495,6 +530,7 @@ class CLI:
         dry_run: bool = False,
         throw_error: bool = False,
         no_cleanup: bool = False,
+        yes: bool = False,
     ) -> None:
         """Deploy one or more projects to Kubernetes.
 
@@ -506,6 +542,7 @@ class CLI:
             dry_run: If True, print manifests without deploying.
             throw_error: If True, disable error tolerance.
             no_cleanup: If True, skip automatic K8s cleanup on failure.
+            yes: If True, skip confirmation prompt.
         """
         mamplans, mamplates = self._load(mamplan_path)
         mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
@@ -515,6 +552,9 @@ class CLI:
                 mampok = create_mampok_instance(self.config, mamplan, mamplates)
                 cfg = mampok._build_deployment_config(self.config)
                 typer.echo(f"[DRY-RUN] {cfg.project_id}: would deploy to cluster '{cfg.namespace}', url='{cfg.url}'")
+            return
+
+        if not _confirm_mamplans(mamplans, "deployed", yes):
             return
 
         config = self.config
@@ -538,6 +578,7 @@ class CLI:
         selection: list[str] | None = None,
         regex_selection: list[str] | None = None,
         throw_error: bool = False,
+        yes: bool = False,
     ) -> None:
         """Stop one or more deployments (removes K8s resources, S3 remains).
 
@@ -546,9 +587,14 @@ class CLI:
             selection: Key-value selection filters.
             regex_selection: Regex selection filters.
             throw_error: If True, disable error tolerance.
+            yes: If True, skip confirmation prompt.
         """
         mamplans, mamplates = self._load(mamplan_path)
         mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
+
+        if not _confirm_mamplans(mamplans, "gestoppt", yes):
+            return
+
         config = self.config
 
         def _stop(mamplan: Mamplan) -> None:
@@ -580,15 +626,8 @@ class CLI:
             typer.echo("No expired deployments found.")
             return
 
-        typer.echo(f"Found {len(expired)} expired deployment(s):")
-        for m in expired:
-            typer.echo(f"  - {m.data['project']['project_id']}")
-
-        if not yes:
-            confirmed = typer.confirm("Stop all expired deployments?")
-            if not confirmed:
-                typer.echo("Aborted.")
-                return
+        if not _confirm_mamplans(expired, "gestoppt (abgelaufen)", yes):
+            return
 
         mamplates = load_mamplates(self.config.mamplates_path)
         config = self.config
@@ -635,6 +674,7 @@ class CLI:
         regex_selection: list[str] | None = None,
         timeout: int = 300,
         throw_error: bool = False,
+        yes: bool = False,
     ) -> None:
         """Stop and redeploy one or more projects.
 
@@ -644,9 +684,14 @@ class CLI:
             regex_selection: Regex selection filters.
             timeout: Wait-for-ready timeout in seconds.
             throw_error: If True, disable error tolerance.
+            yes: If True, skip confirmation prompt.
         """
         mamplans, mamplates = self._load(mamplan_path)
         mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
+
+        if not _confirm_mamplans(mamplans, "redeployed (stop + deploy)", yes):
+            return
+
         config = self.config
 
         def _redeploy(mamplan: Mamplan) -> None:
@@ -667,6 +712,7 @@ class CLI:
         redeploy: bool = False,
         timeout: int = 300,
         throw_error: bool = False,
+        yes: bool = False,
     ) -> None:
         """Edit Mamplan fields and optionally redeploy.
 
@@ -676,9 +722,28 @@ class CLI:
             redeploy: If True, redeploy after editing.
             timeout: Wait-for-ready timeout (used when redeploy=True).
             throw_error: If True, disable error tolerance.
+            yes: If True, skip confirmation prompt.
         """
         mamplan = Mamplan.read_in(mamplan_path)
         expanded_fields = _expand_relative_lifetime(fields or [], mamplan)
+
+        typer.echo(f"Mamplan: {mamplan.data['project']['project_id']}")
+        typer.echo("Geplante Änderungen:")
+        for token in expanded_fields:
+            parts = token.split(":", 2)
+            if len(parts) == 3:
+                section, key, new_value = parts
+                old_value = mamplan.data.get(section, {}).get(key, "(nicht gesetzt)")
+                typer.echo(f"  {section}.{key}: {old_value!r} → {new_value!r}")
+        if redeploy:
+            typer.echo("  (wird nach der Änderung redeployed)")
+
+        if not yes:
+            confirmed = typer.confirm("Fortfahren?")
+            if not confirmed:
+                typer.echo("Abgebrochen.")
+                return
+
         kwargs = _parse_edit_args(expanded_fields)
         mamplan.edit(**kwargs)
         mamplan.write(mamplan_path)
@@ -770,6 +835,7 @@ class CLI:
         self,
         mamplan_path: Path,
         throw_error: bool = False,
+        yes: bool = False,
     ) -> None:
         """Update the auth secret for one or more projects.
 
@@ -779,8 +845,13 @@ class CLI:
         Args:
             mamplan_path: Path to Mamplan file or directory.
             throw_error: If True, disable error tolerance.
+            yes: If True, skip confirmation prompt.
         """
         mamplans, mamplates = self._load(mamplan_path)
+
+        if not _confirm_mamplans(mamplans, "auth-aktualisiert", yes):
+            return
+
         config = self.config
 
         def _update(mamplan: Mamplan) -> None:
@@ -908,11 +979,12 @@ def deploy(
     dry_run: Annotated[bool, _OPT_DRY_RUN] = False,
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
     no_cleanup: Annotated[bool, _OPT_NO_CLEANUP] = False,
+    yes: Annotated[bool, _OPT_YES] = False,
 ) -> None:
     """Deploy a project to Kubernetes."""
     logger.info(
-        "deploy: mamplan=%s, config=%s, selection=%s, regex_selection=%s, timeout=%s, dry_run=%s, throw_error=%s, no_cleanup=%s",
-        mamplan, config, selection, regex_selection, timeout, dry_run, throw_error, no_cleanup,
+        "deploy: mamplan=%s, config=%s, selection=%s, regex_selection=%s, timeout=%s, dry_run=%s, throw_error=%s, no_cleanup=%s, yes=%s",
+        mamplan, config, selection, regex_selection, timeout, dry_run, throw_error, no_cleanup, yes,
     )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).deploy(
@@ -923,6 +995,7 @@ def deploy(
         dry_run=dry_run,
         throw_error=throw_error,
         no_cleanup=no_cleanup,
+        yes=yes,
     )
 
 
@@ -933,11 +1006,12 @@ def stop(
     selection: Annotated[list[str], _OPT_SELECTION] = [],
     regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
+    yes: Annotated[bool, _OPT_YES] = False,
 ) -> None:
     """Stop a deployment (removes K8s resources, S3 remains)."""
     logger.info(
-        "stop: mamplan=%s, config=%s, selection=%s, regex_selection=%s, throw_error=%s",
-        mamplan, config, selection, regex_selection, throw_error,
+        "stop: mamplan=%s, config=%s, selection=%s, regex_selection=%s, throw_error=%s, yes=%s",
+        mamplan, config, selection, regex_selection, throw_error, yes,
     )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).stop(
@@ -945,6 +1019,7 @@ def stop(
         selection=selection,
         regex_selection=regex_selection,
         throw_error=throw_error,
+        yes=yes,
     )
 
 
@@ -981,11 +1056,12 @@ def redeploy(
     regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
     timeout: Annotated[int, _OPT_TIMEOUT] = 300,
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
+    yes: Annotated[bool, _OPT_YES] = False,
 ) -> None:
     """Stop and redeploy a project."""
     logger.info(
-        "redeploy: mamplan=%s, config=%s, selection=%s, regex_selection=%s, timeout=%s, throw_error=%s",
-        mamplan, config, selection, regex_selection, timeout, throw_error,
+        "redeploy: mamplan=%s, config=%s, selection=%s, regex_selection=%s, timeout=%s, throw_error=%s, yes=%s",
+        mamplan, config, selection, regex_selection, timeout, throw_error, yes,
     )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).redeploy(
@@ -994,6 +1070,7 @@ def redeploy(
         regex_selection=regex_selection,
         timeout=timeout,
         throw_error=throw_error,
+        yes=yes,
     )
 
 
@@ -1011,11 +1088,12 @@ def edit_mamplan(
     ] = False,
     timeout: Annotated[int, _OPT_TIMEOUT] = 300,
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
+    yes: Annotated[bool, _OPT_YES] = False,
 ) -> None:
     """Edit mamplan fields and optionally redeploy."""
     logger.info(
-        "edit-mamplan: mamplan=%s, config=%s, fields=%s, redeploy=%s, timeout=%s, throw_error=%s",
-        mamplan, config, fields, redeploy_after, timeout, throw_error,
+        "edit-mamplan: mamplan=%s, config=%s, fields=%s, redeploy=%s, timeout=%s, throw_error=%s, yes=%s",
+        mamplan, config, fields, redeploy_after, timeout, throw_error, yes,
     )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).edit_mamplan(
@@ -1024,6 +1102,7 @@ def edit_mamplan(
         redeploy=redeploy_after,
         timeout=timeout,
         throw_error=throw_error,
+        yes=yes,
     )
 
 
@@ -1139,10 +1218,11 @@ def update_auth(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
     config: Annotated[Path, _OPT_CONFIG],
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
+    yes: Annotated[bool, _OPT_YES] = False,
 ) -> None:
     """Update the auth secret for a project."""
-    logger.info("update-auth: mamplan=%s, config=%s, throw_error=%s", mamplan, config, throw_error)
+    logger.info("update-auth: mamplan=%s, config=%s, throw_error=%s, yes=%s", mamplan, config, throw_error, yes)
     cfg = MampokConfig.from_file(config.expanduser())
-    CLI(cfg).update_auth(mamplan, throw_error=throw_error)
+    CLI(cfg).update_auth(mamplan, throw_error=throw_error, yes=yes)
 
 
