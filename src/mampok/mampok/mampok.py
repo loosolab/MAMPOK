@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import secrets
 import string
 from datetime import datetime, timedelta, timezone
@@ -132,11 +133,13 @@ class Mampok:
         # S3 upload per file — stored under analysis_data/ prefix
         mamplan_dir = self.mamplan.source_path.parent if self.mamplan.source_path else Path.cwd()
         files = self.mamplan.data["project"].get("files", [])
+        total_size_bytes = 0
         for file_path in files:
             local = Path(file_path)
             if not local.is_absolute():
                 local = mamplan_dir / local
             key = f"analysis_data/{local.name}"
+            total_size_bytes += os.path.getsize(local)
             if not self.s3.compare_size(key, local):
                 self.s3.upload(local, key)
             step = {"stage": "s3_upload", "status": "done", "file": key}
@@ -185,6 +188,7 @@ class Mampok:
             deployment__status=True,
             deployment__url=cfg.url,
             deployment__lifetime=new_lifetime.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            project__project_size=total_size_bytes // 1024,
         )
         step = {"stage": "done", "selfservice": {"url": cfg.url, "token_url": token_url, "project_id": project_id, "auth": cfg.auth}}
         logger.debug("step: %s", step)
