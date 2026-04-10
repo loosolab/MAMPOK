@@ -470,20 +470,45 @@ def _confirm_mamplans(
     """
     if not mamplans:
         return True
-    typer.echo(f"Die folgenden {len(mamplans)} Mamplan(s) werden {action}:")
+
+    rows = []
     for m in mamplans:
-        project_id = m.data["project"]["project_id"]
-        cluster = m.data["deployment"]["cluster"]
-        owner = m.data.get("service", {}).get("owner", "")
-        url = m.data["deployment"].get("url", "")
-        path_str = str(m.source_path) if m.source_path else "(unbekannt)"
-        typer.echo(f"  - {project_id} (Cluster: {cluster}, Owner: {owner})")
-        typer.echo(f"    Pfad: {path_str}")
-        if url:
-            typer.echo(f"    URL:  {url}")
+        rows.append({
+            "project_id": m.data["project"]["project_id"],
+            "cluster": m.data["deployment"]["cluster"],
+            "owner": m.data.get("service", {}).get("owner", ""),
+            "url": m.data["deployment"].get("url", ""),
+            "path": str(m.source_path) if m.source_path else "",
+        })
+
+    col_id = max(max(len(r["project_id"]) for r in rows), len("Project ID"))
+    col_cluster = max(max(len(r["cluster"]) for r in rows), len("Cluster"))
+    col_owner = max(max(len(r["owner"]) for r in rows), len("Owner"))
+    col_url = max(max(len(r["url"]) for r in rows), len("URL"))
+
+    header = (
+        f"{'Project ID':<{col_id}}  "
+        f"{'Cluster':<{col_cluster}}  "
+        f"{'Owner':<{col_owner}}  "
+        f"{'URL':<{col_url}}  "
+        f"Pfad"
+    )
+    typer.echo(f"\nDie folgenden {len(mamplans)} Mamplan(s) werden {action}:")
+    typer.echo(header)
+    typer.echo("-" * len(header))
+    for r in rows:
+        typer.echo(
+            f"{r['project_id']:<{col_id}}  "
+            f"{r['cluster']:<{col_cluster}}  "
+            f"{r['owner']:<{col_owner}}  "
+            f"{r['url']:<{col_url}}  "
+            f"{r['path']}"
+        )
+    typer.echo("")
+
     if yes:
         return True
-    confirmed = typer.confirm("Fortfahren?")
+    confirmed = typer.confirm(f"Fortfahren?")
     if not confirmed:
         typer.echo("Abgebrochen.")
     return confirmed
