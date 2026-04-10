@@ -628,6 +628,26 @@ class TestBuildDeploymentWithAuth:
         gk = manifest["spec"]["template"]["spec"]["containers"][0]
         assert gk["volumeMounts"][0]["mountPath"] == "/custom/path"
 
+    def test_gatekeeper_has_prestop_hook(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_deployment(cfg)
+        gk = manifest["spec"]["template"]["spec"]["containers"][0]
+        assert gk["name"] == "gatekeeper"
+        assert "lifecycle" in gk
+        assert "preStop" in gk["lifecycle"]
+        assert "exec" in gk["lifecycle"]["preStop"]
+
+    def test_gatekeeper_prestop_command_kills_pid1(self, make_auth_config):
+        builder = ManifestBuilder()
+        cfg = make_auth_config()
+        manifest = builder.build_deployment(cfg)
+        gk = manifest["spec"]["template"]["spec"]["containers"][0]
+        cmd = gk["lifecycle"]["preStop"]["exec"]["command"]
+        script = " ".join(cmd)
+        assert "kill -TERM 1" in script
+        assert "kill -9 1" in script
+
 
 # ---------------------------------------------------------------------------
 # Gatekeeper — build_service
@@ -889,3 +909,39 @@ class TestBuildDeploymentContainerData:
         # sleep runs in background so SIGTERM trap fires during sleep phase
         assert "sleep $MAMPOK_SYNC_INTERVAL &" in sync_script
         assert "wait $!" in sync_script
+
+    def test_main_container_has_prestop_when_container_data(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        main = dep["spec"]["template"]["spec"]["containers"][0]
+        assert main["name"] == "main-container"
+        assert "lifecycle" in main
+        assert "preStop" in main["lifecycle"]
+        assert "exec" in main["lifecycle"]["preStop"]
+
+    def test_main_container_prestop_command_kills_pid1(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        main = dep["spec"]["template"]["spec"]["containers"][0]
+        cmd = main["lifecycle"]["preStop"]["exec"]["command"]
+        script = " ".join(cmd)
+        assert "kill -TERM 1" in script
+        assert "kill -9 1" in script
+
+    def test_main_container_no_prestop_without_container_data(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config()
+        dep = builder.build_deployment(cfg)
+        main = dep["spec"]["template"]["spec"]["containers"][0]
+        assert main["name"] == "main-container"
+        assert "lifecycle" not in main

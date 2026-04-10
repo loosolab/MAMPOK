@@ -142,6 +142,18 @@ class ManifestBuilder:
 
         if sync_volume_mounts_main:
             container.setdefault("volumeMounts", []).extend(sync_volume_mounts_main)
+            # Ensure the main container terminates promptly on mampok stop.
+            # Without this, a container that ignores SIGTERM would block pod termination
+            # for the full terminationGracePeriodSeconds (3600s). The preStop sends SIGTERM
+            # first (giving the app a short window for graceful shutdown), then SIGKILL.
+            # Data safety: any in-memory state not yet flushed to the emptyDir volume would
+            # be lost regardless, because the sidecar's final S3 sync runs in parallel with
+            # SIGTERM — not after it.
+            container["lifecycle"] = {
+                "preStop": {
+                    "exec": {"command": ["/bin/sh", "-c", "kill -TERM 1; sleep 5; kill -9 1 2>/dev/null || true"]}
+                }
+            }
 
         if cfg.include_s3download:
             s3_download_volume_mounts = [{"name": _FILEDIR_VOLUME_NAME, "mountPath": _FILEDIR_MOUNT_PATH}]
@@ -247,6 +259,11 @@ class ManifestBuilder:
                 "volumeMounts": [
                     {"name": auth_volume_name, "mountPath": cfg.auth_config_mount_path}
                 ],
+                "lifecycle": {
+                    "preStop": {
+                        "exec": {"command": ["/bin/sh", "-c", "kill -TERM 1; sleep 3; kill -9 1 2>/dev/null || true"]}
+                    }
+                },
             }
 
             pod_spec["containers"] = [gatekeeper, container]
