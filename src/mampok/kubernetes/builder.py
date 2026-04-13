@@ -12,7 +12,7 @@ from mampok.kubernetes.config import DeploymentConfig
 
 logger = logging.getLogger(__name__)
 
-_S3DOWNLOAD_IMAGE = "amazon/aws-cli"
+_S3DOWNLOAD_IMAGE = "amazon/aws-cli:2"
 _S3DOWNLOAD_COMMAND = ["/bin/sh", "-c"]
 _S3DOWNLOAD_ARGS = [
     "aws --endpoint-url $(s3endpoint) s3 cp s3://$(s3bucket)/analysis_data/ /analysis_data/ --recursive"
@@ -24,7 +24,7 @@ _S3DOWNLOAD_RESOURCES = {
 _FILEDIR_VOLUME_NAME = "filedir"
 _FILEDIR_MOUNT_PATH = "/analysis_data"
 _MAMPOK_FIELDS = {"tool", "containertype", "container_data", "volume"}
-_S3SYNC_IMAGE = "amazon/aws-cli"
+_S3SYNC_IMAGE = "amazon/aws-cli:2"
 _S3SYNC_SIDECAR_NAME = "mampok-s3-sync"
 _S3SYNC_RESOURCES = {
     "limits": {"cpu": "200m", "memory": "256Mi"},
@@ -142,18 +142,6 @@ class ManifestBuilder:
 
         if sync_volume_mounts_main:
             container.setdefault("volumeMounts", []).extend(sync_volume_mounts_main)
-            # Ensure the main container terminates promptly on mampok stop.
-            # Without this, a container that ignores SIGTERM would block pod termination
-            # for the full terminationGracePeriodSeconds (3600s). The preStop sends SIGTERM
-            # first (giving the app a short window for graceful shutdown), then SIGKILL.
-            # Data safety: any in-memory state not yet flushed to the emptyDir volume would
-            # be lost regardless, because the sidecar's final S3 sync runs in parallel with
-            # SIGTERM — not after it.
-            container["lifecycle"] = {
-                "preStop": {
-                    "exec": {"command": ["/bin/sh", "-c", "kill -TERM 1; sleep 5; kill -9 1 2>/dev/null || true"]}
-                }
-            }
 
         if cfg.include_s3download:
             s3_download_volume_mounts = [{"name": _FILEDIR_VOLUME_NAME, "mountPath": _FILEDIR_MOUNT_PATH}]
@@ -259,11 +247,6 @@ class ManifestBuilder:
                 "volumeMounts": [
                     {"name": auth_volume_name, "mountPath": cfg.auth_config_mount_path}
                 ],
-                "lifecycle": {
-                    "preStop": {
-                        "exec": {"command": ["/bin/sh", "-c", "kill -TERM 1; sleep 3; kill -9 1 2>/dev/null || true"]}
-                    }
-                },
             }
 
             pod_spec["containers"] = [gatekeeper, container]
@@ -287,20 +270,11 @@ class ManifestBuilder:
                 "wait $!; "
                 "done"
             )
-            prestop_cmd = (
-                "aws s3 sync /sync/ s3://$s3bucket/container_data/ "
-                "--endpoint-url $s3endpoint --only-show-errors"
-            )
             sidecar: dict = {
                 "name": _S3SYNC_SIDECAR_NAME,
                 "image": _S3SYNC_IMAGE,
                 "command": ["/bin/sh", "-c"],
                 "args": [sync_cmd],
-                "lifecycle": {
-                    "preStop": {
-                        "exec": {"command": ["/bin/sh", "-c", prestop_cmd]}
-                    }
-                },
                 "env": [
                     {"name": "AWS_ACCESS_KEY_ID",
                      "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_key"}}},
@@ -314,7 +288,6 @@ class ManifestBuilder:
                 "volumeMounts": sync_volume_mounts_sidecar,
             }
             pod_spec["containers"].append(sidecar)
-            pod_spec["terminationGracePeriodSeconds"] = cfg.container_data_termination_grace_period
 
         return {
             "apiVersion": "apps/v1",

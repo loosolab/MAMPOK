@@ -54,7 +54,7 @@ class TestDelete:
         mgr = DeploymentManager(kube)
         cfg = make_config()
 
-        mgr.delete(cfg)
+        list(mgr.delete(cfg))
 
         assert kube.delete.call_count == 5
         calls = kube.delete.call_args_list
@@ -72,7 +72,7 @@ class TestDelete:
         cfg = make_config()
 
         with pytest.raises(RuntimeError):
-            mgr.delete(cfg)
+            list(mgr.delete(cfg))
 
         assert kube.delete.call_count == 5
 
@@ -84,7 +84,7 @@ class TestDelete:
         cfg = make_config()
 
         with pytest.raises(RuntimeError, match="2 resource"):
-            mgr.delete(cfg)
+            list(mgr.delete(cfg))
 
     def test_no_raise_when_all_succeed(self, make_config):
         """No exception when all deletes succeed."""
@@ -297,3 +297,96 @@ class TestWaitForReady:
 
         call_kwargs = mock_watch.stream.call_args[1]
         assert call_kwargs["timeout_seconds"] == 120
+
+
+# ---------------------------------------------------------------------------
+# TestFinalSyncBeforeDelete
+# ---------------------------------------------------------------------------
+
+
+class TestFinalSyncBeforeDelete:
+    """Tests for the pre-delete S3 sync in DeploymentManager.delete()."""
+
+    def test_delete_yields_sync_and_delete_events(self, make_config):
+        """When container_data_paths is set, delete() yields s3_final_sync + k8s_delete events."""
+        kube = MagicMock()
+        kube.list_running_pods.return_value = ["mypod-abc123"]
+        kube.exec_in_pod.return_value = ""
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+
+        events = list(DeploymentManager(kube).delete(cfg))
+
+        stages = [e["stage"] for e in events]
+        assert "s3_final_sync" in stages
+        assert "k8s_delete" in stages
+
+        sync_done = next(e for e in events if e["stage"] == "s3_final_sync" and e["status"] == "done")
+        assert sync_done["pod"] == "mypod-abc123"
+
+        assert "aws s3 sync" in " ".join(kube.exec_in_pod.call_args.kwargs["command"])
+        assert kube.exec_in_pod.call_args.kwargs["container"] == "mampok-s3-sync"
+
+    def test_delete_skips_sync_without_container_data(self, make_config):
+        """delete() must NOT exec when container_data_paths is empty."""
+        kube = MagicMock()
+        events = list(DeploymentManager(kube).delete(make_config()))
+
+        kube.exec_in_pod.assert_not_called()
+        kube.list_running_pods.assert_not_called()
+        assert all(e["stage"] == "k8s_delete" for e in events)
+
+    def test_delete_yields_skipped_when_no_running_pod(self, make_config):
+        """delete() yields s3_final_sync/skipped and still deletes K8s resources."""
+        kube = MagicMock()
+        kube.list_running_pods.return_value = []
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+
+        events = list(DeploymentManager(kube).delete(cfg))
+
+        skipped = next(e for e in events if e["stage"] == "s3_final_sync")
+        assert skipped["status"] == "skipped"
+        assert skipped["reason"] == "no_running_pod"
+        kube.exec_in_pod.assert_not_called()
+        kube.delete.assert_called()
+
+    def test_delete_yields_failed_on_exec_error(self, make_config):
+        """delete() yields s3_final_sync/failed and still deletes K8s resources."""
+        kube = MagicMock()
+        kube.list_running_pods.return_value = ["mypod"]
+        kube.exec_in_pod.side_effect = Exception("connection timeout")
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+
+        events = list(DeploymentManager(kube).delete(cfg))
+
+        failed = next(e for e in events if e["stage"] == "s3_final_sync")
+        assert failed["status"] == "failed"
+        assert "connection timeout" in failed["reason"]
+        kube.delete.assert_called()
+
+    def test_delete_uses_sync_timeout_from_config(self, make_config):
+        """exec_in_pod timeout must come from container_data_sync_timeout, not grace period."""
+        kube = MagicMock()
+        kube.list_running_pods.return_value = ["mypod"]
+        kube.exec_in_pod.return_value = ""
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+            container_data_sync_timeout=120,
+        )
+
+        list(DeploymentManager(kube).delete(cfg))
+
+        assert kube.exec_in_pod.call_args.kwargs["timeout"] == 120

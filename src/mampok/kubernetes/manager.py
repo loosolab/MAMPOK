@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timezone
 from typing import Iterator
 
-from mampok.kubernetes.builder import ManifestBuilder
+from mampok.kubernetes.builder import ManifestBuilder, _S3SYNC_SIDECAR_NAME
 from mampok.kubernetes.client import KubeClient
 from mampok.kubernetes.config import DeploymentConfig
 from mampok.kubernetes.validator import ManifestValidationError, ManifestValidator
@@ -58,21 +58,32 @@ class DeploymentManager:
             self._kube.apply(manifest)
             yield {"stage": "k8s_apply", "status": "done", "resource": f"{kind}/{name}"}
 
-    def delete(self, cfg: DeploymentConfig) -> None:
+    def delete(self, cfg: DeploymentConfig) -> Iterator[dict]:
         """Delete all Kubernetes resources of a deployment.
 
-        Order: Deployment -> Service -> Ingress -> Secret -> Auth-Secret.
-        All resources are attempted even if earlier deletions fail.
+        Yields progress dicts analogous to deploy(). Caller must iterate to drive execution.
+        When container_data_paths is configured, a final S3 sync is performed first
+        (best-effort — never blocks deletion even on failure or timeout).
+
+        Order: (optional S3 sync) -> Deployment -> Service -> Ingress -> Secret -> Auth-Secret.
+        All K8s resources are attempted even if earlier deletions fail.
         Non-existing resources are silently ignored (idempotent via KubeClient.delete).
 
         Args:
             cfg: Deployment configuration.
 
+        Yields:
+            {"stage": "s3_final_sync", "status": "starting"|"done"|"skipped"|"failed", ...}
+            {"stage": "k8s_delete", "status": "done", "resource": "Kind/name"}
+
         Raises:
-            RuntimeError: If one or more resources could not be deleted,
-                          listing all failures in the message.
+            RuntimeError: If one or more K8s resources could not be deleted.
         """
         logger.debug("delete: project_id=%s", cfg.project_id)
+
+        if cfg.container_data_paths:
+            yield from self._final_sync_before_delete(cfg)
+
         resources = [
             ("Deployment", cfg.deployment_name),
             ("Service", cfg.service_name),
@@ -85,6 +96,7 @@ class DeploymentManager:
             try:
                 logger.debug("deleting %s/%s", kind, name)
                 self._kube.delete(kind, name)
+                yield {"stage": "k8s_delete", "status": "done", "resource": f"{kind}/{name}"}
             except Exception as exc:
                 logger.warning("failed to delete %s/%s: %s", kind, name, exc)
                 failures.append((kind, name, exc))
@@ -93,6 +105,51 @@ class DeploymentManager:
             raise RuntimeError(
                 f"Failed to delete {len(failures)} resource(s) for '{cfg.project_id}': {details}"
             )
+
+    def _final_sync_before_delete(self, cfg: DeploymentConfig) -> Iterator[dict]:
+        """Exec a final S3 sync in the mampok-s3-sync sidecar before pod deletion.
+
+        Best-effort: always yields a status event and never raises. Deletion proceeds
+        regardless of whether the sync succeeded, was skipped, or timed out.
+
+        Yields:
+            {"stage": "s3_final_sync", "status": "starting", "pod": pod_name}
+            {"stage": "s3_final_sync", "status": "done",     "pod": pod_name}
+            {"stage": "s3_final_sync", "status": "skipped",  "reason": str}
+            {"stage": "s3_final_sync", "status": "failed",   "reason": str}
+        """
+        try:
+            pod_names = self._kube.list_running_pods(f"app={cfg.app_label}")
+        except Exception as e:
+            logger.warning("final_sync: pod list failed for %s: %s", cfg.project_id, e)
+            yield {"stage": "s3_final_sync", "status": "skipped", "reason": "pod_list_failed"}
+            return
+
+        if not pod_names:
+            logger.warning("final_sync: no running pod for %s", cfg.project_id)
+            yield {"stage": "s3_final_sync", "status": "skipped", "reason": "no_running_pod"}
+            return
+
+        pod_name = pod_names[0]
+        yield {"stage": "s3_final_sync", "status": "starting", "pod": pod_name}
+        sync_cmd = [
+            "/bin/sh", "-c",
+            "aws s3 sync /sync/ s3://$s3bucket/container_data/ "
+            "--endpoint-url $s3endpoint --only-show-errors",
+        ]
+        try:
+            output = self._kube.exec_in_pod(
+                pod_name=pod_name,
+                container=_S3SYNC_SIDECAR_NAME,
+                command=sync_cmd,
+                timeout=cfg.container_data_sync_timeout,
+            )
+            if output:
+                logger.info("final_sync output: %s", output.strip())
+            yield {"stage": "s3_final_sync", "status": "done", "pod": pod_name}
+        except Exception as e:
+            logger.warning("final_sync: exec failed for %s: %s", cfg.project_id, e)
+            yield {"stage": "s3_final_sync", "status": "failed", "reason": str(e)}
 
     def redeploy(self, cfg: DeploymentConfig, s3_credentials: dict) -> Iterator[dict]:
         """Delete and re-deploy a deployment.
@@ -104,7 +161,7 @@ class DeploymentManager:
         Yields:
             Progress dicts from deploy().
         """
-        self.delete(cfg)
+        yield from self.delete(cfg)
         yield from self.deploy(cfg, s3_credentials)
 
     def rollout_status(self, cfg: DeploymentConfig) -> dict:

@@ -628,25 +628,14 @@ class TestBuildDeploymentWithAuth:
         gk = manifest["spec"]["template"]["spec"]["containers"][0]
         assert gk["volumeMounts"][0]["mountPath"] == "/custom/path"
 
-    def test_gatekeeper_has_prestop_hook(self, make_auth_config):
+    def test_gatekeeper_has_no_lifecycle(self, make_auth_config):
+        """Gatekeeper must NOT have a preStop — termination handled via Mampok exec + SIGKILL."""
         builder = ManifestBuilder()
         cfg = make_auth_config()
         manifest = builder.build_deployment(cfg)
         gk = manifest["spec"]["template"]["spec"]["containers"][0]
         assert gk["name"] == "gatekeeper"
-        assert "lifecycle" in gk
-        assert "preStop" in gk["lifecycle"]
-        assert "exec" in gk["lifecycle"]["preStop"]
-
-    def test_gatekeeper_prestop_command_kills_pid1(self, make_auth_config):
-        builder = ManifestBuilder()
-        cfg = make_auth_config()
-        manifest = builder.build_deployment(cfg)
-        gk = manifest["spec"]["template"]["spec"]["containers"][0]
-        cmd = gk["lifecycle"]["preStop"]["exec"]["command"]
-        script = " ".join(cmd)
-        assert "kill -TERM 1" in script
-        assert "kill -9 1" in script
+        assert "lifecycle" not in gk
 
 
 # ---------------------------------------------------------------------------
@@ -812,7 +801,8 @@ class TestBuildDeploymentContainerData:
         mounts = {m["mountPath"]: m["name"] for m in sidecar.get("volumeMounts", [])}
         assert "/sync/app-annotations" in mounts
 
-    def test_sidecar_has_prestop_hook(self, make_config):
+    def test_sidecar_image_is_pinned(self, make_config):
+        """Sidecar image must be pinned to a major version, not 'latest'."""
         builder = ManifestBuilder()
         cfg = make_config(
             container_data_paths=["/app/annotations/"],
@@ -821,21 +811,8 @@ class TestBuildDeploymentContainerData:
         )
         dep = builder.build_deployment(cfg)
         sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
-        assert "lifecycle" in sidecar
-        assert "preStop" in sidecar["lifecycle"]
-        assert "exec" in sidecar["lifecycle"]["preStop"]
-
-    def test_termination_grace_period_set_on_pod_spec(self, make_config):
-        builder = ManifestBuilder()
-        cfg = make_config(
-            container_data_paths=["/app/annotations/"],
-            container_data_termination_grace_period=1800,
-            bucket="b",
-            endpoint="https://s3.example.com",
-        )
-        dep = builder.build_deployment(cfg)
-        pod_spec = dep["spec"]["template"]["spec"]
-        assert pod_spec["terminationGracePeriodSeconds"] == 1800
+        assert ":" in sidecar["image"]
+        assert sidecar["image"] != "amazon/aws-cli:latest"
 
     def test_no_termination_grace_period_without_container_data(self, make_config):
         builder = ManifestBuilder()
@@ -910,38 +887,41 @@ class TestBuildDeploymentContainerData:
         assert "sleep $MAMPOK_SYNC_INTERVAL &" in sync_script
         assert "wait $!" in sync_script
 
-    def test_main_container_has_prestop_when_container_data(self, make_config):
+    def test_main_container_has_no_lifecycle(self, make_config):
+        """Main container must NOT have preStop — sync is done by Mampok before deletion."""
         builder = ManifestBuilder()
         cfg = make_config(
             container_data_paths=["/app/annotations/"],
             bucket="b",
             endpoint="https://s3.example.com",
         )
-        dep = builder.build_deployment(cfg)
-        main = dep["spec"]["template"]["spec"]["containers"][0]
-        assert main["name"] == "main-container"
-        assert "lifecycle" in main
-        assert "preStop" in main["lifecycle"]
-        assert "exec" in main["lifecycle"]["preStop"]
-
-    def test_main_container_prestop_command_kills_pid1(self, make_config):
-        builder = ManifestBuilder()
-        cfg = make_config(
-            container_data_paths=["/app/annotations/"],
-            bucket="b",
-            endpoint="https://s3.example.com",
-        )
-        dep = builder.build_deployment(cfg)
-        main = dep["spec"]["template"]["spec"]["containers"][0]
-        cmd = main["lifecycle"]["preStop"]["exec"]["command"]
-        script = " ".join(cmd)
-        assert "kill -TERM 1" in script
-        assert "kill -9 1" in script
-
-    def test_main_container_no_prestop_without_container_data(self, make_config):
-        builder = ManifestBuilder()
-        cfg = make_config()
         dep = builder.build_deployment(cfg)
         main = dep["spec"]["template"]["spec"]["containers"][0]
         assert main["name"] == "main-container"
         assert "lifecycle" not in main
+
+    def test_sidecar_has_no_lifecycle(self, make_config):
+        """Sidecar must NOT have a preStop — no final sync hook needed."""
+        builder = ManifestBuilder()
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        sidecar = next(
+            c for c in dep["spec"]["template"]["spec"]["containers"]
+            if c["name"] == "mampok-s3-sync"
+        )
+        assert "lifecycle" not in sidecar
+
+    def test_no_termination_grace_period_override(self, make_config):
+        """terminationGracePeriodSeconds must NOT be set — rely on K8s default (30s)."""
+        builder = ManifestBuilder()
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        spec = builder.build_deployment(cfg)["spec"]["template"]["spec"]
+        assert "terminationGracePeriodSeconds" not in spec

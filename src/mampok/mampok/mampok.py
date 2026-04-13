@@ -194,11 +194,17 @@ class Mampok:
         logger.debug("step: %s", step)
         yield step
 
-    def stop(self, config: MampokConfig) -> None:
+    def stop(self, config: MampokConfig) -> Iterator[dict]:
         """Stoppt das Deployment — entfernt K8s-Ressourcen, S3-Bucket bleibt erhalten.
+
+        Yields progress dicts (analogous to deploy()). Caller must iterate to drive execution.
+        Mamplan status is updated only after the generator is fully consumed.
 
         Args:
             config: Konfiguration mit Cluster-Credentials.
+
+        Yields:
+            Progress dicts from DeploymentManager.delete().
 
         Raises:
             RuntimeError: If K8s resource deletion fails. Mamplan status is NOT
@@ -207,7 +213,7 @@ class Mampok:
         cfg = self._build_deployment_config(config)
         logger.debug("stop: project_id=%s, namespace=%s", cfg.project_id, cfg.namespace)
         try:
-            self.kube.delete(cfg)
+            yield from self.kube.delete(cfg)
         except Exception:
             logger.error("stop failed for '%s' — mamplan status NOT updated", cfg.project_id)
             raise
@@ -348,8 +354,8 @@ class Mampok:
         container_data_paths = container_data.get("paths", [])
         container_data_restore = bool(container_data.get("restore_on_deploy", False))
         container_data_sync_interval = int(container_data.get("sync_interval_seconds", 300))
-        container_data_termination_grace_period = int(
-            container_data.get("termination_grace_period_seconds", 3600)
+        container_data_sync_timeout = int(
+            container_data.get("sync_timeout_seconds", 300)
         )
 
         return DeploymentConfig(
@@ -388,7 +394,7 @@ class Mampok:
             container_data_paths=container_data_paths,
             container_data_restore=container_data_restore,
             container_data_sync_interval=container_data_sync_interval,
-            container_data_termination_grace_period=container_data_termination_grace_period,
+            container_data_sync_timeout=container_data_sync_timeout,
         )
 
 

@@ -143,11 +143,17 @@ class API:
         yield from mampok.deploy(config, timeout=timeout, cleanup=cleanup)
         mamplan.write(mamplan.source_path)
 
-    def stop(self, mamplan_path: Path) -> None:
+    def stop(self, mamplan_path: Path) -> Iterator[dict]:
         """Stop a deployment (removes K8s resources, S3 bucket remains).
+
+        Yields progress dicts from the stop sequence (S3 sync + K8s resource deletion).
+        Caller must iterate to drive execution.
 
         Args:
             mamplan_path: Path to the Mamplan file.
+
+        Yields:
+            Progress dicts from Mampok.stop().
 
         Raises:
             FileNotFoundError: If mamplan_path does not exist.
@@ -155,7 +161,7 @@ class API:
         """
         mamplan, mamplates, config = self._load(mamplan_path)
         mampok = create_mampok_instance(config, mamplan, mamplates)
-        mampok.stop(config)
+        yield from mampok.stop(config)
         mamplan.write(mamplan.source_path)
 
     def redeploy(self, mamplan_path: Path) -> Iterator[dict]:
@@ -176,7 +182,7 @@ class API:
         """
         mamplan, mamplates, config = self._load(mamplan_path)
         mampok = create_mampok_instance(config, mamplan, mamplates)
-        mampok.stop(config)
+        yield from mampok.stop(config)
         yield {
             "stage": "stop",
             "status": "done",

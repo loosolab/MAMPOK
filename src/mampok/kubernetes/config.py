@@ -142,8 +142,9 @@ class DeploymentConfig:
     container_data_sync_interval: int = 300
     """Sidecar sync interval in seconds."""
 
-    container_data_termination_grace_period: int = 3600
-    """Pod terminationGracePeriodSeconds — time for the final preStop sync."""
+    container_data_sync_timeout: int = 300
+    """Timeout in seconds Mampok waits for the pre-delete S3 sync (exec into sidecar).
+    Mampok proceeds with deletion after this timeout even if sync is incomplete."""
 
     def __post_init__(self) -> None:
         if self.auth and self.proxy_port in self.ports:

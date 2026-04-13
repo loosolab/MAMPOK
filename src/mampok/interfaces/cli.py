@@ -634,7 +634,18 @@ class CLI:
 
         def _stop(mamplan: Mamplan) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
-            mampok.stop(config)
+            for event in mampok.stop(config):
+                stage = event.get("stage")
+                status = event.get("status")
+                if stage == "s3_final_sync":
+                    if status == "starting":
+                        typer.echo(f"  syncing S3 data ({event.get('pod')}) ...")
+                    elif status == "done":
+                        typer.echo("  S3 sync complete")
+                    elif status in ("skipped", "failed"):
+                        typer.echo(f"  S3 sync {status}: {event.get('reason', '')}")
+                elif stage == "k8s_delete":
+                    typer.echo(f"  deleted: {event.get('resource')}")
             mamplan.write(mamplan.source_path)
             typer.echo(f"Stopped: {mamplan.data['project']['project_id']}")
 
@@ -669,7 +680,18 @@ class CLI:
 
         def _stop(mamplan: Mamplan) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
-            mampok.stop(config)
+            for event in mampok.stop(config):
+                stage = event.get("stage")
+                status = event.get("status")
+                if stage == "s3_final_sync":
+                    if status == "starting":
+                        typer.echo(f"  syncing S3 data ({event.get('pod')}) ...")
+                    elif status == "done":
+                        typer.echo("  S3 sync complete")
+                    elif status in ("skipped", "failed"):
+                        typer.echo(f"  S3 sync {status}: {event.get('reason', '')}")
+                elif stage == "k8s_delete":
+                    typer.echo(f"  deleted: {event.get('resource')}")
             mamplan.write(mamplan.source_path)
             typer.echo(f"Stopped: {mamplan.data['project']['project_id']}")
 
