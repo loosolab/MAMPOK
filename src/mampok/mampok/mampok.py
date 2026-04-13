@@ -220,10 +220,10 @@ class Mampok:
         self.mamplan.edit(deployment__status=False)
 
     def download(self, output_dir: Path) -> Iterator[dict]:
-        """Lädt alle persistenten S3-Daten in ein lokales Verzeichnis herunter.
+        """Lädt container_data aus dem S3-Bucket in ein lokales Verzeichnis herunter.
 
-        Lädt analysis_data/ und container_data/ aus dem Projekt-Bucket.
-        Lokale Struktur: output_dir/<project_id>/<s3_key>
+        Lädt ausschließlich container_data/ aus dem Projekt-Bucket.
+        Lokale Struktur: output_dir/<project_id>/container_data/...
 
         Args:
             output_dir: Zielverzeichnis. Unterordner <project_id> wird erstellt.
@@ -236,7 +236,7 @@ class Mampok:
         project_id = self.mamplan.data["project"]["project_id"]
         dest = output_dir / project_id
         logger.debug("download: project_id=%s, dest=%s", project_id, dest)
-        keys = self.s3.list_objects()
+        keys = self.s3.list_objects(prefix="container_data/")
         yield {"stage": "s3_download", "status": "starting", "project_id": project_id, "total": len(keys)}
         for key in keys:
             local_path = dest / key
