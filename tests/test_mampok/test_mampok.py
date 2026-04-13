@@ -171,7 +171,8 @@ class TestBuildDeploymentConfig:
         base = "https://bioinformatics-cluster.example.com/mampok-bn/test-proj-"
         assert cfg.url.startswith(base)
         assert cfg.url.endswith("/")
-        suffix = cfg.url[len(base):].rstrip("/")
+        # URL format: base + <5-char suffix> + "/" + tool + "/"
+        suffix = cfg.url[len(base):].split("/")[0]
         assert len(suffix) == 5
         assert suffix.isalnum()
 
@@ -183,7 +184,8 @@ class TestBuildDeploymentConfig:
         base = "https://bioinformatics-cluster.example.com/mampok-bn/my-slug-"
         assert cfg.url.startswith(base)
         assert cfg.url.endswith("/")
-        suffix = cfg.url[len(base):].rstrip("/")
+        # URL format: base + <5-char suffix> + "/" + tool + "/"
+        suffix = cfg.url[len(base):].split("/")[0]
         assert len(suffix) == 5
         assert suffix.isalnum()
 
@@ -215,28 +217,31 @@ class TestDeploy:
         mock_s3.set_lifecycle_policy.assert_called_once()
 
     def test_compare_size_uses_analysis_data_prefix(self, mampok, mock_config, mock_s3):
-        mampok.mamplan.auth = False
         mampok.mamplan.data["project"]["files"] = ["/data/file.h5"]
         mock_s3.compare_size.return_value = True
-        list(mampok.deploy(mock_config))
+        with patch("os.path.getsize", return_value=1024):
+            list(mampok.deploy(mock_config))
         mock_s3.compare_size.assert_called_once_with("analysis_data/file.h5", Path("/data/file.h5"))
 
     def test_skips_upload_when_compare_size_true(self, mampok, mock_config, mock_s3):
         mampok.mamplan.data["project"]["files"] = ["/data/file.h5"]
         mock_s3.compare_size.return_value = True
-        list(mampok.deploy(mock_config))
+        with patch("os.path.getsize", return_value=1024):
+            list(mampok.deploy(mock_config))
         mock_s3.upload.assert_not_called()
 
     def test_uploads_when_compare_size_false(self, mampok, mock_config, mock_s3):
         mampok.mamplan.data["project"]["files"] = ["/data/file.h5"]
         mock_s3.compare_size.return_value = False
-        list(mampok.deploy(mock_config))
+        with patch("os.path.getsize", return_value=1024):
+            list(mampok.deploy(mock_config))
         mock_s3.upload.assert_called_once_with(Path("/data/file.h5"), "analysis_data/file.h5")
 
     def test_uploads_multiple_files(self, mampok, mock_config, mock_s3):
         mampok.mamplan.data["project"]["files"] = ["/data/a.h5", "/data/b.csv"]
         mock_s3.compare_size.return_value = False
-        list(mampok.deploy(mock_config))
+        with patch("os.path.getsize", return_value=1024):
+            list(mampok.deploy(mock_config))
         assert mock_s3.upload.call_count == 2
 
     def test_no_upload_when_no_files(self, mampok, mock_config, mock_s3):
@@ -269,7 +274,8 @@ class TestDeploy:
     def test_no_s3_files_in_credentials(self, mampok, mock_config, mock_kube, mock_s3):
         mampok.mamplan.data["project"]["files"] = ["/data/a.h5", "/data/b.csv"]
         mock_s3.compare_size.return_value = False
-        list(mampok.deploy(mock_config))
+        with patch("os.path.getsize", return_value=1024):
+            list(mampok.deploy(mock_config))
         _, s3_creds = mock_kube.deploy.call_args[0]
         assert "s3_files" not in s3_creds
 
@@ -293,7 +299,8 @@ class TestDeploy:
     def test_yields_s3_upload_per_file(self, mampok, mock_config, mock_s3):
         mampok.mamplan.data["project"]["files"] = ["/data/a.h5", "/data/b.csv"]
         mock_s3.compare_size.return_value = False
-        events = list(mampok.deploy(mock_config))
+        with patch("os.path.getsize", return_value=1024):
+            events = list(mampok.deploy(mock_config))
         upload_events = [e for e in events if e.get("stage") == "s3_upload" and "file" in e]
         assert len(upload_events) == 2
 
@@ -371,11 +378,11 @@ class TestStop:
     """Tests für Mampok.stop."""
 
     def test_calls_kube_delete(self, mampok, mock_config, mock_kube):
-        mampok.stop(mock_config)
+        list(mampok.stop(mock_config))
         mock_kube.delete.assert_called_once()
 
     def test_updates_mamplan_status_false(self, mampok, mock_config):
-        mampok.stop(mock_config)
+        list(mampok.stop(mock_config))
         mampok.mamplan.edit.assert_called_once()
         kwargs = mampok.mamplan.edit.call_args[1]
         assert kwargs["deployment__status"] is False
@@ -395,13 +402,13 @@ class TestStopTransactional:
         mock_kube.delete.side_effect = RuntimeError("K8s unreachable")
 
         with pytest.raises(RuntimeError, match="K8s unreachable"):
-            mampok.stop(mock_config)
+            list(mampok.stop(mock_config))
 
         mampok.mamplan.edit.assert_not_called()
 
     def test_mamplan_updated_when_delete_succeeds(self, mampok, mock_config):
         """Mamplan status is updated to False when K8s delete succeeds."""
-        mampok.stop(mock_config)
+        list(mampok.stop(mock_config))
         kwargs = mampok.mamplan.edit.call_args[1]
         assert kwargs["deployment__status"] is False
 
@@ -410,7 +417,7 @@ class TestStopTransactional:
         mock_kube.delete.side_effect = RuntimeError("network failure")
 
         with pytest.raises(RuntimeError):
-            mampok.stop(mock_config)
+            list(mampok.stop(mock_config))
 
 
 class TestCheckStatus:
@@ -452,37 +459,33 @@ class TestCheckStatus:
 class TestUpdateAuthSecret:
     """Tests für Mampok.update_auth_secret."""
 
-    def test_generates_htpasswd_for_users(self, mampok, mock_config, mock_kube):
+    def _get_auth_proxy_data(self, mock_kube):
+        import base64, json
+        manifest = mock_kube._kube.apply.call_args[0][0]
+        return json.loads(base64.b64decode(manifest["data"]["auth-proxy.json"]).decode())
+
+    def test_includes_users_in_auth_config(self, mampok, mock_config, mock_kube):
         mampok.update_auth_secret(["alice", "bob"], mock_config)
         mock_kube._kube.apply.assert_called_once()
-        manifest = mock_kube._kube.apply.call_args[0][0]
-        import base64
-        htpasswd = base64.b64decode(manifest["data"]["auth"]).decode()
-        assert "alice:" in htpasswd
-        assert "bob:" in htpasswd
+        data = self._get_auth_proxy_data(mock_kube)
+        assert "alice" in data["users"]
+        assert "bob" in data["users"]
 
-    def test_htpasswd_uses_bcrypt_format(self, mampok, mock_config, mock_kube):
+    def test_includes_secret_key_in_auth_config(self, mampok, mock_config, mock_kube):
         mampok.update_auth_secret(["alice"], mock_config)
-        manifest = mock_kube._kube.apply.call_args[0][0]
-        import base64
-        htpasswd = base64.b64decode(manifest["data"]["auth"]).decode()
-        # bcrypt hashes start with $2b$
-        assert "$2b$" in htpasswd
+        data = self._get_auth_proxy_data(mock_kube)
+        assert "secret_key" in data
+        assert len(data["secret_key"]) >= 16
 
     def test_public_user_single_entry(self, mampok, mock_config, mock_kube):
         mampok.update_auth_secret(["public"], mock_config)
-        manifest = mock_kube._kube.apply.call_args[0][0]
-        import base64
-        htpasswd = base64.b64decode(manifest["data"]["auth"]).decode()
-        lines = [l for l in htpasswd.strip().splitlines() if l]
-        assert len(lines) == 1
-        assert lines[0].startswith("public:")
+        data = self._get_auth_proxy_data(mock_kube)
+        assert data["users"] == ["public"]
 
     def test_applies_auth_secret_manifest(self, mampok, mock_config, mock_kube):
         mampok.update_auth_secret(["alice"], mock_config)
         manifest = mock_kube._kube.apply.call_args[0][0]
         assert manifest["kind"] == "Secret"
-        assert manifest["type"] == "kubernetes.io/basic-auth"
 
     def test_secret_name_uses_project_and_tool(self, mampok, mock_config, mock_kube):
         mampok.update_auth_secret(["alice"], mock_config)

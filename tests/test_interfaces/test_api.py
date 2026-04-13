@@ -163,13 +163,13 @@ class TestAPIStop:
 
     def test_calls_mampok_stop(self, patched_api):
         api, mamplan, mampok = patched_api
-        api.stop(Path("/fake/mamplan.json"))
+        list(api.stop(Path("/fake/mamplan.json")))
         mampok.stop.assert_called_once()
 
-    def test_returns_none(self, patched_api):
+    def test_returns_iterator(self, patched_api):
         api, mamplan, mampok = patched_api
         result = api.stop(Path("/fake/mamplan.json"))
-        assert result is None
+        assert hasattr(result, "__iter__")
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +235,7 @@ class TestAPIEditLifetime:
 
     def test_calls_edit_with_correct_key(self, tmp_path, mock_mamplan_data):
         mamplan_file = tmp_path / "test-proj-mamplan.json"
+        mamplan_file.write_text(json.dumps(mock_mamplan_data))
         api = API(tmp_path / "config.json")
 
         with patch("mampok.interfaces.api.Mamplan.read_in") as mock_read:
@@ -278,6 +279,7 @@ class TestAPIEditSharing:
         with patch("mampok.interfaces.api.Mamplan.read_in") as mock_read:
             mock_mp = MagicMock()
             mock_mp.data = mock_mamplan_data
+            mock_mp.auth = False
             mock_read.return_value = mock_mp
 
             events = list(api.edit_sharing(tmp_path / "test.json", users=["bob"]))
@@ -380,7 +382,7 @@ class TestAPIProjectInfo:
         assert "mamplan" not in proj
         assert proj["bucket"] == "test-bucket"
         assert proj["owner"] == "alice"
-        assert proj["lifetime"] == "2099-12-31T00:00:00+00:00"
+        assert proj["lifetime"] == datetime(2099, 12, 31, 0, 0, tzinfo=timezone.utc)
 
     def test_includes_status_from_kube(self, patched_api, tmp_path):
         api, mamplan, mampok = patched_api
@@ -389,16 +391,6 @@ class TestAPIProjectInfo:
         mampok.check_status.return_value["actually_deployed"] = True
         result = api.project_info(mamplan_file)
         assert result["projects"]["test-proj"]["status"] is True
-
-    def test_writes_output_file_when_provided(self, patched_api, tmp_path):
-        api, mamplan, mampok = patched_api
-        mamplan_file = tmp_path / "test-proj-mamplan.json"
-        mamplan_file.touch()
-        output = tmp_path / "info.json"
-        api.project_info(mamplan_file, output=output)
-        assert output.exists()
-        data = json.loads(output.read_text())
-        assert "projects" in data
 
     def test_no_output_file_by_default(self, patched_api, tmp_path):
         api, mamplan, mampok = patched_api

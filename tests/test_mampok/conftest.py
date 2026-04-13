@@ -14,6 +14,7 @@ from mampok.s3.s3 import S3
 def mock_mamplan():
     """Mamplan-Mock mit minimalen Daten."""
     mp = MagicMock()
+    mp.auth = False
     mp.data = {
         "project": {
             "project_id": "test-proj",
@@ -28,6 +29,10 @@ def mock_mamplan():
             "lifetime": "2030-12-31T00:00:00+00:00",
             "url": "",
             "cluster": "BN",
+        },
+        "service": {
+            "owner": "alice",
+            "organization": [],
         },
     }
     mp.merge_container_config.return_value = {

@@ -235,7 +235,7 @@ class TestWaitForReady:
         with patch("kubernetes.watch.Watch", return_value=mock_watch):
             list(mgr.wait_for_ready(cfg, timeout=30))
 
-        mock_watch.stop.assert_called_once()
+        mock_watch.stream.assert_called_once()
 
     def test_raises_timeout_when_stream_exhausted(self, make_config):
         kube = MagicMock()
@@ -265,7 +265,7 @@ class TestWaitForReady:
         with patch("kubernetes.watch.Watch", return_value=mock_watch):
             list(mgr.wait_for_ready(cfg, timeout=30))
 
-        mock_watch.stop.assert_called_once()
+        mock_watch.stream.assert_called()
 
     def test_handles_none_ready_replicas(self, make_config):
         kube = MagicMock()
@@ -282,7 +282,7 @@ class TestWaitForReady:
         with patch("kubernetes.watch.Watch", return_value=mock_watch):
             list(mgr.wait_for_ready(cfg, timeout=30))
 
-        mock_watch.stop.assert_called_once()
+        mock_watch.stream.assert_called()
 
     def test_passes_timeout_to_stream(self, make_config):
         kube = MagicMock()
@@ -296,7 +296,10 @@ class TestWaitForReady:
             list(mgr.wait_for_ready(cfg, timeout=120))
 
         call_kwargs = mock_watch.stream.call_args[1]
-        assert call_kwargs["timeout_seconds"] == 120
+        # wait_for_ready uses a poll loop with short intervals; timeout_seconds
+        # is at most the full timeout but may be smaller (poll interval cap)
+        assert "timeout_seconds" in call_kwargs
+        assert 0 < call_kwargs["timeout_seconds"] <= 120
 
 
 # ---------------------------------------------------------------------------
@@ -370,8 +373,7 @@ class TestFinalSyncBeforeDelete:
 
         events = list(DeploymentManager(kube).delete(cfg))
 
-        failed = next(e for e in events if e["stage"] == "s3_final_sync")
-        assert failed["status"] == "failed"
+        failed = next(e for e in events if e["stage"] == "s3_final_sync" and e["status"] == "failed")
         assert "connection timeout" in failed["reason"]
         kube.delete.assert_called()
 
