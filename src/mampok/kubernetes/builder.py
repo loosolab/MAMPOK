@@ -105,7 +105,7 @@ class ManifestBuilder:
             },
         }
 
-        env = list(cfg.env)
+        env = [{"name": "MAMPOK_BASE_PATH", "value": urlparse(cfg.url).path}] + list(cfg.env)
         if cfg.direct_s3_access:
             env = [
                 {
