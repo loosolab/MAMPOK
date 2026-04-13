@@ -12,7 +12,7 @@ from mampok.kubernetes.config import DeploymentConfig
 
 logger = logging.getLogger(__name__)
 
-_S3DOWNLOAD_IMAGE = "amazon/aws-cli:2"
+_S3DOWNLOAD_IMAGE = "amazon/aws-cli:2.34.29"
 _S3DOWNLOAD_COMMAND = ["/bin/sh", "-c"]
 _S3DOWNLOAD_ARGS = [
     "aws --endpoint-url $(s3endpoint) s3 cp s3://$(s3bucket)/analysis_data/ /analysis_data/ --recursive"
@@ -24,7 +24,7 @@ _S3DOWNLOAD_RESOURCES = {
 _FILEDIR_VOLUME_NAME = "filedir"
 _FILEDIR_MOUNT_PATH = "/analysis_data"
 _MAMPOK_FIELDS = {"tool", "containertype", "container_data", "volume"}
-_S3SYNC_IMAGE = "amazon/aws-cli:2"
+_S3SYNC_IMAGE = "amazon/aws-cli:2.34.29"
 _S3SYNC_SIDECAR_NAME = "mampok-s3-sync"
 _S3SYNC_RESOURCES = {
     "limits": {"cpu": "200m", "memory": "256Mi"},
@@ -108,10 +108,18 @@ class ManifestBuilder:
         env = list(cfg.env)
         if cfg.direct_s3_access:
             env = [
-                {"name": "AWS_ACCESS_KEY_ID",
-                 "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_key"}}},
-                {"name": "AWS_SECRET_ACCESS_KEY",
-                 "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_secret"}}},
+                {
+                    "name": "AWS_ACCESS_KEY_ID",
+                    "valueFrom": {
+                        "secretKeyRef": {"name": cfg.secret_name, "key": "s3_key"}
+                    },
+                },
+                {
+                    "name": "AWS_SECRET_ACCESS_KEY",
+                    "valueFrom": {
+                        "secretKeyRef": {"name": cfg.secret_name, "key": "s3_secret"}
+                    },
+                },
                 {"name": "AWS_ENDPOINT_URL", "value": cfg.endpoint},
             ] + env
         if env:
@@ -136,15 +144,23 @@ class ManifestBuilder:
         for cpath in cfg.container_data_paths:
             vol_name = _sync_volume_name(cpath)
             subpath = _sync_sidecar_subpath(cpath)
-            sync_volume_mounts_main.append({"name": vol_name, "mountPath": cpath.rstrip("/")})
-            sync_volume_mounts_sidecar.append({"name": vol_name, "mountPath": f"/sync/{subpath}"})
-            pod_spec.setdefault("volumes", []).append({"name": vol_name, "emptyDir": {}})
+            sync_volume_mounts_main.append(
+                {"name": vol_name, "mountPath": cpath.rstrip("/")}
+            )
+            sync_volume_mounts_sidecar.append(
+                {"name": vol_name, "mountPath": f"/sync/{subpath}"}
+            )
+            pod_spec.setdefault("volumes", []).append(
+                {"name": vol_name, "emptyDir": {}}
+            )
 
         if sync_volume_mounts_main:
             container.setdefault("volumeMounts", []).extend(sync_volume_mounts_main)
 
         if cfg.include_s3download:
-            s3_download_volume_mounts = [{"name": _FILEDIR_VOLUME_NAME, "mountPath": _FILEDIR_MOUNT_PATH}]
+            s3_download_volume_mounts = [
+                {"name": _FILEDIR_VOLUME_NAME, "mountPath": _FILEDIR_MOUNT_PATH}
+            ]
             if cfg.container_data_restore and cfg.container_data_paths:
                 # Restore init container mounts all sync volumes at native paths too
                 restore_mounts = [
@@ -157,52 +173,93 @@ class ManifestBuilder:
                     f"--recursive || true"
                     for p in cfg.container_data_paths
                 )
-                init_containers.append({
-                    "name": "init-container-restore",
+                init_containers.append(
+                    {
+                        "name": "init-container-restore",
+                        "image": _S3DOWNLOAD_IMAGE,
+                        "command": _S3DOWNLOAD_COMMAND,
+                        "args": [restore_cmd_parts],
+                        "env": [
+                            {
+                                "name": "AWS_ACCESS_KEY_ID",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "name": cfg.secret_name,
+                                        "key": "s3_key",
+                                    }
+                                },
+                            },
+                            {
+                                "name": "AWS_SECRET_ACCESS_KEY",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "name": cfg.secret_name,
+                                        "key": "s3_secret",
+                                    }
+                                },
+                            },
+                            {"name": "s3endpoint", "value": cfg.endpoint},
+                            {"name": "s3bucket", "value": cfg.bucket},
+                        ],
+                        "resources": _S3DOWNLOAD_RESOURCES,
+                        "volumeMounts": restore_mounts,
+                    }
+                )
+
+            init_containers.append(
+                {
+                    "name": "init-container",
                     "image": _S3DOWNLOAD_IMAGE,
                     "command": _S3DOWNLOAD_COMMAND,
-                    "args": [restore_cmd_parts],
+                    "args": _S3DOWNLOAD_ARGS,
                     "env": [
-                        {"name": "AWS_ACCESS_KEY_ID",
-                         "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_key"}}},
-                        {"name": "AWS_SECRET_ACCESS_KEY",
-                         "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_secret"}}},
+                        {
+                            "name": "AWS_ACCESS_KEY_ID",
+                            "valueFrom": {
+                                "secretKeyRef": {
+                                    "name": cfg.secret_name,
+                                    "key": "s3_key",
+                                }
+                            },
+                        },
+                        {
+                            "name": "AWS_SECRET_ACCESS_KEY",
+                            "valueFrom": {
+                                "secretKeyRef": {
+                                    "name": cfg.secret_name,
+                                    "key": "s3_secret",
+                                }
+                            },
+                        },
                         {"name": "s3endpoint", "value": cfg.endpoint},
                         {"name": "s3bucket", "value": cfg.bucket},
                     ],
                     "resources": _S3DOWNLOAD_RESOURCES,
-                    "volumeMounts": restore_mounts,
-                })
-
-            init_containers.append({
-                "name": "init-container",
-                "image": _S3DOWNLOAD_IMAGE,
-                "command": _S3DOWNLOAD_COMMAND,
-                "args": _S3DOWNLOAD_ARGS,
-                "env": [
-                    {"name": "AWS_ACCESS_KEY_ID",
-                     "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_key"}}},
-                    {"name": "AWS_SECRET_ACCESS_KEY",
-                     "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_secret"}}},
-                    {"name": "s3endpoint", "value": cfg.endpoint},
-                    {"name": "s3bucket", "value": cfg.bucket},
-                ],
-                "resources": _S3DOWNLOAD_RESOURCES,
-                "volumeMounts": s3_download_volume_mounts,
-            })
+                    "volumeMounts": s3_download_volume_mounts,
+                }
+            )
             filedir_vol = {"name": _FILEDIR_VOLUME_NAME, "emptyDir": {}}
-            if not any(v.get("name") == _FILEDIR_VOLUME_NAME for v in pod_spec.get("volumes", [])):
+            if not any(
+                v.get("name") == _FILEDIR_VOLUME_NAME
+                for v in pod_spec.get("volumes", [])
+            ):
                 pod_spec.setdefault("volumes", []).append(filedir_vol)
 
         for custom in cfg.init_containers:
             name = custom.get("tool", "init-container")
             k8s_init: dict = {"name": name}
-            k8s_init.update({k: v for k, v in custom.items() if k not in _MAMPOK_FIELDS})
+            k8s_init.update(
+                {k: v for k, v in custom.items() if k not in _MAMPOK_FIELDS}
+            )
             volume = custom.get("volume")
             if volume:
-                k8s_init["volumeMounts"] = [{"name": volume["name"], "mountPath": volume["mountPath"]}]
+                k8s_init["volumeMounts"] = [
+                    {"name": volume["name"], "mountPath": volume["mountPath"]}
+                ]
                 vol_entry = {"name": volume["name"], "emptyDir": {}}
-                if not any(v.get("name") == volume["name"] for v in pod_spec.get("volumes", [])):
+                if not any(
+                    v.get("name") == volume["name"] for v in pod_spec.get("volumes", [])
+                ):
                     pod_spec.setdefault("volumes", []).append(vol_entry)
             init_containers.append(k8s_init)
 
@@ -226,7 +283,8 @@ class ManifestBuilder:
 
             redirect_url = (
                 "/"
-                if "nginx.ingress.kubernetes.io/proxy-redirect-to" in cfg.auth_annotations
+                if "nginx.ingress.kubernetes.io/proxy-redirect-to"
+                in cfg.auth_annotations
                 else urlparse(cfg.url).path or f"/{cfg.project_id}/{cfg.tool}/"
             )
 
@@ -253,11 +311,16 @@ class ManifestBuilder:
 
             pod_spec.setdefault("volumes", [])
             pod_spec["volumes"].append(
-                {"name": auth_volume_name, "secret": {"secretName": cfg.auth_secret_name}}
+                {
+                    "name": auth_volume_name,
+                    "secret": {"secretName": cfg.auth_secret_name},
+                }
             )
 
             if cfg.image_pull_secrets:
-                pod_spec["imagePullSecrets"] = [{"name": s} for s in cfg.image_pull_secrets]
+                pod_spec["imagePullSecrets"] = [
+                    {"name": s} for s in cfg.image_pull_secrets
+                ]
 
         # --- S3 sync sidecar (appended after auth container setup) ---
         if cfg.container_data_paths:
@@ -276,13 +339,27 @@ class ManifestBuilder:
                 "command": ["/bin/sh", "-c"],
                 "args": [sync_cmd],
                 "env": [
-                    {"name": "AWS_ACCESS_KEY_ID",
-                     "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_key"}}},
-                    {"name": "AWS_SECRET_ACCESS_KEY",
-                     "valueFrom": {"secretKeyRef": {"name": cfg.secret_name, "key": "s3_secret"}}},
+                    {
+                        "name": "AWS_ACCESS_KEY_ID",
+                        "valueFrom": {
+                            "secretKeyRef": {"name": cfg.secret_name, "key": "s3_key"}
+                        },
+                    },
+                    {
+                        "name": "AWS_SECRET_ACCESS_KEY",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": cfg.secret_name,
+                                "key": "s3_secret",
+                            }
+                        },
+                    },
                     {"name": "s3endpoint", "value": cfg.endpoint},
                     {"name": "s3bucket", "value": cfg.bucket},
-                    {"name": "MAMPOK_SYNC_INTERVAL", "value": str(cfg.container_data_sync_interval)},
+                    {
+                        "name": "MAMPOK_SYNC_INTERVAL",
+                        "value": str(cfg.container_data_sync_interval),
+                    },
                 ],
                 "resources": _S3SYNC_RESOURCES,
                 "volumeMounts": sync_volume_mounts_sidecar,
@@ -381,12 +458,18 @@ class ManifestBuilder:
                     "http": {
                         "paths": [
                             {
-                                "path": _ingress_path(urlparse(cfg.url).path, cfg.ingress_annotations),
+                                "path": _ingress_path(
+                                    urlparse(cfg.url).path, cfg.ingress_annotations
+                                ),
                                 "pathType": _ingress_path_type(cfg.ingress_annotations),
                                 "backend": {
                                     "service": {
                                         "name": cfg.service_name,
-                                        "port": {"name": "gatekeeper-port"} if cfg.auth else {"number": 80},
+                                        "port": (
+                                            {"name": "gatekeeper-port"}
+                                            if cfg.auth
+                                            else {"number": 80}
+                                        ),
                                     },
                                 },
                             }
@@ -409,9 +492,7 @@ class ManifestBuilder:
             "spec": spec,
         }
 
-    def build_all(
-        self, cfg: DeploymentConfig, s3_credentials: dict
-    ) -> list[dict]:
+    def build_all(self, cfg: DeploymentConfig, s3_credentials: dict) -> list[dict]:
         """Build all required manifests for this deployment.
 
         Calls all build_* methods and filters out None values.
@@ -425,7 +506,13 @@ class ManifestBuilder:
         Returns:
             List of K8s manifests (no None entries).
         """
-        logger.debug("build_all: project_id=%s, image=%s, ports=%s, auth=%s", cfg.project_id, cfg.image, cfg.ports, cfg.auth)
+        logger.debug(
+            "build_all: project_id=%s, image=%s, ports=%s, auth=%s",
+            cfg.project_id,
+            cfg.image,
+            cfg.ports,
+            cfg.auth,
+        )
         manifests = [
             self.build_secret(cfg, s3_credentials),
             self.build_deployment(cfg),
@@ -433,7 +520,11 @@ class ManifestBuilder:
             self.build_ingress(cfg),
         ]
         result = [m for m in manifests if m is not None]
-        logger.debug("build_all: built %d manifests: %s", len(result), [m.get("kind") for m in result])
+        logger.debug(
+            "build_all: built %d manifests: %s",
+            len(result),
+            [m.get("kind") for m in result],
+        )
         logger.debug("build_all: manifests=%s", result)
         return result
 
