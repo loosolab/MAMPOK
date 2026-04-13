@@ -219,6 +219,32 @@ class Mampok:
             raise
         self.mamplan.edit(deployment__status=False)
 
+    def download(self, output_dir: Path) -> Iterator[dict]:
+        """Lädt alle persistenten S3-Daten in ein lokales Verzeichnis herunter.
+
+        Lädt analysis_data/ und container_data/ aus dem Projekt-Bucket.
+        Lokale Struktur: output_dir/<project_id>/<s3_key>
+
+        Args:
+            output_dir: Zielverzeichnis. Unterordner <project_id> wird erstellt.
+
+        Yields:
+            - {"stage": "s3_download", "status": "starting", "project_id": str, "total": int}
+            - {"stage": "s3_download", "status": "done", "key": str, "local_path": str}
+            - {"stage": "s3_download", "status": "complete", "total": int, "dest": str}
+        """
+        project_id = self.mamplan.data["project"]["project_id"]
+        dest = output_dir / project_id
+        logger.debug("download: project_id=%s, dest=%s", project_id, dest)
+        keys = self.s3.list_objects()
+        yield {"stage": "s3_download", "status": "starting", "project_id": project_id, "total": len(keys)}
+        for key in keys:
+            local_path = dest / key
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            self.s3.download_to_local(key, local_path)
+            yield {"stage": "s3_download", "status": "done", "key": key, "local_path": str(local_path)}
+        yield {"stage": "s3_download", "status": "complete", "total": len(keys), "dest": str(dest)}
+
     def check_status(self, config: MampokConfig) -> dict:
         """Vergleicht den lokalen Mamplan-Status mit dem K8s-Realzustand.
 

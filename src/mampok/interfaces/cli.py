@@ -614,6 +614,8 @@ class CLI:
         regex_selection: list[str] | None = None,
         throw_error: bool = False,
         yes: bool = False,
+        download_before_stop: bool = False,
+        download_output_dir: Path | None = None,
     ) -> None:
         """Stop one or more deployments (removes K8s resources, S3 remains).
 
@@ -623,6 +625,8 @@ class CLI:
             regex_selection: Regex selection filters.
             throw_error: If True, disable error tolerance.
             yes: If True, skip confirmation prompt.
+            download_before_stop: If True, download S3 data before stopping.
+            download_output_dir: Destination for download (required if download_before_stop=True).
         """
         mamplans, mamplates = self._load(mamplan_path)
         mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
@@ -634,6 +638,15 @@ class CLI:
 
         def _stop(mamplan: Mamplan) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
+            if download_before_stop:
+                for event in mampok.download(download_output_dir):
+                    status = event.get("status")
+                    if status == "starting":
+                        typer.echo(f"  downloading {event['total']} objects from s3 ...")
+                    elif status == "done":
+                        typer.echo(f"  downloaded: {event['key']}")
+                    elif status == "complete":
+                        typer.echo(f"  Download complete -> {event['dest']}")
             for event in mampok.stop(config):
                 stage = event.get("stage")
                 status = event.get("status")
@@ -650,6 +663,48 @@ class CLI:
             typer.echo(f"Stopped: {mamplan.data['project']['project_id']}")
 
         run_with_error_tolerance(mamplans, _stop, throw_error=throw_error)
+
+    # I7b
+    def download(
+        self,
+        mamplan_path: Path,
+        output_dir: Path,
+        selection: list[str] | None = None,
+        regex_selection: list[str] | None = None,
+        throw_error: bool = False,
+        yes: bool = False,
+    ) -> None:
+        """Download all persistent S3 data for one or more projects to the local filesystem.
+
+        Args:
+            mamplan_path: Path to Mamplan file or directory.
+            output_dir: Local destination directory. A subdirectory per project_id is created.
+            selection: Key-value selection filters.
+            regex_selection: Regex selection filters.
+            throw_error: If True, disable error tolerance.
+            yes: If True, skip confirmation prompt.
+        """
+        mamplans, mamplates = self._load(mamplan_path)
+        mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
+
+        if not _confirm_mamplans(mamplans, "downloaded", yes):
+            return
+
+        config = self.config
+
+        def _download(mamplan: Mamplan) -> None:
+            mampok = create_mampok_instance(config, mamplan, mamplates)
+            project_id = mamplan.data["project"]["project_id"]
+            for event in mampok.download(output_dir):
+                status = event.get("status")
+                if status == "starting":
+                    typer.echo(f"  downloading {event['total']} objects from s3 ...")
+                elif status == "done":
+                    typer.echo(f"  downloaded: {event['key']}")
+                elif status == "complete":
+                    typer.echo(f"Downloaded: {project_id} -> {event['dest']}")
+
+        run_with_error_tolerance(mamplans, _download, throw_error=throw_error)
 
     # I8
     def stop_expired(
@@ -1064,15 +1119,48 @@ def stop(
     regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
     yes: Annotated[bool, _OPT_YES] = False,
+    download: Annotated[bool, typer.Option("--download", help="Download S3 data before stopping.")] = False,
+    output_dir: Annotated[Optional[Path], typer.Option("--output-dir", "-o", help="Download destination (required when --download is used).")] = None,
 ) -> None:
     """Stop a deployment (removes K8s resources, S3 remains)."""
+    if download and output_dir is None:
+        typer.echo("Error: --output-dir is required when --download is set.", err=True)
+        raise typer.Exit(code=1)
     logger.info(
-        "stop: mamplan=%s, config=%s, selection=%s, regex_selection=%s, throw_error=%s, yes=%s",
-        mamplan, config, selection, regex_selection, throw_error, yes,
+        "stop: mamplan=%s, config=%s, selection=%s, regex_selection=%s, throw_error=%s, yes=%s, download=%s, output_dir=%s",
+        mamplan, config, selection, regex_selection, throw_error, yes, download, output_dir,
     )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).stop(
         mamplan,
+        selection=selection,
+        regex_selection=regex_selection,
+        throw_error=throw_error,
+        yes=yes,
+        download_before_stop=download,
+        download_output_dir=output_dir.expanduser() if output_dir else None,
+    )
+
+
+@app.command()
+def download(
+    mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
+    config: Annotated[Path, _OPT_CONFIG],
+    output_dir: Annotated[Path, typer.Option("--output-dir", "-o", help="Download destination directory.")],
+    selection: Annotated[list[str], _OPT_SELECTION] = [],
+    regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
+    throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
+    yes: Annotated[bool, _OPT_YES] = False,
+) -> None:
+    """Download all persistent S3 data for a project to the local filesystem."""
+    logger.info(
+        "download: mamplan=%s, config=%s, output_dir=%s, selection=%s, regex_selection=%s, throw_error=%s, yes=%s",
+        mamplan, config, output_dir, selection, regex_selection, throw_error, yes,
+    )
+    cfg = MampokConfig.from_file(config.expanduser())
+    CLI(cfg).download(
+        mamplan,
+        output_dir=output_dir.expanduser(),
         selection=selection,
         regex_selection=regex_selection,
         throw_error=throw_error,
