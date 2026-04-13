@@ -176,7 +176,8 @@ class Mampok:
         except Exception:
             if cleanup and k8s_started:
                 logger.warning("deploy failed, cleaning up K8s resources: %s", cfg.project_id)
-                self.kube.delete(cfg)
+                for _ in self.kube.delete(cfg):
+                    pass
                 step = {"stage": "k8s_cleanup", "status": "done", "project_id": cfg.project_id}
                 logger.debug("step: %s", step)
                 yield step
