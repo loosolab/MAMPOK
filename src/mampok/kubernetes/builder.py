@@ -316,19 +316,23 @@ class ManifestBuilder:
 
         # --- S3 sync sidecar (appended after auth container setup) ---
         if cfg.container_data_paths:
-            # rclone bisync: bidirectional sync between /sync/ and S3 container_data/.
-            # --workdir /tmp/bisync-state/ keeps state files out of the synced path
-            # (prevents .lst listing files from being uploaded to S3).
+            # Bisync requires .lst state files from the prior run. They are always
+            # absent on pod/container start because /tmp/ is fresh from the image.
+            # They can also disappear mid-operation when rclone renames .lst → .lst-err
+            # after a critical error (S3 unreachable, mid-run OOMKill, etc.).
             #
-            # Recovery pattern: normal bisync || --resync
-            # - Normal run succeeds → --resync is never triggered.
-            # - Normal run fails (missing/corrupt state files, critical error) →
-            #   --resync creates fresh state files and recovers automatically.
-            # This handles: first pod start, container restart, S3 unreachable at startup,
-            # and corrupted state from a previous force-kill.
-            # --resync: Path1 (/sync/ = local) wins on conflict, safe because the
-            # restore-init-container already ran and local matches S3 at pod start.
+            # Strategy:
+            #   1. Explicit --resync on startup: initialises .lst files, never fails
+            #      (does not need prior state). Safe because restore-init-container
+            #      already ran, so /sync/ matches S3 at this point.
+            #   2. Loop with normal bisync: differential sync using the .lst baseline.
+            #   3. || --resync fallback in the loop: recovers if .lst files are ever
+            #      renamed to .lst-err by a mid-run critical error.
             sync_cmd = (
+                "mkdir -p /tmp/bisync-state && "
+                "rclone bisync /sync/ S3:$s3bucket/container_data/ "
+                "--resync --workdir /tmp/bisync-state/ "
+                "--transfers 4 --log-level ERROR && "
                 "while true; do "
                 "rclone bisync /sync/ S3:$s3bucket/container_data/ "
                 "--conflict-resolve newer --workdir /tmp/bisync-state/ "

@@ -881,11 +881,12 @@ class TestBuildDeploymentContainerData:
         assert "rclone bisync" in sync_script
         assert "--workdir /tmp/bisync-state/" in sync_script
         assert "--conflict-resolve newer" in sync_script
-        # Fallback: --resync recovers from missing/corrupt state files (triggers on non-zero exit)
-        assert "--resync" in sync_script
-        # --resilient must NOT be in the normal bisync call — it causes exit 0 on critical
-        # errors, which prevents the || --resync fallback from ever triggering
-        assert sync_script.index("--resync") > sync_script.index("||")
+        # Explicit --resync on startup initialises .lst files without needing prior state
+        assert "mkdir -p /tmp/bisync-state" in sync_script
+        resync_positions = [i for i in range(len(sync_script)) if sync_script[i:].startswith("--resync")]
+        assert len(resync_positions) == 2, "expect --resync on startup and as || fallback"
+        # || fallback --resync must come after the while-loop starts
+        assert sync_script.index("||") > sync_script.index("while true")
 
     def test_sidecar_sync_cmd_has_loop_with_sleep(self, make_config):
         builder = ManifestBuilder()
