@@ -319,15 +319,22 @@ class ManifestBuilder:
             # rclone bisync: bidirectional sync between /sync/ and S3 container_data/.
             # --workdir /tmp/bisync-state/ keeps state files out of the synced path
             # (prevents .lst listing files from being uploaded to S3).
-            # First run uses --force to bootstrap the state file (no prior state exists
-            # on a fresh pod); safe because restore-init-container already ran.
+            #
+            # Recovery pattern: normal bisync || --resync
+            # - Normal run succeeds → --resync is never triggered.
+            # - Normal run fails (missing/corrupt state files, critical error) →
+            #   --resync creates fresh state files and recovers automatically.
+            # This handles: first pod start, container restart, S3 unreachable at startup,
+            # and corrupted state from a previous force-kill.
+            # --resync: Path1 (/sync/ = local) wins on conflict, safe because the
+            # restore-init-container already ran and local matches S3 at pod start.
             sync_cmd = (
-                "rclone bisync /sync/ S3:$s3bucket/container_data/ "
-                "--force --resilient --workdir /tmp/bisync-state/ "
-                "--transfers 4 --log-level ERROR; "
                 "while true; do "
                 "rclone bisync /sync/ S3:$s3bucket/container_data/ "
                 "--resilient --conflict-resolve newer --workdir /tmp/bisync-state/ "
+                "--transfers 4 --log-level ERROR "
+                "|| rclone bisync /sync/ S3:$s3bucket/container_data/ "
+                "--resync --workdir /tmp/bisync-state/ "
                 "--transfers 4 --log-level ERROR; "
                 "sleep $MAMPOK_SYNC_INTERVAL; "
                 "done"
