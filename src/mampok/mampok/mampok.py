@@ -384,6 +384,14 @@ class Mampok:
         container_data_sync_timeout = int(
             container_data.get("sync_timeout_seconds", 300)
         )
+        container_data_s3_root = False
+
+        full_bucket_overwrite = main.get("full_bucket_overwrite")
+        if full_bucket_overwrite:
+            container_data_paths = [full_bucket_overwrite]
+            container_data_restore = True
+            container_data_s3_root = True
+            include_s3download = False
 
         return DeploymentConfig(
             project_id=project_id,
@@ -413,7 +421,7 @@ class Mampok:
             include_s3download=include_s3download,
             bucket=self.s3.bucket,
             endpoint=config.s3.endpoint,
-            direct_s3_access=bool(main.get("direct_s3_access", False)),
+            container_data_s3_root=container_data_s3_root,
             auth_proxy_image=auth_proxy.auth_proxy_image if auth_proxy else "",
             proxy_port=auth_proxy.proxy_port if auth_proxy else 8080,
             auth_annotations=auth_proxy.auth_annotations if auth_proxy else {},

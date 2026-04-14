@@ -126,17 +126,17 @@ class DeploymentConfig:
     """S3 bucket name — injected as env var into the s3download init container."""
 
     endpoint: str = ""
-    """S3 endpoint URL — as literal value in the s3download init container and
-    injected into the main container when direct_s3_access is True."""
+    """S3 endpoint URL — used in rclone RCLONE_CONFIG_S3_ENDPOINT for all S3 containers."""
 
     s3_provider: str = "Minio"
     """rclone S3 provider (RCLONE_CONFIG_S3_PROVIDER). Use 'Minio' for MinIO/Ceph
     compatible stores, 'AWS' for native AWS S3. Controls ETag behavior and
     provider-specific optimisations."""
 
-    direct_s3_access: bool = False
-    """If True, inject AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_ENDPOINT_URL
-    from the project secret into the main container."""
+    container_data_s3_root: bool = False
+    """If True, sync container_data_paths[0] directly to/from the bucket root (no
+    'container_data/' prefix). Set by the builder when the mamplate defines
+    'full_bucket_overwrite'. Requires exactly one entry in container_data_paths."""
 
     container_data_paths: list[str] = field(default_factory=list)
     """Container paths to sync to s3://bucket/container_data/ (e.g. '/app/.cellxgene/annotations/')."""

@@ -141,22 +141,6 @@ class ManifestBuilder:
         }
 
         env = [{"name": "MAMPOK_BASE_PATH", "value": urlparse(cfg.url).path}] + list(cfg.env)
-        if cfg.direct_s3_access:
-            env = [
-                {
-                    "name": "AWS_ACCESS_KEY_ID",
-                    "valueFrom": {
-                        "secretKeyRef": {"name": cfg.secret_name, "key": "s3_key"}
-                    },
-                },
-                {
-                    "name": "AWS_SECRET_ACCESS_KEY",
-                    "valueFrom": {
-                        "secretKeyRef": {"name": cfg.secret_name, "key": "s3_secret"}
-                    },
-                },
-                {"name": "AWS_ENDPOINT_URL", "value": cfg.endpoint},
-            ] + env
         if env:
             container["env"] = env
         if cfg.args:
@@ -192,33 +176,44 @@ class ManifestBuilder:
         if sync_volume_mounts_main:
             container.setdefault("volumeMounts", []).extend(sync_volume_mounts_main)
 
-        if cfg.include_s3download:
-            s3_download_volume_mounts = [
-                {"name": _FILEDIR_VOLUME_NAME, "mountPath": _FILEDIR_MOUNT_PATH}
+        # --- Restore init container (independent of include_s3download) ---
+        # For full_bucket_overwrite: downloads entire bucket into the single container path.
+        # For normal mamplan: downloads per-path from container_data/ prefix.
+        if cfg.container_data_restore and cfg.container_data_paths:
+            restore_mounts = [
+                {"name": _sync_volume_name(p), "mountPath": p.rstrip("/")}
+                for p in cfg.container_data_paths
             ]
-            if cfg.container_data_restore and cfg.container_data_paths:
-                # Restore init container mounts all sync volumes at native paths too
-                restore_mounts = [
-                    {"name": _sync_volume_name(p), "mountPath": p.rstrip("/")}
-                    for p in cfg.container_data_paths
-                ]
+            if cfg.container_data_s3_root:
+                # full_bucket_overwrite: ganzer Bucket → einziger Container-Pfad
+                target = cfg.container_data_paths[0].rstrip("/")
+                restore_cmd_parts = (
+                    f"rclone copy S3:$(s3bucket)/ {target}/ "
+                    "--ignore-errors --retries 3 --log-level ERROR"
+                )
+            else:
                 restore_cmd_parts = " && ".join(
                     f"rclone copy S3:$(s3bucket)/container_data/{_sync_sidecar_subpath(p)}/ "
                     f"{p.rstrip('/')}/ --ignore-errors --retries 3 --log-level ERROR"
                     for p in cfg.container_data_paths
                 )
-                init_containers.append(
-                    {
-                        "name": "init-container-restore",
-                        "image": _S3DOWNLOAD_IMAGE,
-                        "command": _S3DOWNLOAD_COMMAND,
-                        "args": [restore_cmd_parts],
-                        "env": self._build_rclone_env(cfg, cfg.secret_name),
-                        "resources": _S3DOWNLOAD_RESOURCES,
-                        "volumeMounts": restore_mounts,
-                    }
-                )
+            init_containers.append(
+                {
+                    "name": "init-container-restore",
+                    "image": _S3DOWNLOAD_IMAGE,
+                    "command": _S3DOWNLOAD_COMMAND,
+                    "args": [restore_cmd_parts],
+                    "env": self._build_rclone_env(cfg, cfg.secret_name),
+                    "resources": _S3DOWNLOAD_RESOURCES,
+                    "volumeMounts": restore_mounts,
+                }
+            )
 
+        # --- Analysis data download (only when include_s3download) ---
+        if cfg.include_s3download:
+            s3_download_volume_mounts = [
+                {"name": _FILEDIR_VOLUME_NAME, "mountPath": _FILEDIR_MOUNT_PATH}
+            ]
             init_containers.append(
                 {
                     "name": "init-container",
@@ -328,16 +323,26 @@ class ManifestBuilder:
             #   2. Loop with normal bisync: differential sync using the .lst baseline.
             #   3. || --resync fallback in the loop: recovers if .lst files are ever
             #      renamed to .lst-err by a mid-run critical error.
+            if cfg.container_data_s3_root:
+                # full_bucket_overwrite: Bucket-Root ↔ spezifischer Sidecar-Subpfad
+                subpath = _sync_sidecar_subpath(cfg.container_data_paths[0])
+                local_path = f"/sync/{subpath}/"
+                s3_path = "S3:$s3bucket/"
+            else:
+                # Normaler Mamplan: alle Pfade unter container_data/
+                local_path = "/sync/"
+                s3_path = "S3:$s3bucket/container_data/"
+
             sync_cmd = (
                 "mkdir -p /tmp/bisync-state && "
-                "rclone bisync /sync/ S3:$s3bucket/container_data/ "
+                f"rclone bisync {local_path} {s3_path} "
                 "--resync --workdir /tmp/bisync-state/ "
                 "--transfers 4 --log-level ERROR && "
                 "while true; do "
-                "rclone bisync /sync/ S3:$s3bucket/container_data/ "
+                f"rclone bisync {local_path} {s3_path} "
                 "--conflict-resolve newer --workdir /tmp/bisync-state/ "
                 "--transfers 4 --log-level ERROR "
-                "|| rclone bisync /sync/ S3:$s3bucket/container_data/ "
+                f"|| rclone bisync {local_path} {s3_path} "
                 "--resync --workdir /tmp/bisync-state/ "
                 "--transfers 4 --log-level ERROR; "
                 "sleep $MAMPOK_SYNC_INTERVAL; "

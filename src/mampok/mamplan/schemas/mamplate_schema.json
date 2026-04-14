@@ -15,6 +15,16 @@
       "then": {
         "required": ["ports"]
       }
+    },
+    {
+      "if": {
+        "required": ["full_bucket_overwrite"]
+      },
+      "then": {
+        "not": {
+          "required": ["container_data"]
+        }
+      }
     }
   ],
   "definitions": {
@@ -78,10 +88,10 @@
             }
           }
         },
-        "direct_s3_access": {
-          "type": "boolean",
-          "description": "If true, injects AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_ENDPOINT_URL from the project S3 secret into the main container.",
-          "default": false
+        "full_bucket_overwrite": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "If set, the entire S3 bucket root is synced bidirectionally into this container path (no 'container_data/' prefix). Value is the absolute container path (e.g. '/home/appuser/'). On pod start, the whole bucket is downloaded to this path (overwrite/restore). During runtime, rclone bisync keeps the path and S3 bucket in sync bidirectionally. Mutually exclusive with 'container_data'."
         },
         "resources": {
           "type": "object",

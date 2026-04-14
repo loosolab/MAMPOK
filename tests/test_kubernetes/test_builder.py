@@ -154,7 +154,8 @@ class TestBuildDeployment:
         container = dep["spec"]["template"]["spec"]["containers"][0]
         assert container["name"] == "main-container"
         assert container["image"] == "nginx:latest"
-        assert "env" not in container
+        env_names = [e["name"] for e in container.get("env", [])]
+        assert env_names == ["MAMPOK_BASE_PATH"]
         assert "args" not in container
         assert "command" not in container
         assert "volumeMounts" not in container
@@ -175,7 +176,7 @@ class TestBuildDeployment:
         dep = builder.build_deployment(cfg)
         container = dep["spec"]["template"]["spec"]["containers"][0]
 
-        assert container["env"] == [{"name": "K", "value": "V"}]
+        assert container["env"] == [{"name": "MAMPOK_BASE_PATH", "value": ""}, {"name": "K", "value": "V"}]
         assert container["args"] == ["--port", "8080"]
         assert container["command"] == ["/bin/sh", "-c"]
         assert container["volumeMounts"] == [{"name": "vol", "mountPath": "/mnt"}]
@@ -257,7 +258,7 @@ class TestBuildDeployment:
         cfg = make_config(env=env)
         dep = builder.build_deployment(cfg)
         container = dep["spec"]["template"]["spec"]["containers"][0]
-        assert container["env"] == env
+        assert container["env"] == [{"name": "MAMPOK_BASE_PATH", "value": ""}] + env
 
     def test_labels_consistency(self, make_config):
         builder = ManifestBuilder()
@@ -939,3 +940,125 @@ class TestBuildDeploymentContainerData:
         )
         spec = builder.build_deployment(cfg)["spec"]["template"]["spec"]
         assert "terminationGracePeriodSeconds" not in spec
+
+    def test_normal_sidecar_syncs_to_container_data_prefix(self, make_config):
+        """Normaler Mamplan: Sidecar-Command referenziert container_data/ Präfix."""
+        builder = ManifestBuilder()
+        cfg = make_config(
+            container_data_paths=["/app/annotations/"],
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
+        sync_script = sidecar["args"][0]
+        assert "S3:$s3bucket/container_data/" in sync_script
+        assert "/sync/ " in sync_script or sync_script.count("/sync/") > 0
+
+    def test_normal_restore_uses_container_data_prefix(self, make_config):
+        """Normaler Mamplan: Restore-Init-Container lädt aus container_data/."""
+        builder = ManifestBuilder()
+        cfg = make_config(
+            include_s3download=True,
+            container_data_paths=["/app/annotations/"],
+            container_data_restore=True,
+            bucket="b",
+            endpoint="https://s3.example.com",
+        )
+        dep = builder.build_deployment(cfg)
+        restore = next(ic for ic in dep["spec"]["template"]["spec"]["initContainers"] if ic["name"] == "init-container-restore")
+        restore_script = restore["args"][0]
+        assert "S3:$(s3bucket)/container_data/" in restore_script
+        assert "container_data" in restore_script
+
+
+class TestNoAwsEnvInMainContainer:
+    """Main-Container darf keine AWS_*-Credentials enthalten (FUSE ist obsolet)."""
+
+    def test_no_aws_access_key_in_env(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config()
+        dep = builder.build_deployment(cfg)
+        main_env = dep["spec"]["template"]["spec"]["containers"][0].get("env", [])
+        env_names = [e["name"] for e in main_env]
+        assert "AWS_ACCESS_KEY_ID" not in env_names
+
+    def test_no_aws_secret_key_in_env(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config()
+        dep = builder.build_deployment(cfg)
+        main_env = dep["spec"]["template"]["spec"]["containers"][0].get("env", [])
+        env_names = [e["name"] for e in main_env]
+        assert "AWS_SECRET_ACCESS_KEY" not in env_names
+
+    def test_no_aws_endpoint_url_in_env(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config()
+        dep = builder.build_deployment(cfg)
+        main_env = dep["spec"]["template"]["spec"]["containers"][0].get("env", [])
+        env_names = [e["name"] for e in main_env]
+        assert "AWS_ENDPOINT_URL" not in env_names
+
+
+class TestFullBucketOverwrite:
+    """Tests für container_data_s3_root=True (full_bucket_overwrite im Mamplate)."""
+
+    def _make_fbo_cfg(self, make_config, mount_path="/home/appuser/"):
+        return make_config(
+            container_data_paths=[mount_path],
+            container_data_restore=True,
+            container_data_s3_root=True,
+            bucket="user-bucket",
+            endpoint="https://s3.example.com",
+        )
+
+    def test_sidecar_syncs_to_bucket_root(self, make_config):
+        """full_bucket_overwrite: Sidecar synct direkt zum Bucket-Root, kein container_data/."""
+        builder = ManifestBuilder()
+        cfg = self._make_fbo_cfg(make_config)
+        dep = builder.build_deployment(cfg)
+        sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
+        sync_script = sidecar["args"][0]
+        assert "S3:$s3bucket/ " in sync_script or sync_script.endswith("S3:$s3bucket/")
+        assert "container_data" not in sync_script
+
+    def test_sidecar_uses_subpath_not_sync_root(self, make_config):
+        """full_bucket_overwrite: Sidecar-Command verwendet /sync/{subpath}/, nicht /sync/."""
+        builder = ManifestBuilder()
+        cfg = self._make_fbo_cfg(make_config, "/home/appuser/")
+        dep = builder.build_deployment(cfg)
+        sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
+        sync_script = sidecar["args"][0]
+        assert "/sync/home-appuser/" in sync_script
+
+    def test_restore_copies_from_bucket_root(self, make_config):
+        """full_bucket_overwrite: Restore-Init-Container lädt ganzen Bucket (kein container_data/)."""
+        builder = ManifestBuilder()
+        cfg = self._make_fbo_cfg(make_config)
+        dep = builder.build_deployment(cfg)
+        init_containers = dep["spec"]["template"]["spec"].get("initContainers", [])
+        restore = next((ic for ic in init_containers if ic["name"] == "init-container-restore"), None)
+        assert restore is not None, "init-container-restore muss vorhanden sein"
+        restore_script = restore["args"][0]
+        assert "S3:$(s3bucket)/ " in restore_script or restore_script.count("S3:$(s3bucket)/") > 0
+        assert "container_data" not in restore_script
+
+    def test_restore_targets_mount_path(self, make_config):
+        """full_bucket_overwrite: Restore-Ziel ist der Mount-Pfad aus full_bucket_overwrite."""
+        builder = ManifestBuilder()
+        cfg = self._make_fbo_cfg(make_config, "/home/appuser/")
+        dep = builder.build_deployment(cfg)
+        init_containers = dep["spec"]["template"]["spec"].get("initContainers", [])
+        restore = next(ic for ic in init_containers if ic["name"] == "init-container-restore")
+        restore_script = restore["args"][0]
+        assert "/home/appuser/" in restore_script
+
+    def test_sidecar_bisync_still_bidirectional(self, make_config):
+        """full_bucket_overwrite ändert den Pfad, aber nicht die Bidirektionalität."""
+        builder = ManifestBuilder()
+        cfg = self._make_fbo_cfg(make_config)
+        dep = builder.build_deployment(cfg)
+        sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
+        sync_script = sidecar["args"][0]
+        assert "rclone bisync" in sync_script
+        assert "--conflict-resolve newer" in sync_script
