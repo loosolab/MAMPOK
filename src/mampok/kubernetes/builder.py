@@ -331,7 +331,7 @@ class ManifestBuilder:
             sync_cmd = (
                 "while true; do "
                 "rclone bisync /sync/ S3:$s3bucket/container_data/ "
-                "--resilient --conflict-resolve newer --workdir /tmp/bisync-state/ "
+                "--conflict-resolve newer --workdir /tmp/bisync-state/ "
                 "--transfers 4 --log-level ERROR "
                 "|| rclone bisync /sync/ S3:$s3bucket/container_data/ "
                 "--resync --workdir /tmp/bisync-state/ "

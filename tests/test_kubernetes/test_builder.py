@@ -879,11 +879,13 @@ class TestBuildDeploymentContainerData:
         sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
         sync_script = sidecar["args"][0]
         assert "rclone bisync" in sync_script
-        assert "--resilient" in sync_script
         assert "--workdir /tmp/bisync-state/" in sync_script
         assert "--conflict-resolve newer" in sync_script
-        # Fallback: --resync recovers from missing/corrupt state files
+        # Fallback: --resync recovers from missing/corrupt state files (triggers on non-zero exit)
         assert "--resync" in sync_script
+        # --resilient must NOT be in the normal bisync call — it causes exit 0 on critical
+        # errors, which prevents the || --resync fallback from ever triggering
+        assert sync_script.index("--resync") > sync_script.index("||")
 
     def test_sidecar_sync_cmd_has_loop_with_sleep(self, make_config):
         builder = ManifestBuilder()
