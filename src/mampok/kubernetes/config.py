@@ -129,6 +129,11 @@ class DeploymentConfig:
     """S3 endpoint URL — as literal value in the s3download init container and
     injected into the main container when direct_s3_access is True."""
 
+    s3_provider: str = "Minio"
+    """rclone S3 provider (RCLONE_CONFIG_S3_PROVIDER). Use 'Minio' for MinIO/Ceph
+    compatible stores, 'AWS' for native AWS S3. Controls ETag behavior and
+    provider-specific optimisations."""
+
     direct_s3_access: bool = False
     """If True, inject AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_ENDPOINT_URL
     from the project secret into the main container."""

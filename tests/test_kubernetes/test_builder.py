@@ -214,7 +214,14 @@ class TestBuildDeployment:
         assert ic["args"] == _S3DOWNLOAD_ARGS
         assert ic["volumeMounts"] == [{"name": _FILEDIR_VOLUME_NAME, "mountPath": _FILEDIR_MOUNT_PATH}]
         env_names = {e["name"] for e in ic["env"]}
-        assert env_names == {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "s3endpoint", "s3bucket"}
+        assert env_names == {
+            "RCLONE_CONFIG_S3_TYPE",
+            "RCLONE_CONFIG_S3_PROVIDER",
+            "RCLONE_CONFIG_S3_ENDPOINT",
+            "RCLONE_CONFIG_S3_ACCESS_KEY_ID",
+            "RCLONE_CONFIG_S3_SECRET_ACCESS_KEY",
+            "s3bucket",
+        }
         s3bucket_env = next(e for e in ic["env"] if e["name"] == "s3bucket")
         assert s3bucket_env == {"name": "s3bucket", "value": "my-bucket"}
 
@@ -812,7 +819,7 @@ class TestBuildDeploymentContainerData:
         dep = builder.build_deployment(cfg)
         sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
         assert ":" in sidecar["image"]
-        assert sidecar["image"] != "amazon/aws-cli:latest"
+        assert sidecar["image"].startswith("rclone/rclone:")
 
     def test_no_termination_grace_period_without_container_data(self, make_config):
         builder = ManifestBuilder()
@@ -861,7 +868,7 @@ class TestBuildDeploymentContainerData:
         env = {e["name"]: e.get("value") for e in sidecar["env"]}
         assert env["MAMPOK_SYNC_INTERVAL"] == "120"
 
-    def test_sidecar_sync_cmd_has_sigterm_trap(self, make_config):
+    def test_sidecar_sync_cmd_uses_rclone_bisync(self, make_config):
         builder = ManifestBuilder()
         cfg = make_config(
             container_data_paths=["/app/annotations/"],
@@ -871,9 +878,13 @@ class TestBuildDeploymentContainerData:
         dep = builder.build_deployment(cfg)
         sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
         sync_script = sidecar["args"][0]
-        assert "trap 'exit 0' TERM INT" in sync_script
+        assert "rclone bisync" in sync_script
+        assert "--force" in sync_script
+        assert "--resilient" in sync_script
+        assert "--workdir /tmp/bisync-state/" in sync_script
+        assert "--conflict-resolve newer" in sync_script
 
-    def test_sidecar_sync_cmd_uses_background_sleep(self, make_config):
+    def test_sidecar_sync_cmd_has_loop_with_sleep(self, make_config):
         builder = ManifestBuilder()
         cfg = make_config(
             container_data_paths=["/app/annotations/"],
@@ -883,9 +894,8 @@ class TestBuildDeploymentContainerData:
         dep = builder.build_deployment(cfg)
         sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
         sync_script = sidecar["args"][0]
-        # sleep runs in background so SIGTERM trap fires during sleep phase
-        assert "sleep $MAMPOK_SYNC_INTERVAL &" in sync_script
-        assert "wait $!" in sync_script
+        assert "while true" in sync_script
+        assert "sleep $MAMPOK_SYNC_INTERVAL" in sync_script
 
     def test_main_container_has_no_lifecycle(self, make_config):
         """Main container must NOT have preStop — sync is done by Mampok before deletion."""

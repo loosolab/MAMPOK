@@ -132,10 +132,12 @@ class DeploymentManager:
 
         pod_name = pod_names[0]
         yield {"stage": "s3_final_sync", "status": "starting", "pod": pod_name}
+        # rclone copy (not bisync): one-shot local→S3 upload before pod deletion.
+        # --stats 10s emits periodic progress captured by exec_in_pod() output.
         sync_cmd = [
             "/bin/sh", "-c",
-            "aws s3 sync /sync/ s3://$s3bucket/container_data/ "
-            "--endpoint-url $s3endpoint --only-show-errors",
+            "rclone copy /sync/ S3:$s3bucket/container_data/ "
+            "--transfers 4 --retries 3 --stats 10s --log-level INFO",
         ]
         try:
             output = self._kube.exec_in_pod(

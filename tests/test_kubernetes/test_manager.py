@@ -330,7 +330,7 @@ class TestFinalSyncBeforeDelete:
         sync_done = next(e for e in events if e["stage"] == "s3_final_sync" and e["status"] == "done")
         assert sync_done["pod"] == "mypod-abc123"
 
-        assert "aws s3 sync" in " ".join(kube.exec_in_pod.call_args.kwargs["command"])
+        assert "rclone copy" in " ".join(kube.exec_in_pod.call_args.kwargs["command"])
         assert kube.exec_in_pod.call_args.kwargs["container"] == "mampok-s3-sync"
 
     def test_delete_skips_sync_without_container_data(self, make_config):

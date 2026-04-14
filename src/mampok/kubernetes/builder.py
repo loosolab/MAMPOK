@@ -12,10 +12,12 @@ from mampok.kubernetes.config import DeploymentConfig
 
 logger = logging.getLogger(__name__)
 
-_S3DOWNLOAD_IMAGE = "amazon/aws-cli:2.34.29"
+_RCLONE_IMAGE = "rclone/rclone:1.69.1"
+_S3DOWNLOAD_IMAGE = _RCLONE_IMAGE
 _S3DOWNLOAD_COMMAND = ["/bin/sh", "-c"]
 _S3DOWNLOAD_ARGS = [
-    "aws --endpoint-url $(s3endpoint) s3 cp s3://$(s3bucket)/analysis_data/ /analysis_data/ --recursive"
+    "rclone copy S3:$(s3bucket)/analysis_data/ /analysis_data/ "
+    "--transfers 4 --retries 5 --log-level ERROR"
 ]
 _S3DOWNLOAD_RESOURCES = {
     "limits": {"cpu": "1", "memory": "1Gi"},
@@ -24,7 +26,7 @@ _S3DOWNLOAD_RESOURCES = {
 _FILEDIR_VOLUME_NAME = "filedir"
 _FILEDIR_MOUNT_PATH = "/analysis_data"
 _MAMPOK_FIELDS = {"tool", "containertype", "container_data", "volume"}
-_S3SYNC_IMAGE = "amazon/aws-cli:2.34.29"
+_S3SYNC_IMAGE = _RCLONE_IMAGE
 _S3SYNC_SIDECAR_NAME = "mampok-s3-sync"
 _S3SYNC_RESOURCES = {
     "limits": {"cpu": "200m", "memory": "256Mi"},
@@ -44,6 +46,39 @@ class ManifestBuilder:
     def _b64(value: str) -> str:
         """Base64-encode a string value."""
         return base64.b64encode(value.encode()).decode()
+
+    @staticmethod
+    def _build_rclone_env(cfg: "DeploymentConfig", secret_name: str) -> list[dict]:
+        """Build rclone RCLONE_CONFIG_* environment variables for S3 access.
+
+        Centralizes rclone configuration for all container types (init, restore, sidecar).
+        Uses the S3 remote named 'S3' which is referenced in rclone commands as 'S3:bucket/path'.
+
+        Args:
+            cfg: Deployment configuration (provides endpoint, bucket).
+            secret_name: Name of the K8s Secret holding s3_key / s3_secret.
+
+        Returns:
+            List of K8s env var dicts for rclone S3 remote configuration.
+        """
+        return [
+            {"name": "RCLONE_CONFIG_S3_TYPE", "value": "s3"},
+            {"name": "RCLONE_CONFIG_S3_PROVIDER", "value": cfg.s3_provider},
+            {"name": "RCLONE_CONFIG_S3_ENDPOINT", "value": cfg.endpoint},
+            {
+                "name": "RCLONE_CONFIG_S3_ACCESS_KEY_ID",
+                "valueFrom": {
+                    "secretKeyRef": {"name": secret_name, "key": "s3_key"}
+                },
+            },
+            {
+                "name": "RCLONE_CONFIG_S3_SECRET_ACCESS_KEY",
+                "valueFrom": {
+                    "secretKeyRef": {"name": secret_name, "key": "s3_secret"}
+                },
+            },
+            {"name": "s3bucket", "value": cfg.bucket},
+        ]
 
     def build_secret(self, cfg: DeploymentConfig, s3_credentials: dict) -> dict:
         """Build the S3 credentials Secret manifest.
@@ -168,9 +203,8 @@ class ManifestBuilder:
                     for p in cfg.container_data_paths
                 ]
                 restore_cmd_parts = " && ".join(
-                    f"aws --endpoint-url $(s3endpoint) s3 cp "
-                    f"s3://$(s3bucket)/container_data/{_sync_sidecar_subpath(p)}/ {p.rstrip('/')}/ "
-                    f"--recursive || true"
+                    f"rclone copy S3:$(s3bucket)/container_data/{_sync_sidecar_subpath(p)}/ "
+                    f"{p.rstrip('/')}/ --ignore-errors --retries 3 --log-level ERROR"
                     for p in cfg.container_data_paths
                 )
                 init_containers.append(
@@ -179,28 +213,7 @@ class ManifestBuilder:
                         "image": _S3DOWNLOAD_IMAGE,
                         "command": _S3DOWNLOAD_COMMAND,
                         "args": [restore_cmd_parts],
-                        "env": [
-                            {
-                                "name": "AWS_ACCESS_KEY_ID",
-                                "valueFrom": {
-                                    "secretKeyRef": {
-                                        "name": cfg.secret_name,
-                                        "key": "s3_key",
-                                    }
-                                },
-                            },
-                            {
-                                "name": "AWS_SECRET_ACCESS_KEY",
-                                "valueFrom": {
-                                    "secretKeyRef": {
-                                        "name": cfg.secret_name,
-                                        "key": "s3_secret",
-                                    }
-                                },
-                            },
-                            {"name": "s3endpoint", "value": cfg.endpoint},
-                            {"name": "s3bucket", "value": cfg.bucket},
-                        ],
+                        "env": self._build_rclone_env(cfg, cfg.secret_name),
                         "resources": _S3DOWNLOAD_RESOURCES,
                         "volumeMounts": restore_mounts,
                     }
@@ -212,28 +225,7 @@ class ManifestBuilder:
                     "image": _S3DOWNLOAD_IMAGE,
                     "command": _S3DOWNLOAD_COMMAND,
                     "args": _S3DOWNLOAD_ARGS,
-                    "env": [
-                        {
-                            "name": "AWS_ACCESS_KEY_ID",
-                            "valueFrom": {
-                                "secretKeyRef": {
-                                    "name": cfg.secret_name,
-                                    "key": "s3_key",
-                                }
-                            },
-                        },
-                        {
-                            "name": "AWS_SECRET_ACCESS_KEY",
-                            "valueFrom": {
-                                "secretKeyRef": {
-                                    "name": cfg.secret_name,
-                                    "key": "s3_secret",
-                                }
-                            },
-                        },
-                        {"name": "s3endpoint", "value": cfg.endpoint},
-                        {"name": "s3bucket", "value": cfg.bucket},
-                    ],
+                    "env": self._build_rclone_env(cfg, cfg.secret_name),
                     "resources": _S3DOWNLOAD_RESOURCES,
                     "volumeMounts": s3_download_volume_mounts,
                 }
@@ -324,43 +316,34 @@ class ManifestBuilder:
 
         # --- S3 sync sidecar (appended after auth container setup) ---
         if cfg.container_data_paths:
+            # rclone bisync: bidirectional sync between /sync/ and S3 container_data/.
+            # --workdir /tmp/bisync-state/ keeps state files out of the synced path
+            # (prevents .lst listing files from being uploaded to S3).
+            # First run uses --force to bootstrap the state file (no prior state exists
+            # on a fresh pod); safe because restore-init-container already ran.
             sync_cmd = (
-                "trap 'exit 0' TERM INT; "
+                "rclone bisync /sync/ S3:$s3bucket/container_data/ "
+                "--force --resilient --workdir /tmp/bisync-state/ "
+                "--transfers 4 --log-level ERROR; "
                 "while true; do "
-                "aws s3 sync /sync/ s3://$s3bucket/container_data/ "
-                "--endpoint-url $s3endpoint --only-show-errors; "
-                "sleep $MAMPOK_SYNC_INTERVAL & "
-                "wait $!; "
+                "rclone bisync /sync/ S3:$s3bucket/container_data/ "
+                "--resilient --conflict-resolve newer --workdir /tmp/bisync-state/ "
+                "--transfers 4 --log-level ERROR; "
+                "sleep $MAMPOK_SYNC_INTERVAL; "
                 "done"
             )
+            sidecar_env = self._build_rclone_env(cfg, cfg.secret_name) + [
+                {
+                    "name": "MAMPOK_SYNC_INTERVAL",
+                    "value": str(cfg.container_data_sync_interval),
+                },
+            ]
             sidecar: dict = {
                 "name": _S3SYNC_SIDECAR_NAME,
                 "image": _S3SYNC_IMAGE,
                 "command": ["/bin/sh", "-c"],
                 "args": [sync_cmd],
-                "env": [
-                    {
-                        "name": "AWS_ACCESS_KEY_ID",
-                        "valueFrom": {
-                            "secretKeyRef": {"name": cfg.secret_name, "key": "s3_key"}
-                        },
-                    },
-                    {
-                        "name": "AWS_SECRET_ACCESS_KEY",
-                        "valueFrom": {
-                            "secretKeyRef": {
-                                "name": cfg.secret_name,
-                                "key": "s3_secret",
-                            }
-                        },
-                    },
-                    {"name": "s3endpoint", "value": cfg.endpoint},
-                    {"name": "s3bucket", "value": cfg.bucket},
-                    {
-                        "name": "MAMPOK_SYNC_INTERVAL",
-                        "value": str(cfg.container_data_sync_interval),
-                    },
-                ],
+                "env": sidecar_env,
                 "resources": _S3SYNC_RESOURCES,
                 "volumeMounts": sync_volume_mounts_sidecar,
             }
