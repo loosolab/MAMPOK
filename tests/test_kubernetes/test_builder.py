@@ -882,6 +882,9 @@ class TestBuildDeploymentContainerData:
         assert "rclone bisync" in sync_script
         assert "--workdir /tmp/bisync-state/" in sync_script
         assert "--conflict-resolve newer" in sync_script
+        # --no-check-empty: allows bisync to run when Path1 is empty (fresh deployment)
+        # without triggering the "Empty prior Path1 listing" safety abort
+        assert "--no-check-empty" in sync_script
         # Explicit --resync on startup initialises .lst files without needing prior state
         assert "mkdir -p /tmp/bisync-state" in sync_script
         resync_positions = [i for i in range(len(sync_script)) if sync_script[i:].startswith("--resync")]
@@ -1062,3 +1065,4 @@ class TestFullBucketOverwrite:
         sync_script = sidecar["args"][0]
         assert "rclone bisync" in sync_script
         assert "--conflict-resolve newer" in sync_script
+        assert "--no-check-empty" in sync_script
