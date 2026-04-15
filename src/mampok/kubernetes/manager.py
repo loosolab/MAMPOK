@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timezone
 from typing import Iterator
 
-from mampok.kubernetes.builder import ManifestBuilder, _S3SYNC_SIDECAR_NAME
+from mampok.kubernetes.builder import ManifestBuilder, _S3SYNC_SIDECAR_NAME, _sync_sidecar_subpath
 from mampok.kubernetes.client import KubeClient
 from mampok.kubernetes.config import DeploymentConfig
 from mampok.kubernetes.validator import ManifestValidationError, ManifestValidator
@@ -180,12 +180,26 @@ class DeploymentManager:
 
         pod_name = pod_names[0]
         yield {"stage": "s3_final_sync", "status": "starting", "pod": pod_name}
+        # Use the same local↔S3 path mapping as the bisync loop in the sidecar.
+        # Full-bucket mode syncs a subpath of /sync/ directly to the bucket root;
+        # normal mode syncs all of /sync/ into the container_data/ prefix.
+        # Using the wrong paths here (e.g. always container_data/) would create a
+        # spurious container_data/ folder in the bucket root that the bisync loop
+        # then mirrors back locally, causing recursive folder growth on re-deploy.
+        if cfg.container_data_s3_root:
+            subpath = _sync_sidecar_subpath(cfg.container_data_paths[0])
+            final_local = f"/sync/{subpath}/"
+            final_s3 = "S3:$s3bucket/"
+        else:
+            final_local = "/sync/"
+            final_s3 = "S3:$s3bucket/container_data/"
+
         # rclone copy (not bisync): one-shot local→S3 upload before pod deletion.
         # --stats 10s emits periodic progress; exec_in_pod_stream() surfaces each
         # stats block as a "progress" event so callers can update MongoDB in real time.
         sync_cmd = [
             "/bin/sh", "-c",
-            "rclone copy /sync/ S3:$s3bucket/container_data/ "
+            f"rclone copy {final_local} {final_s3} "
             "--transfers 4 --retries 3 --stats 10s --log-level INFO",
         ]
         try:
