@@ -385,7 +385,7 @@ class Mampok:
         container_data_restore = bool(container_data.get("restore_on_deploy", False))
         container_data_sync_interval = int(container_data.get("sync_interval_seconds", 300))
         container_data_sync_timeout = int(
-            container_data.get("sync_timeout_seconds", 300)
+            container_data.get("sync_timeout_seconds", 3600)
         )
         container_data_s3_root = False
 

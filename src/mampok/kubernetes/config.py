@@ -147,7 +147,7 @@ class DeploymentConfig:
     container_data_sync_interval: int = 300
     """Sidecar sync interval in seconds."""
 
-    container_data_sync_timeout: int = 300
+    container_data_sync_timeout: int = 3600
     """Timeout in seconds Mampok waits for the pre-delete S3 sync (exec into sidecar).
     Mampok proceeds with deletion after this timeout even if sync is incomplete."""
 
