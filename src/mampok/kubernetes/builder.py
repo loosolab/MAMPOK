@@ -150,7 +150,9 @@ class ManifestBuilder:
         if cfg.volume_mounts:
             container["volumeMounts"] = cfg.volume_mounts
         if cfg.readiness_probe:
-            container["readinessProbe"] = cfg.readiness_probe
+            base_path = urlparse(cfg.url).path
+            probe_str = json.dumps(cfg.readiness_probe).replace("${MAMPOK_BASE_PATH}", base_path)
+            container["readinessProbe"] = json.loads(probe_str)
 
         pod_spec: dict = {"containers": [container]}
 

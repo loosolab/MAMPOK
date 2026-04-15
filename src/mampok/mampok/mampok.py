@@ -185,12 +185,14 @@ class Mampok:
 
         # Update mamplan — reset lifetime to now + config.lifetime_days (lease renewal)
         new_lifetime = datetime.now(timezone.utc) + timedelta(days=config.lifetime_days)
-        self.mamplan.edit(
-            deployment__status=True,
-            deployment__url=cfg.url,
-            deployment__lifetime=new_lifetime.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            project__project_size=total_size_bytes // 1024,
-        )
+        edit_kwargs: dict = {
+            "deployment__status": True,
+            "deployment__url": cfg.url,
+            "deployment__lifetime": new_lifetime.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        if isinstance(self.mamplan, Mamplan):
+            edit_kwargs["project__project_size"] = total_size_bytes // 1024
+        self.mamplan.edit(**edit_kwargs)
         step = {"stage": "done", "selfservice": {"url": cfg.url, "token_url": token_url, "project_id": project_id, "auth": cfg.auth}}
         logger.debug("step: %s", step)
         yield step
