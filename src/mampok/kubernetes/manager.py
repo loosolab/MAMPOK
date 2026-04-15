@@ -23,6 +23,9 @@ def _parse_rclone_stats(output: str) -> dict:
       - Bytes line: "Transferred:   512.0 MiB / 1.024 GiB, 50%, 51.2 MiB/s, ETA 10s"
       - File count: "Transferred:         50 / 100, 50%"  (plain integers, no unit)
 
+    Uses findall + last match so that cumulative output strings (where rclone appends
+    a new stats block every --stats interval) always return the most recent values.
+
     Returns:
         Dict with a subset of: transferred_files, total_files, transferred_pct,
         transferred_bytes_human, total_bytes_human, speed, elapsed.
@@ -31,24 +34,25 @@ def _parse_rclone_stats(output: str) -> dict:
     result: dict = {}
     # File-count line has plain integers followed by "%" with no unit after numbers.
     # The bytes line has a float + unit (e.g. "512.0 MiB") before the slash.
-    m = re.search(r"Transferred:\s+(\d+)\s*/\s*(\d+),\s*(\d+)%\s*(?:\n|$)", output)
-    if m:
-        result["transferred_files"] = int(m.group(1))
-        result["total_files"] = int(m.group(2))
-        result["transferred_pct"] = int(m.group(3))
+    # findall + [-1] ensures we always pick the LAST (most recent) stats block.
+    matches = re.findall(r"Transferred:\s+(\d+)\s*/\s*(\d+),\s*(\d+)%\s*(?:\n|$)", output)
+    if matches:
+        result["transferred_files"] = int(matches[-1][0])
+        result["total_files"] = int(matches[-1][1])
+        result["transferred_pct"] = int(matches[-1][2])
     # Bytes + speed line
-    m = re.search(
+    matches = re.findall(
         r"Transferred:\s+([\d.]+\s*\S+)\s*/\s*([\d.]+\s*\S+),\s*\d+%,\s*([\d.]+\s*\S+/s)",
         output,
     )
-    if m:
-        result["transferred_bytes_human"] = m.group(1)
-        result["total_bytes_human"] = m.group(2)
-        result["speed"] = m.group(3)
+    if matches:
+        result["transferred_bytes_human"] = matches[-1][0]
+        result["total_bytes_human"] = matches[-1][1]
+        result["speed"] = matches[-1][2]
     # Elapsed time
-    m = re.search(r"Elapsed time:\s+([\d.]+\S+)", output)
-    if m:
-        result["elapsed"] = m.group(1)
+    matches = re.findall(r"Elapsed time:\s+([\d.]+\S+)", output)
+    if matches:
+        result["elapsed"] = matches[-1]
     return result
 
 
@@ -150,12 +154,15 @@ class DeploymentManager:
         regardless of whether the sync succeeded, was skipped, or timed out.
 
         Uses exec_in_pod_stream() to yield periodic progress events every ~10 s while
-        rclone is running, then a final "done" event with the complete stats.
+        rclone is running, then a final event whose status is "done" (rclone finished
+        successfully) or "timeout" (container_data_sync_timeout was reached before
+        rclone completed).
 
         Yields:
             {"stage": "s3_final_sync", "status": "starting",  "pod": pod_name}
             {"stage": "s3_final_sync", "status": "progress",  "pod": pod_name, ...stats}
             {"stage": "s3_final_sync", "status": "done",      "pod": pod_name, ...stats}
+            {"stage": "s3_final_sync", "status": "timeout",   "pod": pod_name, ...stats}
             {"stage": "s3_final_sync", "status": "skipped",   "reason": str}
             {"stage": "s3_final_sync", "status": "failed",    "reason": str}
         """
@@ -184,6 +191,7 @@ class DeploymentManager:
         try:
             last_pct = -1
             accumulated = ""
+            sync_start = time.monotonic()
             for accumulated in self._kube.exec_in_pod_stream(
                 pod_name=pod_name,
                 container=_S3SYNC_SIDECAR_NAME,
@@ -200,7 +208,18 @@ class DeploymentManager:
             if accumulated:
                 logger.info("final_sync output: %s", accumulated.strip())
             final_stats = _parse_rclone_stats(accumulated)
-            yield {"stage": "s3_final_sync", "status": "done", "pod": pod_name, **final_stats}
+            # Distinguish between rclone finishing on its own vs. our timeout cutting it off.
+            timed_out = (time.monotonic() - sync_start) >= cfg.container_data_sync_timeout
+            final_status = "timeout" if timed_out else "done"
+            if timed_out:
+                logger.warning(
+                    "final_sync: timeout after %ss for %s (transferred %s/%s files)",
+                    cfg.container_data_sync_timeout,
+                    cfg.project_id,
+                    final_stats.get("transferred_files", "?"),
+                    final_stats.get("total_files", "?"),
+                )
+            yield {"stage": "s3_final_sync", "status": final_status, "pod": pod_name, **final_stats}
         except Exception as e:
             logger.warning("final_sync: exec failed for %s: %s", cfg.project_id, e)
             yield {"stage": "s3_final_sync", "status": "failed", "reason": str(e)}
