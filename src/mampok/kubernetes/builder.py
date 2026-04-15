@@ -67,9 +67,7 @@ class ManifestBuilder:
             {"name": "RCLONE_CONFIG_S3_ENDPOINT", "value": cfg.endpoint},
             {
                 "name": "RCLONE_CONFIG_S3_ACCESS_KEY_ID",
-                "valueFrom": {
-                    "secretKeyRef": {"name": secret_name, "key": "s3_key"}
-                },
+                "valueFrom": {"secretKeyRef": {"name": secret_name, "key": "s3_key"}},
             },
             {
                 "name": "RCLONE_CONFIG_S3_SECRET_ACCESS_KEY",
@@ -140,7 +138,9 @@ class ManifestBuilder:
             },
         }
 
-        env = [{"name": "MAMPOK_BASE_PATH", "value": urlparse(cfg.url).path}] + list(cfg.env)
+        env = [{"name": "MAMPOK_BASE_PATH", "value": urlparse(cfg.url).path}] + list(
+            cfg.env
+        )
         if env:
             container["env"] = env
         if cfg.args:
@@ -151,7 +151,9 @@ class ManifestBuilder:
             container["volumeMounts"] = cfg.volume_mounts
         if cfg.readiness_probe:
             base_path = urlparse(cfg.url).path
-            probe_str = json.dumps(cfg.readiness_probe).replace("${MAMPOK_BASE_PATH}", base_path)
+            probe_str = json.dumps(cfg.readiness_probe).replace(
+                "${MAMPOK_BASE_PATH}", base_path
+            )
             container["readinessProbe"] = json.loads(probe_str)
 
         pod_spec: dict = {"containers": [container]}
@@ -342,7 +344,7 @@ class ManifestBuilder:
                 "--transfers 4 --log-level ERROR && "
                 "while true; do "
                 f"rclone bisync {local_path} {s3_path} "
-                "--conflict-resolve newer --no-check-empty "
+                "--conflict-resolve newer "
                 "--workdir /tmp/bisync-state/ "
                 "--transfers 4 --log-level ERROR "
                 f"|| rclone bisync {local_path} {s3_path} "
