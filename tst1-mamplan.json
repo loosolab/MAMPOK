@@ -1,0 +1,34 @@
+{
+  "project": {
+    "project_id": "tst1",
+    "tool": "cxg",
+    "files": [],
+    "creation_date": "2026-04-15T12:13:10Z"
+  },
+  "deployment": {
+    "cluster": "BN",
+    "lifetime": "2026-04-15T12:13:10Z",
+    "bucket": "",
+    "url": "",
+    "auth": false,
+    "status": false,
+    "random_url_suffix": false
+  },
+  "service": {
+    "analyst": [
+      "ext_mmuster"
+    ],
+    "owner": "ext_mmuster",
+    "organization": [
+      "AG-mustermann"
+    ],
+    "user": [],
+    "datatype": [
+      "snRNA-seq"
+    ],
+    "metadata": [
+      "los34"
+    ],
+    "download_allowed": false
+  }
+}

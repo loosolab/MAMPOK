@@ -201,7 +201,7 @@ class ManifestBuilder:
                 )
             init_containers.append(
                 {
-                    "name": "init-container-restore",
+                    "name": "s3-restore",
                     "image": _S3DOWNLOAD_IMAGE,
                     "command": _S3DOWNLOAD_COMMAND,
                     "args": [restore_cmd_parts],
@@ -218,7 +218,7 @@ class ManifestBuilder:
             ]
             init_containers.append(
                 {
-                    "name": "init-container",
+                    "name": "s3-download",
                     "image": _S3DOWNLOAD_IMAGE,
                     "command": _S3DOWNLOAD_COMMAND,
                     "args": _S3DOWNLOAD_ARGS,
