@@ -12,8 +12,10 @@ from typing import Annotated, Callable, Optional
 import typer
 
 from mampok.config.config import MampokConfig
+from mampok.mamplan.base import MamplanBase
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
+from mampok.mamplan.shmamplan import SHMamplan
 from mampok.mamplan.metadata import _merge_unique, parse_metadata_files
 from mampok.mampok.mampok import Mampok
 
@@ -92,32 +94,40 @@ _OPT_NO_CLEANUP = typer.Option(
 # ---------------------------------------------------------------------------
 
 
-def load_mamplans(path: Path) -> list[Mamplan]:
-    """Load one or more Mamplans from a file or directory.
+def _load_single_mamplan(path: Path) -> MamplanBase:
+    """Load a single Mamplan or SHMamplan file based on filename suffix."""
+    if path.name.endswith("-shmamplan.json"):
+        return SHMamplan.read_in(path)
+    return Mamplan.read_in(path)
+
+
+def load_mamplans(path: Path) -> list[MamplanBase]:
+    """Load one or more Mamplans or SHMamplans from a file or directory.
 
     Args:
-        path: Path to a single Mamplan JSON file or a directory. Directories
-            are scanned recursively for ``*-mamplan.json`` files.
+        path: Path to a single Mamplan/SHMamplan JSON file or a directory.
+            Directories are scanned recursively for ``*-mamplan.json`` and
+            ``*-shmamplan.json`` files.
 
     Returns:
-        List of loaded and validated Mamplan instances.
+        List of loaded and validated MamplanBase instances.
 
     Raises:
         FileNotFoundError: If path does not exist.
-        ValueError: If path is a file but has an unexpected extension.
     """
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Path not found: {path}")
 
     if path.is_file():
-        return [Mamplan.read_in(path)]
+        return [_load_single_mamplan(path)]
 
+    # *-mamplan.json matches both *-mamplan.json and *-shmamplan.json via glob wildcard
     mamplan_files = sorted(path.rglob("*-mamplan.json"))
     if not mamplan_files:
         typer.echo(f"No mamplan files found in: {path}")
         return []
-    return [Mamplan.read_in(f) for f in mamplan_files]
+    return [_load_single_mamplan(f) for f in mamplan_files]
 
 
 def load_mamplates(mamplates_path: Path) -> dict[str, Mamplate]:
