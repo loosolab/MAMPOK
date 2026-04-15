@@ -3,7 +3,7 @@
   "title": "MampokConfig",
   "description": "Schema for Mampok v2 configuration files.",
   "type": "object",
-  "required": ["cluster", "s3", "mamplan_repo", "mamplates_path", "lifetime_days"],
+  "required": ["cluster", "s3", "mamplan_repo", "mamplates_path", "lifetime_days", "mampok_version"],
   "additionalProperties": false,
   "properties": {
     "cluster": {
@@ -59,6 +59,10 @@
     "default_cluster": {
       "type": "string",
       "description": "Default cluster name used when no cluster is specified (e.g. for Software Hub deployments). Must match a key in the 'cluster' object."
+    },
+    "mampok_version": {
+      "type": "string",
+      "description": "PEP 440 version specifier restricting which Mampok versions may run on this repository (e.g. '>=2.0.0,<3.0.0'). Required."
     }
   },
   "definitions": {

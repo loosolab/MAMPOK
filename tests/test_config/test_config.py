@@ -29,6 +29,7 @@ MINIMAL_CONFIG = {
     "mamplan_repo": "/app/BCU_REPOSITORY/",
     "mamplates_path": "/app/BCU_REPOSITORY/MaMplates",
     "lifetime_days": 10,
+    "mampok_version": ">=2.0.0.dev0",
 }
 
 FULL_CONFIG = {
@@ -58,6 +59,7 @@ FULL_CONFIG = {
     "mamplan_repo": "/app/BCU_REPOSITORY/",
     "mamplates_path": "/app/BCU_REPOSITORY/MaMplates",
     "lifetime_days": 10,
+    "mampok_version": ">=2.0.0.dev0",
 }
 
 
@@ -302,3 +304,54 @@ class TestClusterConfigAuthProxy:
     def test_auth_proxy_is_authproxyconfig_instance(self):
         cfg = MampokConfig.from_dict(_config_with_cluster(AUTH_PROXY_CLUSTER))
         assert isinstance(cfg.clusters["BN"].auth_proxy, AuthProxyConfig)
+
+
+# ---------------------------------------------------------------------------
+# mampok_version — Versionscheck
+# ---------------------------------------------------------------------------
+
+import copy as _copy
+from unittest.mock import patch as _patch
+
+
+class TestMampokVersionCheck:
+    """Tests für den mampok_version-Versionscheck in MampokConfig.from_dict."""
+
+    def test_matching_version_ok(self):
+        data = _copy.deepcopy(MINIMAL_CONFIG)
+        data["mampok_version"] = ">=2.0.0"
+        with _patch("mampok.config.config.__version__", "2.0.0"):
+            cfg = MampokConfig.from_dict(data)
+        assert cfg.mampok_version == ">=2.0.0"
+
+    def test_version_too_low_raises(self):
+        data = _copy.deepcopy(MINIMAL_CONFIG)
+        data["mampok_version"] = ">=3.0.0"
+        with _patch("mampok.config.config.__version__", "2.0.0"):
+            with pytest.raises(ValueError, match="version mismatch"):
+                MampokConfig.from_dict(data)
+
+    def test_version_above_upper_bound_raises(self):
+        data = _copy.deepcopy(MINIMAL_CONFIG)
+        data["mampok_version"] = "<2.0.0"
+        with _patch("mampok.config.config.__version__", "2.0.0"):
+            with pytest.raises(ValueError, match="version mismatch"):
+                MampokConfig.from_dict(data)
+
+    def test_missing_version_key_raises(self):
+        data = {k: v for k, v in MINIMAL_CONFIG.items() if k != "mampok_version"}
+        with pytest.raises(jsonschema.ValidationError):
+            MampokConfig.from_dict(data)
+
+    def test_invalid_specifier_raises(self):
+        data = _copy.deepcopy(MINIMAL_CONFIG)
+        data["mampok_version"] = ">=abc"
+        with pytest.raises(ValueError, match="Invalid mampok_version specifier"):
+            MampokConfig.from_dict(data)
+
+    def test_mampok_version_stored_on_config(self):
+        data = _copy.deepcopy(MINIMAL_CONFIG)
+        data["mampok_version"] = ">=2.0.0,<3.0.0"
+        with _patch("mampok.config.config.__version__", "2.1.0"):
+            cfg = MampokConfig.from_dict(data)
+        assert cfg.mampok_version == ">=2.0.0,<3.0.0"

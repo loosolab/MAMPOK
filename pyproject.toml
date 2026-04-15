@@ -16,6 +16,7 @@ dependencies = [
     "typer",
     "PyJWT",
     "PyYAML",
+    "packaging",
 ]
 
 [project.optional-dependencies]

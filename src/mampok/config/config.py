@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 import jsonschema
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
+
+from mampok import __version__
 
 if TYPE_CHECKING:
     from mampok.kubernetes.manager import DeploymentManager
@@ -100,6 +103,7 @@ class MampokConfig:
     mamplan_repo: Path
     mamplates_path: Path
     lifetime_days: int
+    mampok_version: str
     default_cluster: str | None = None
 
     _schema_cache: ClassVar[dict | None] = None
@@ -188,6 +192,19 @@ class MampokConfig:
 
         jsonschema.validate(data, cls._schema_cache)
 
+        raw_version_spec = data["mampok_version"]
+        try:
+            spec = SpecifierSet(raw_version_spec)
+        except InvalidSpecifier as exc:
+            raise ValueError(
+                f"Invalid mampok_version specifier in config: {raw_version_spec!r}"
+            ) from exc
+        if __version__ not in spec:
+            raise ValueError(
+                f"Mampok version mismatch: config requires {raw_version_spec!r}, "
+                f"but installed version is {__version__!r}."
+            )
+
         clusters = {
             name: ClusterConfig(
                 host=cluster_data["host"],
@@ -227,6 +244,7 @@ class MampokConfig:
             mamplan_repo=Path(data["mamplan_repo"]),
             mamplates_path=Path(data["mamplates_path"]),
             lifetime_days=data["lifetime_days"],
+            mampok_version=data["mampok_version"],
             default_cluster=data.get("default_cluster"),
         )
 
