@@ -392,11 +392,15 @@ class API:
         d = mamplan.data["deployment"]
         s = mamplan.data["service"]
         tags = mamplan.data.get("tags", {})
+        tool = p["tool"]
+        mamplate = mamplates.get(tool)
+        tool_displayname = mamplate.data.get("toolDisplayname", tool) if mamplate else tool
         projects: dict = {
             project_id: {
                 # project section
                 "project_id":    p["project_id"],
-                "tool":          p["tool"],
+                "tool":          tool,
+                "toolDisplayname": tool_displayname,
                 "files":         p.get("files", []),
                 "creation_date": _parse_iso_to_datetime(p.get("creation_date", "")),
                 "project_size":  p.get("project_size"),

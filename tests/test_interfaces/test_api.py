@@ -83,6 +83,15 @@ def mock_mampok():
     return mampok
 
 
+def _mock_mamplate(tool_displayname=None):
+    """Hilfsfunktion: erzeugt ein Mamplate-Mock mit echtem data-Dict."""
+    m = MagicMock()
+    m.data = {"tool": "cellxgene"}
+    if tool_displayname is not None:
+        m.data["toolDisplayname"] = tool_displayname
+    return m
+
+
 @pytest.fixture
 def api(config_path):
     """API-Instanz."""
@@ -98,7 +107,7 @@ def patched_api(api, mock_mamplan_data, mock_mampok, tmp_path):
 
     with patch.object(api, "_load_config"), \
          patch.object(api, "_load_mamplan", return_value=mamplan), \
-         patch.object(api, "_load_mamplates", return_value={"cellxgene": MagicMock()}), \
+         patch.object(api, "_load_mamplates", return_value={"cellxgene": _mock_mamplate()}), \
          patch("mampok.interfaces.api.create_mampok_instance", return_value=mock_mampok):
         yield api, mamplan, mock_mampok
 
@@ -399,6 +408,30 @@ class TestAPIProjectInfo:
         output = tmp_path / "info.json"
         api.project_info(mamplan_file)
         assert not output.exists()
+
+    def test_toolDisplayname_from_mamplate(self, api, mock_mamplan_data, mock_mampok, tmp_path):
+        mamplan = MagicMock()
+        mamplan.data = mock_mamplan_data
+        mamplan_file = tmp_path / "test-proj-mamplan.json"
+        mamplan_file.touch()
+        with patch.object(api, "_load_config"), \
+             patch.object(api, "_load_mamplan", return_value=mamplan), \
+             patch.object(api, "_load_mamplates", return_value={"cellxgene": _mock_mamplate("CellXGene")}), \
+             patch("mampok.interfaces.api.create_mampok_instance", return_value=mock_mampok):
+            result = api.project_info(mamplan_file)
+        assert result["projects"]["test-proj"]["toolDisplayname"] == "CellXGene"
+
+    def test_toolDisplayname_fallback_to_tool(self, api, mock_mamplan_data, mock_mampok, tmp_path):
+        mamplan = MagicMock()
+        mamplan.data = mock_mamplan_data
+        mamplan_file = tmp_path / "test-proj-mamplan.json"
+        mamplan_file.touch()
+        with patch.object(api, "_load_config"), \
+             patch.object(api, "_load_mamplan", return_value=mamplan), \
+             patch.object(api, "_load_mamplates", return_value={"cellxgene": _mock_mamplate()}), \
+             patch("mampok.interfaces.api.create_mampok_instance", return_value=mock_mampok):
+            result = api.project_info(mamplan_file)
+        assert result["projects"]["test-proj"]["toolDisplayname"] == "cellxgene"
 
 
 # ---------------------------------------------------------------------------

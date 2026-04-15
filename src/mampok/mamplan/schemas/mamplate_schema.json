@@ -37,6 +37,10 @@
           "type": "string",
           "description": "Unique identifier for this tool/template."
         },
+        "toolDisplayname": {
+          "type": "string",
+          "description": "Human-readable display name for this tool (e.g. 'CellXGene'). Falls back to 'tool' if not set."
+        },
         "image": {
           "type": "string",
           "description": "Docker image URI for this container."
