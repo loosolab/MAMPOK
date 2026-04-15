@@ -70,7 +70,7 @@ class Mampok:
         """
         return self.mamplan.is_expired
 
-    def deploy(self, config: MampokConfig, timeout: int = 900, cleanup: bool = True) -> Iterator[dict]:
+    def deploy(self, config: MampokConfig, timeout: int = 900, cleanup: bool = True, reupload: bool = False) -> Iterator[dict]:
         """Deployt das Projekt auf Kubernetes.
 
         Ablauf:
@@ -88,6 +88,7 @@ class Mampok:
             config: Konfiguration mit Cluster- und S3-Credentials.
             timeout: Maximale Wartezeit in Sekunden bis Pods ready sind.
             cleanup: Falls True, werden K8s-Ressourcen bei Fehler automatisch gelöscht.
+            reupload: Falls True, werden alle Dateien erneut hochgeladen (Größenvergleich wird übersprungen).
 
         Yields:
             Fortschritts-Dicts für jeden Schritt des Deployments:
@@ -140,7 +141,7 @@ class Mampok:
                 local = mamplan_dir / local
             key = f"analysis_data/{local.name}"
             total_size_bytes += os.path.getsize(local)
-            if not self.s3.compare_size(key, local):
+            if reupload or not self.s3.compare_size(key, local):
                 self.s3.upload(local, key)
             step = {"stage": "s3_upload", "status": "done", "file": key}
             logger.debug("step: %s", step)

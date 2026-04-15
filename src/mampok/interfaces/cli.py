@@ -87,6 +87,10 @@ _OPT_NO_CLEANUP = typer.Option(
     "--no-cleanup",
     help="Skip automatic K8s resource cleanup on deploy failure (useful for debugging).",
 )
+_OPT_REUPLOAD = typer.Option(
+    "--reupload",
+    help="Force re-upload of all files to S3, skipping size-based cache check.",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -797,6 +801,7 @@ class CLI:
         timeout: int = 300,
         throw_error: bool = False,
         yes: bool = False,
+        reupload: bool = False,
     ) -> None:
         """Stop and redeploy one or more projects.
 
@@ -807,6 +812,7 @@ class CLI:
             timeout: Wait-for-ready timeout in seconds.
             throw_error: If True, disable error tolerance.
             yes: If True, skip confirmation prompt.
+            reupload: If True, force re-upload of all files to S3.
         """
         mamplans, mamplates = self._load(mamplan_path)
         mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
@@ -833,7 +839,7 @@ class CLI:
                     typer.echo(f"  deleted: {event.get('resource')}")
             mamplan.write(mamplan.source_path)
             typer.echo(f"Stopped: {project_id}")
-            for _ in mampok.deploy(config, timeout=timeout):
+            for _ in mampok.deploy(config, timeout=timeout, reupload=reupload):
                 pass
             mamplan.write(mamplan.source_path)
             typer.echo(f"Redeployed: {project_id}")
@@ -1226,11 +1232,12 @@ def redeploy(
     timeout: Annotated[int, _OPT_TIMEOUT] = 300,
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
     yes: Annotated[bool, _OPT_YES] = False,
+    reupload: Annotated[bool, _OPT_REUPLOAD] = False,
 ) -> None:
     """Stop and redeploy a project."""
     logger.info(
-        "redeploy: mamplan=%s, config=%s, selection=%s, regex_selection=%s, timeout=%s, throw_error=%s, yes=%s",
-        mamplan, config, selection, regex_selection, timeout, throw_error, yes,
+        "redeploy: mamplan=%s, config=%s, selection=%s, regex_selection=%s, timeout=%s, throw_error=%s, yes=%s, reupload=%s",
+        mamplan, config, selection, regex_selection, timeout, throw_error, yes, reupload,
     )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).redeploy(
@@ -1240,6 +1247,7 @@ def redeploy(
         timeout=timeout,
         throw_error=throw_error,
         yes=yes,
+        reupload=reupload,
     )
 
 
