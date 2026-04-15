@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import time
+from collections.abc import Iterator
 from typing import Any
 
 from kubernetes.client.rest import ApiException
@@ -247,6 +249,68 @@ class KubeClient:
         if ws.peek_stderr():
             parts.append(ws.read_stderr())
         return "".join(parts)
+
+    def exec_in_pod_stream(
+        self,
+        pod_name: str,
+        container: str,
+        command: list[str],
+        timeout: int = 300,
+        poll_interval: int = 10,
+    ) -> Iterator[str]:
+        """Like exec_in_pod(), but yields the accumulated stdout+stderr every
+        poll_interval seconds while the command is running.
+
+        Each yielded value is the complete output collected so far (cumulative),
+        so callers can parse the latest state without buffering themselves.
+
+        Args:
+            pod_name: Name of the pod.
+            container: Container name within the pod.
+            command: Command as list (e.g. ["/bin/sh", "-c", "rclone ..."]).
+            timeout: Maximum seconds to wait for the command to complete.
+            poll_interval: Seconds between successive yields.
+
+        Yields:
+            Accumulated stdout+stderr output as a string (grows with each yield).
+
+        Raises:
+            Exception: If exec setup fails (pod not found, container not running, etc.).
+        """
+        import kubernetes.client
+        import kubernetes.stream
+
+        v1 = kubernetes.client.CoreV1Api(api_client=self._api_client)
+        ws = kubernetes.stream.stream(
+            v1.connect_get_namespaced_pod_exec,
+            pod_name,
+            self._namespace,
+            container=container,
+            command=command,
+            stderr=True,
+            stdin=False,
+            stdout=True,
+            tty=False,
+            _preload_content=False,
+        )
+        parts: list[str] = []
+        deadline = time.monotonic() + timeout
+        while ws.is_open() and time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            ws.update(timeout=min(poll_interval, max(remaining, 0)))
+            if ws.peek_stdout():
+                parts.append(ws.read_stdout())
+            if ws.peek_stderr():
+                parts.append(ws.read_stderr())
+            if parts:
+                yield "".join(parts)
+        # Drain any remaining output after the loop
+        if ws.peek_stdout():
+            parts.append(ws.read_stdout())
+        if ws.peek_stderr():
+            parts.append(ws.read_stderr())
+        if parts:
+            yield "".join(parts)
 
     def patch(self, kind: str, name: str, body: dict) -> dict:
         """Apply a Strategic Merge Patch to a resource.

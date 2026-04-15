@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from typing import Iterator
@@ -13,6 +14,42 @@ from mampok.kubernetes.config import DeploymentConfig
 from mampok.kubernetes.validator import ManifestValidationError, ManifestValidator
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_rclone_stats(output: str) -> dict:
+    """Extract transfer progress, speed, and elapsed time from rclone --stats output.
+
+    Handles the two "Transferred:" lines rclone emits:
+      - Bytes line: "Transferred:   512.0 MiB / 1.024 GiB, 50%, 51.2 MiB/s, ETA 10s"
+      - File count: "Transferred:         50 / 100, 50%"  (plain integers, no unit)
+
+    Returns:
+        Dict with a subset of: transferred_files, total_files, transferred_pct,
+        transferred_bytes_human, total_bytes_human, speed, elapsed.
+        Empty dict when no stats are found in output.
+    """
+    result: dict = {}
+    # File-count line has plain integers followed by "%" with no unit after numbers.
+    # The bytes line has a float + unit (e.g. "512.0 MiB") before the slash.
+    m = re.search(r"Transferred:\s+(\d+)\s*/\s*(\d+),\s*(\d+)%\s*(?:\n|$)", output)
+    if m:
+        result["transferred_files"] = int(m.group(1))
+        result["total_files"] = int(m.group(2))
+        result["transferred_pct"] = int(m.group(3))
+    # Bytes + speed line
+    m = re.search(
+        r"Transferred:\s+([\d.]+\s*\S+)\s*/\s*([\d.]+\s*\S+),\s*\d+%,\s*([\d.]+\s*\S+/s)",
+        output,
+    )
+    if m:
+        result["transferred_bytes_human"] = m.group(1)
+        result["total_bytes_human"] = m.group(2)
+        result["speed"] = m.group(3)
+    # Elapsed time
+    m = re.search(r"Elapsed time:\s+([\d.]+\S+)", output)
+    if m:
+        result["elapsed"] = m.group(1)
+    return result
 
 
 class DeploymentManager:
@@ -112,11 +149,15 @@ class DeploymentManager:
         Best-effort: always yields a status event and never raises. Deletion proceeds
         regardless of whether the sync succeeded, was skipped, or timed out.
 
+        Uses exec_in_pod_stream() to yield periodic progress events every ~10 s while
+        rclone is running, then a final "done" event with the complete stats.
+
         Yields:
-            {"stage": "s3_final_sync", "status": "starting", "pod": pod_name}
-            {"stage": "s3_final_sync", "status": "done",     "pod": pod_name}
-            {"stage": "s3_final_sync", "status": "skipped",  "reason": str}
-            {"stage": "s3_final_sync", "status": "failed",   "reason": str}
+            {"stage": "s3_final_sync", "status": "starting",  "pod": pod_name}
+            {"stage": "s3_final_sync", "status": "progress",  "pod": pod_name, ...stats}
+            {"stage": "s3_final_sync", "status": "done",      "pod": pod_name, ...stats}
+            {"stage": "s3_final_sync", "status": "skipped",   "reason": str}
+            {"stage": "s3_final_sync", "status": "failed",    "reason": str}
         """
         try:
             pod_names = self._kube.list_running_pods(f"app={cfg.app_label}")
@@ -133,22 +174,33 @@ class DeploymentManager:
         pod_name = pod_names[0]
         yield {"stage": "s3_final_sync", "status": "starting", "pod": pod_name}
         # rclone copy (not bisync): one-shot local→S3 upload before pod deletion.
-        # --stats 10s emits periodic progress captured by exec_in_pod() output.
+        # --stats 10s emits periodic progress; exec_in_pod_stream() surfaces each
+        # stats block as a "progress" event so callers can update MongoDB in real time.
         sync_cmd = [
             "/bin/sh", "-c",
             "rclone copy /sync/ S3:$s3bucket/container_data/ "
             "--transfers 4 --retries 3 --stats 10s --log-level INFO",
         ]
         try:
-            output = self._kube.exec_in_pod(
+            last_pct = -1
+            accumulated = ""
+            for accumulated in self._kube.exec_in_pod_stream(
                 pod_name=pod_name,
                 container=_S3SYNC_SIDECAR_NAME,
                 command=sync_cmd,
                 timeout=cfg.container_data_sync_timeout,
-            )
-            if output:
-                logger.info("final_sync output: %s", output.strip())
-            yield {"stage": "s3_final_sync", "status": "done", "pod": pod_name}
+                poll_interval=10,
+            ):
+                stats = _parse_rclone_stats(accumulated)
+                pct = stats.get("transferred_pct", -1)
+                if stats and pct != last_pct:
+                    last_pct = pct
+                    yield {"stage": "s3_final_sync", "status": "progress", "pod": pod_name, **stats}
+
+            if accumulated:
+                logger.info("final_sync output: %s", accumulated.strip())
+            final_stats = _parse_rclone_stats(accumulated)
+            yield {"stage": "s3_final_sync", "status": "done", "pod": pod_name, **final_stats}
         except Exception as e:
             logger.warning("final_sync: exec failed for %s: %s", cfg.project_id, e)
             yield {"stage": "s3_final_sync", "status": "failed", "reason": str(e)}
