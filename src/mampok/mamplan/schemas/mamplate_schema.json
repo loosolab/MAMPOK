@@ -145,12 +145,12 @@
             "sync_interval_seconds": {
               "type": "integer",
               "description": "How often the sidecar syncs container paths to S3 (in seconds).",
-              "default": 300,
+              "default": 60,
               "minimum": 30
             },
-            "termination_grace_period_seconds": {
+            "sync_timeout_seconds": {
               "type": "integer",
-              "description": "Pod terminationGracePeriodSeconds — time for the final preStop sync. Pod stops earlier if sync completes sooner.",
+              "description": "Timeout in seconds Mampok waits for the pre-delete S3 sync. Mampok proceeds with deletion after this timeout even if sync is incomplete.",
               "default": 3600,
               "minimum": 30
             }
