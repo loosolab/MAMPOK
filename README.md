@@ -79,28 +79,33 @@ A different path can be passed to any command via `--config`.
 | `cluster.<name>.kubeconfig_path` | string | Path to the kubeconfig file |
 | `cluster.<name>.ingress_class` | string | Ingress class (e.g. `nginx`) |
 | `cluster.<name>.annotations` | object | Extra Ingress annotations |
-| `cluster.<name>.auth_proxy` | object | Gatekeeper proxy config (required when `auth: true` is used) |
 | `s3.endpoint` | string | S3 endpoint URL |
 | `s3.access_key` | string | S3 access key ID |
 | `s3.secret_key` | string | S3 secret access key |
 | `s3.secretname` | string | Name of the pre-existing Kubernetes Secret holding S3 credentials |
 | `s3.prefix` | string | Optional prefix for auto-generated S3 bucket names |
+| `auth_proxy` | object | Gatekeeper proxy config (required when `auth: true` is used) |
 | `mamplan_repo` | string | Path to the Mamplan repository directory |
 | `mamplates_path` | string | Path to the Mamplates directory |
 | `lifetime_days` | integer | Default deployment lifetime in days |
 
 ### Auth proxy (optional)
 
-Required only when deploying projects with `"auth": true`:
+Required only when deploying projects with `"auth": true`.
+Defined at the top level of the config file (same level as `s3`):
 
 ```json
-"auth_proxy": {
-  "auth_proxy_image": "registry.example.com/auth-proxy:latest",
-  "proxy_port": 8080,
-  "auth_annotations": {
-    "nginx.ingress.kubernetes.io/auth-type": "basic"
-  },
-  "image_pull_secrets": ["regcred"]
+{
+  "cluster": { ... },
+  "s3": { ... },
+  "auth_proxy": {
+    "auth_proxy_image": "registry.example.com/auth-proxy:latest",
+    "proxy_port": 8080,
+    "auth_annotations": {
+      "nginx.ingress.kubernetes.io/auth-type": "basic"
+    },
+    "image_pull_secrets": ["regcred"]
+  }
 }
 ```
 

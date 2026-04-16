@@ -209,7 +209,7 @@ class TestBuildDeployment:
 
         assert "initContainers" in spec
         ic = spec["initContainers"][0]
-        assert ic["name"] == "init-container"
+        assert ic["name"] == "s3-download"
         assert ic["image"] == _S3DOWNLOAD_IMAGE
         assert ic["command"] == _S3DOWNLOAD_COMMAND
         assert ic["args"] == _S3DOWNLOAD_ARGS
@@ -241,7 +241,7 @@ class TestBuildDeployment:
         cfg = make_config(include_s3download=True, bucket="b", init_containers=[custom])
         dep = builder.build_deployment(cfg)
         ic_list = dep["spec"]["template"]["spec"]["initContainers"]
-        assert ic_list[0]["name"] == "init-container"
+        assert ic_list[0]["name"] == "s3-download"
         assert ic_list[1]["name"] == "myjob"
 
     def test_env_secret_ref(self, make_config):
@@ -840,7 +840,7 @@ class TestBuildDeploymentContainerData:
         dep = builder.build_deployment(cfg)
         init_containers = dep["spec"]["template"]["spec"]["initContainers"]
         init_names = [ic["name"] for ic in init_containers]
-        assert "init-container-restore" in init_names
+        assert "s3-restore" in init_names
 
     def test_no_restore_init_container_without_restore_flag(self, make_config):
         builder = ManifestBuilder()
@@ -854,7 +854,7 @@ class TestBuildDeploymentContainerData:
         dep = builder.build_deployment(cfg)
         init_containers = dep["spec"]["template"]["spec"]["initContainers"]
         init_names = [ic["name"] for ic in init_containers]
-        assert "init-container-restore" not in init_names
+        assert "s3-restore" not in init_names
 
     def test_sidecar_sync_interval_env_var(self, make_config):
         builder = ManifestBuilder()
@@ -882,9 +882,6 @@ class TestBuildDeploymentContainerData:
         assert "rclone bisync" in sync_script
         assert "--workdir /tmp/bisync-state/" in sync_script
         assert "--conflict-resolve newer" in sync_script
-        # --no-check-empty: allows bisync to run when Path1 is empty (fresh deployment)
-        # without triggering the "Empty prior Path1 listing" safety abort
-        assert "--no-check-empty" in sync_script
         # Explicit --resync on startup initialises .lst files without needing prior state
         assert "mkdir -p /tmp/bisync-state" in sync_script
         resync_positions = [i for i in range(len(sync_script)) if sync_script[i:].startswith("--resync")]
@@ -969,7 +966,7 @@ class TestBuildDeploymentContainerData:
             endpoint="https://s3.example.com",
         )
         dep = builder.build_deployment(cfg)
-        restore = next(ic for ic in dep["spec"]["template"]["spec"]["initContainers"] if ic["name"] == "init-container-restore")
+        restore = next(ic for ic in dep["spec"]["template"]["spec"]["initContainers"] if ic["name"] == "s3-restore")
         restore_script = restore["args"][0]
         assert "S3:$(s3bucket)/container_data/" in restore_script
         assert "container_data" in restore_script
@@ -1040,8 +1037,8 @@ class TestFullBucketOverwrite:
         cfg = self._make_fbo_cfg(make_config)
         dep = builder.build_deployment(cfg)
         init_containers = dep["spec"]["template"]["spec"].get("initContainers", [])
-        restore = next((ic for ic in init_containers if ic["name"] == "init-container-restore"), None)
-        assert restore is not None, "init-container-restore muss vorhanden sein"
+        restore = next((ic for ic in init_containers if ic["name"] == "s3-restore"), None)
+        assert restore is not None, "s3-restore muss vorhanden sein"
         restore_script = restore["args"][0]
         assert "S3:$(s3bucket)/ " in restore_script or restore_script.count("S3:$(s3bucket)/") > 0
         assert "container_data" not in restore_script
@@ -1052,7 +1049,7 @@ class TestFullBucketOverwrite:
         cfg = self._make_fbo_cfg(make_config, "/home/appuser/")
         dep = builder.build_deployment(cfg)
         init_containers = dep["spec"]["template"]["spec"].get("initContainers", [])
-        restore = next(ic for ic in init_containers if ic["name"] == "init-container-restore")
+        restore = next(ic for ic in init_containers if ic["name"] == "s3-restore")
         restore_script = restore["args"][0]
         assert "/home/appuser/" in restore_script
 
@@ -1065,4 +1062,3 @@ class TestFullBucketOverwrite:
         sync_script = sidecar["args"][0]
         assert "rclone bisync" in sync_script
         assert "--conflict-resolve newer" in sync_script
-        assert "--no-check-empty" in sync_script

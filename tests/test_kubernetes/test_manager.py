@@ -314,7 +314,7 @@ class TestFinalSyncBeforeDelete:
         """When container_data_paths is set, delete() yields s3_final_sync + k8s_delete events."""
         kube = MagicMock()
         kube.list_running_pods.return_value = ["mypod-abc123"]
-        kube.exec_in_pod.return_value = ""
+        kube.exec_in_pod_stream.return_value = []
         cfg = make_config(
             container_data_paths=["/app/annotations/"],
             bucket="b",
@@ -330,15 +330,15 @@ class TestFinalSyncBeforeDelete:
         sync_done = next(e for e in events if e["stage"] == "s3_final_sync" and e["status"] == "done")
         assert sync_done["pod"] == "mypod-abc123"
 
-        assert "rclone copy" in " ".join(kube.exec_in_pod.call_args.kwargs["command"])
-        assert kube.exec_in_pod.call_args.kwargs["container"] == "mampok-s3-sync"
+        assert "rclone copy" in " ".join(kube.exec_in_pod_stream.call_args.kwargs["command"])
+        assert kube.exec_in_pod_stream.call_args.kwargs["container"] == "mampok-s3-sync"
 
     def test_delete_skips_sync_without_container_data(self, make_config):
         """delete() must NOT exec when container_data_paths is empty."""
         kube = MagicMock()
         events = list(DeploymentManager(kube).delete(make_config()))
 
-        kube.exec_in_pod.assert_not_called()
+        kube.exec_in_pod_stream.assert_not_called()
         kube.list_running_pods.assert_not_called()
         assert all(e["stage"] == "k8s_delete" for e in events)
 
@@ -357,14 +357,14 @@ class TestFinalSyncBeforeDelete:
         skipped = next(e for e in events if e["stage"] == "s3_final_sync")
         assert skipped["status"] == "skipped"
         assert skipped["reason"] == "no_running_pod"
-        kube.exec_in_pod.assert_not_called()
+        kube.exec_in_pod_stream.assert_not_called()
         kube.delete.assert_called()
 
     def test_delete_yields_failed_on_exec_error(self, make_config):
         """delete() yields s3_final_sync/failed and still deletes K8s resources."""
         kube = MagicMock()
         kube.list_running_pods.return_value = ["mypod"]
-        kube.exec_in_pod.side_effect = Exception("connection timeout")
+        kube.exec_in_pod_stream.side_effect = Exception("connection timeout")
         cfg = make_config(
             container_data_paths=["/app/annotations/"],
             bucket="b",
@@ -378,10 +378,10 @@ class TestFinalSyncBeforeDelete:
         kube.delete.assert_called()
 
     def test_delete_uses_sync_timeout_from_config(self, make_config):
-        """exec_in_pod timeout must come from container_data_sync_timeout, not grace period."""
+        """exec_in_pod_stream timeout must come from container_data_sync_timeout, not grace period."""
         kube = MagicMock()
         kube.list_running_pods.return_value = ["mypod"]
-        kube.exec_in_pod.return_value = ""
+        kube.exec_in_pod_stream.return_value = []
         cfg = make_config(
             container_data_paths=["/app/annotations/"],
             bucket="b",
@@ -391,4 +391,4 @@ class TestFinalSyncBeforeDelete:
 
         list(DeploymentManager(kube).delete(cfg))
 
-        assert kube.exec_in_pod.call_args.kwargs["timeout"] == 120
+        assert kube.exec_in_pod_stream.call_args.kwargs["timeout"] == 120

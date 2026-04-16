@@ -60,6 +60,42 @@
       "type": "string",
       "description": "Default cluster name used when no cluster is specified (e.g. for Software Hub deployments). Must match a key in the 'cluster' object."
     },
+    "auth_proxy": {
+      "type": "object",
+      "description": "Gatekeeper-Proxy-Konfiguration. Nur nötig wenn Deployments auth=True nutzen.",
+      "required": ["auth_proxy_image"],
+      "additionalProperties": false,
+      "properties": {
+        "auth_proxy_image": {
+          "type": "string",
+          "description": "Docker-Image des Gatekeeper-Containers."
+        },
+        "proxy_port": {
+          "type": "integer",
+          "description": "Port, auf dem der Gatekeeper lauscht.",
+          "default": 8080,
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "auth_annotations": {
+          "type": "object",
+          "description": "Extra Ingress-Annotations bei auth=True.",
+          "additionalProperties": {"type": "string"},
+          "default": {}
+        },
+        "image_pull_secrets": {
+          "type": "array",
+          "description": "Pull-Secret-Namen für das Proxy-Image.",
+          "items": {"type": "string"},
+          "default": []
+        },
+        "project_auth_path": {
+          "type": "string",
+          "description": "Absoluter Pfad zu project_auth.json (für den Flask-API-/openProject-Endpoint).",
+          "default": ""
+        }
+      }
+    },
     "mampok_version": {
       "type": "string",
       "description": "PEP 440 version specifier restricting which Mampok versions may run on this repository (e.g. '>=2.0.0,<3.0.0'). Required."
@@ -106,42 +142,6 @@
           "type": "string",
           "description": "DNS secret name for ACME challenge (optional).",
           "default": ""
-        },
-        "auth_proxy": {
-          "type": "object",
-          "description": "Gatekeeper-Proxy-Konfiguration. Nur nötig wenn Deployments auth=True nutzen.",
-          "required": ["auth_proxy_image"],
-          "additionalProperties": false,
-          "properties": {
-            "auth_proxy_image": {
-              "type": "string",
-              "description": "Docker-Image des Gatekeeper-Containers."
-            },
-            "proxy_port": {
-              "type": "integer",
-              "description": "Port, auf dem der Gatekeeper lauscht.",
-              "default": 8080,
-              "minimum": 1,
-              "maximum": 65535
-            },
-            "auth_annotations": {
-              "type": "object",
-              "description": "Extra Ingress-Annotations bei auth=True.",
-              "additionalProperties": {"type": "string"},
-              "default": {}
-            },
-            "image_pull_secrets": {
-              "type": "array",
-              "description": "Pull-Secret-Namen für das Proxy-Image.",
-              "items": {"type": "string"},
-              "default": []
-            },
-            "project_auth_path": {
-              "type": "string",
-              "description": "Absoluter Pfad zu project_auth.json (für den Flask-API-/openProject-Endpoint).",
-              "default": ""
-            }
-          }
         }
       }
     }

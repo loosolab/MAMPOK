@@ -247,12 +247,13 @@ AUTH_PROXY_CLUSTER = {
     "host": "bioinformatics-cluster.example.com",
     "namespace": "mampok-bn",
     "kubeconfig_path": "/app/BN_kube_config",
-    "auth_proxy": {
-        "auth_proxy_image": "registry.example.com/gatekeeper:latest",
-        "proxy_port": 9090,
-        "auth_annotations": {"nginx.ingress.kubernetes.io/auth-type": "basic"},
-        "image_pull_secrets": ["regcred"],
-    },
+}
+
+AUTH_PROXY_DATA = {
+    "auth_proxy_image": "registry.example.com/gatekeeper:latest",
+    "proxy_port": 9090,
+    "auth_annotations": {"nginx.ingress.kubernetes.io/auth-type": "basic"},
+    "image_pull_secrets": ["regcred"],
 }
 
 
@@ -260,12 +261,17 @@ def _config_with_cluster(cluster_dict: dict) -> dict:
     return {**MINIMAL_CONFIG, "cluster": {"BN": cluster_dict}}
 
 
+def _config_with_auth_proxy(auth_proxy_dict: dict | None = None) -> dict:
+    ap = auth_proxy_dict if auth_proxy_dict is not None else AUTH_PROXY_DATA
+    return {**MINIMAL_CONFIG, "cluster": {"BN": AUTH_PROXY_CLUSTER}, "auth_proxy": ap}
+
+
 class TestClusterConfigAuthProxy:
     """Tests für AuthProxyConfig-Parsing in MampokConfig.from_dict()."""
 
     def test_auth_proxy_parsed(self):
-        cfg = MampokConfig.from_dict(_config_with_cluster(AUTH_PROXY_CLUSTER))
-        ap = cfg.clusters["BN"].auth_proxy
+        cfg = MampokConfig.from_dict(_config_with_auth_proxy())
+        ap = cfg.auth_proxy
         assert ap is not None
         assert ap.auth_proxy_image == "registry.example.com/gatekeeper:latest"
         assert ap.proxy_port == 9090
@@ -274,36 +280,31 @@ class TestClusterConfigAuthProxy:
 
     def test_auth_proxy_none_when_absent(self):
         cfg = MampokConfig.from_dict(MINIMAL_CONFIG)
-        assert cfg.clusters["BN"].auth_proxy is None
+        assert cfg.auth_proxy is None
 
     def test_auth_proxy_image_required(self):
-        bad = {**AUTH_PROXY_CLUSTER, "auth_proxy": {"proxy_port": 9090}}
         with pytest.raises(jsonschema.ValidationError):
-            MampokConfig.from_dict(_config_with_cluster(bad))
+            MampokConfig.from_dict(_config_with_auth_proxy({"proxy_port": 9090}))
 
     def test_auth_proxy_port_default(self):
-        minimal_ap = {**AUTH_PROXY_CLUSTER, "auth_proxy": {"auth_proxy_image": "gk:latest"}}
-        cfg = MampokConfig.from_dict(_config_with_cluster(minimal_ap))
-        assert cfg.clusters["BN"].auth_proxy.proxy_port == 8080
+        cfg = MampokConfig.from_dict(_config_with_auth_proxy({"auth_proxy_image": "gk:latest"}))
+        assert cfg.auth_proxy.proxy_port == 8080
 
     def test_auth_proxy_annotations_default(self):
-        minimal_ap = {**AUTH_PROXY_CLUSTER, "auth_proxy": {"auth_proxy_image": "gk:latest"}}
-        cfg = MampokConfig.from_dict(_config_with_cluster(minimal_ap))
-        assert cfg.clusters["BN"].auth_proxy.auth_annotations == {}
+        cfg = MampokConfig.from_dict(_config_with_auth_proxy({"auth_proxy_image": "gk:latest"}))
+        assert cfg.auth_proxy.auth_annotations == {}
 
     def test_auth_proxy_pull_secrets_default(self):
-        minimal_ap = {**AUTH_PROXY_CLUSTER, "auth_proxy": {"auth_proxy_image": "gk:latest"}}
-        cfg = MampokConfig.from_dict(_config_with_cluster(minimal_ap))
-        assert cfg.clusters["BN"].auth_proxy.image_pull_secrets == []
+        cfg = MampokConfig.from_dict(_config_with_auth_proxy({"auth_proxy_image": "gk:latest"}))
+        assert cfg.auth_proxy.image_pull_secrets == []
 
     def test_auth_proxy_unknown_field_raises(self):
-        bad = {**AUTH_PROXY_CLUSTER, "auth_proxy": {**AUTH_PROXY_CLUSTER["auth_proxy"], "unknown_field": "x"}}
         with pytest.raises(jsonschema.ValidationError):
-            MampokConfig.from_dict(_config_with_cluster(bad))
+            MampokConfig.from_dict(_config_with_auth_proxy({**AUTH_PROXY_DATA, "unknown_field": "x"}))
 
     def test_auth_proxy_is_authproxyconfig_instance(self):
-        cfg = MampokConfig.from_dict(_config_with_cluster(AUTH_PROXY_CLUSTER))
-        assert isinstance(cfg.clusters["BN"].auth_proxy, AuthProxyConfig)
+        cfg = MampokConfig.from_dict(_config_with_auth_proxy())
+        assert isinstance(cfg.auth_proxy, AuthProxyConfig)
 
 
 # ---------------------------------------------------------------------------

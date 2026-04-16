@@ -100,6 +100,7 @@ def mock_config():
         mamplan_repo=__import__("pathlib").Path("/app/BCU_REPOSITORY/"),
         mamplates_path=__import__("pathlib").Path("/app/BCU_REPOSITORY/MaMplates"),
         lifetime_days=10,
+        mampok_version=">=2.0.0.dev0",
     )
 
 
@@ -114,12 +115,6 @@ def mock_config_with_auth():
         ingress_class="nginx",
         dnsissuer="letsencrypt-prod",
         dnssecret="route53-creds",
-        auth_proxy=AuthProxyConfig(
-            auth_proxy_image="registry.example.com/gatekeeper:latest",
-            proxy_port=9090,
-            auth_annotations={"nginx.ingress.kubernetes.io/auth-type": "basic"},
-            image_pull_secrets=["regcred"],
-        ),
     )
     s3 = S3Config(
         endpoint="https://s3.example.com",
@@ -134,6 +129,13 @@ def mock_config_with_auth():
         mamplan_repo=__import__("pathlib").Path("/app/BCU_REPOSITORY/"),
         mamplates_path=__import__("pathlib").Path("/app/BCU_REPOSITORY/MaMplates"),
         lifetime_days=10,
+        mampok_version=">=2.0.0.dev0",
+        auth_proxy=AuthProxyConfig(
+            auth_proxy_image="registry.example.com/gatekeeper:latest",
+            proxy_port=9090,
+            auth_annotations={"nginx.ingress.kubernetes.io/auth-type": "basic"},
+            image_pull_secrets=["regcred"],
+        ),
     )
 
 

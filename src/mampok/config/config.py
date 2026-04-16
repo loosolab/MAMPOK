@@ -60,8 +60,6 @@ class ClusterConfig:
     ingress_class: str = ""
     dnsissuer: str = ""
     dnssecret: str = ""
-    auth_proxy: AuthProxyConfig | None = None
-    """Gatekeeper-Proxy-Konfiguration. Erforderlich wenn Deployments auth=True nutzen."""
 
 
 @dataclass
@@ -105,6 +103,8 @@ class MampokConfig:
     lifetime_days: int
     mampok_version: str
     default_cluster: str | None = None
+    auth_proxy: AuthProxyConfig | None = None
+    """Gatekeeper-Proxy-Konfiguration. Erforderlich wenn Deployments auth=True nutzen."""
 
     _schema_cache: ClassVar[dict | None] = None
 
@@ -214,17 +214,6 @@ class MampokConfig:
                 ingress_class=cluster_data.get("ingress_class", ""),
                 dnsissuer=cluster_data.get("dnsissuer", ""),
                 dnssecret=cluster_data.get("dnssecret", ""),
-                auth_proxy=(
-                    AuthProxyConfig(
-                        auth_proxy_image=_ap["auth_proxy_image"],
-                        proxy_port=_ap.get("proxy_port", 8080),
-                        auth_annotations=_ap.get("auth_annotations", {}),
-                        image_pull_secrets=_ap.get("image_pull_secrets", []),
-                        project_auth_path=_ap.get("project_auth_path", ""),
-                    )
-                    if (_ap := cluster_data.get("auth_proxy")) is not None
-                    else None
-                ),
             )
             for name, cluster_data in data["cluster"].items()
         }
@@ -238,6 +227,16 @@ class MampokConfig:
             prefix=s3_data.get("prefix", ""),
         )
 
+        auth_proxy = None
+        if _ap := data.get("auth_proxy"):
+            auth_proxy = AuthProxyConfig(
+                auth_proxy_image=_ap["auth_proxy_image"],
+                proxy_port=_ap.get("proxy_port", 8080),
+                auth_annotations=_ap.get("auth_annotations", {}),
+                image_pull_secrets=_ap.get("image_pull_secrets", []),
+                project_auth_path=_ap.get("project_auth_path", ""),
+            )
+
         return cls(
             clusters=clusters,
             s3=s3,
@@ -246,6 +245,7 @@ class MampokConfig:
             lifetime_days=data["lifetime_days"],
             mampok_version=data["mampok_version"],
             default_cluster=data.get("default_cluster"),
+            auth_proxy=auth_proxy,
         )
 
     @classmethod

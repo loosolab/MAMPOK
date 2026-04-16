@@ -161,6 +161,7 @@ class TestBuildDeploymentConfig:
             mamplan_repo=mock_config.mamplan_repo,
             mamplates_path=mock_config.mamplates_path,
             lifetime_days=10,
+            mampok_version=">=2.0.0.dev0",
         )
         cfg = mampok._build_deployment_config(config_no_host)
         assert cfg.url == ""

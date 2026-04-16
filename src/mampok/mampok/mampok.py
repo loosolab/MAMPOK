@@ -303,8 +303,7 @@ class Mampok:
         self.kube._kube.apply(manifest)
 
         # secret_key in project_auth.json persistieren (für Flask-API /openProject)
-        cluster_name = self.mamplan.data["deployment"]["cluster"]
-        auth_proxy = config.get_cluster(cluster_name).auth_proxy
+        auth_proxy = config.auth_proxy
         if auth_proxy and auth_proxy.project_auth_path:
             path = Path(auth_proxy.project_auth_path)
             existing: dict = {}
@@ -335,7 +334,7 @@ class Mampok:
         """
         cluster_name = self.mamplan.data["deployment"]["cluster"]
         cluster_cfg = config.get_cluster(cluster_name)
-        auth_proxy = cluster_cfg.auth_proxy
+        auth_proxy = config.auth_proxy
 
         merged = self.mamplan.merge_container_config(
             self.mamplate, self.mamplan.data, self.init_mamplates
