@@ -383,7 +383,7 @@ class Mampok:
         container_data = main.get("container_data", {})
         container_data_paths = container_data.get("paths", [])
         container_data_restore = bool(container_data.get("restore_on_deploy", False))
-        container_data_sync_interval = int(container_data.get("sync_interval_seconds", 300))
+        container_data_sync_interval = int(container_data.get("sync_interval_seconds", 60))
         container_data_sync_timeout = int(
             container_data.get("sync_timeout_seconds", 3600)
         )

@@ -144,7 +144,7 @@ class DeploymentConfig:
     container_data_restore: bool = False
     """If True, download container_data/ from S3 back into the container on deploy (round-trip)."""
 
-    container_data_sync_interval: int = 300
+    container_data_sync_interval: int = 60
     """Sidecar sync interval in seconds."""
 
     container_data_sync_timeout: int = 3600
