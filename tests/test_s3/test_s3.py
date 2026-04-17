@@ -1,4 +1,4 @@
-"""Tests für S3-Client."""
+"""Tests for S3 client."""
 
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
@@ -10,7 +10,7 @@ from mampok.s3.s3 import S3
 
 
 def make_client_error(code: str = "404") -> ClientError:
-    """Erstellt einen ClientError mit gegebenem HTTP-Statuscode."""
+    """Create a ClientError with the given HTTP status code."""
     return ClientError(
         {"Error": {"Code": code, "Message": "Test error"}},
         "HeadBucket",
@@ -19,13 +19,13 @@ def make_client_error(code: str = "404") -> ClientError:
 
 @pytest.fixture
 def mock_client() -> MagicMock:
-    """Gemockter boto3 S3-Client."""
+    """Mocked boto3 S3 client."""
     return MagicMock()
 
 
 @pytest.fixture
 def s3(mock_client: MagicMock) -> S3:
-    """S3-Instanz mit injiziertem Mock-Client."""
+    """S3 instance with an injected mock client."""
     return S3(bucket="test-bucket", client=mock_client)
 
 

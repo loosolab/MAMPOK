@@ -1,4 +1,4 @@
-"""Tests für CLI."""
+"""Tests for CLI."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from mampok.interfaces.cli import CLI, _expand_relative_lifetime, _mamplan_expir
 
 
 class TestMamplanExpiryInfo:
-    """Tests für _mamplan_expiry_info Hilfsfunktion."""
+    """Tests for the _mamplan_expiry_info helper function."""
 
     def _make_mamplan(self, status: bool, lifetime: str, project_id: str = "proj") -> MagicMock:
         mp = MagicMock()
@@ -71,7 +71,7 @@ class TestMamplanExpiryInfo:
 
 
 class TestExpandRelativeLifetime:
-    """Tests für _expand_relative_lifetime Hilfsfunktion."""
+    """Tests for the _expand_relative_lifetime helper function."""
 
     def _make_mamplan(self, lifetime: str) -> MagicMock:
         mp = MagicMock()

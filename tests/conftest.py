@@ -1,6 +1,6 @@
-"""Pytest-Fixtures für alle Mampok-Tests."""
+"""Pytest fixtures for all Mampok tests."""
 
 import pytest
 
 
-# Fixtures werden in der jeweiligen Implementierungsphase hinzugefügt.
+# Fixtures are added in the respective implementation phase.

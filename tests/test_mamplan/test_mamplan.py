@@ -1,4 +1,4 @@
-"""Tests für Mamplan, Mamplate und MamplanBase."""
+"""Tests for Mamplan, Mamplate, and MamplanBase."""
 
 import json
 import copy
@@ -77,7 +77,7 @@ def mamplate(mamplate_data):
 # ---------------------------------------------------------------------------
 
 class TestMamplanBase:
-    """Tests für MamplanBase-Mechanismen (via Mamplan/Mamplate)."""
+    """Tests for MamplanBase mechanisms (via Mamplan/Mamplate)."""
 
     def test_valid_data_creates_instance(self, mamplan_data):
         mp = Mamplan(mamplan_data)
@@ -101,7 +101,7 @@ class TestMamplanBase:
     def test_schema_is_cached_per_class(self, mamplan_data, mamplate_data):
         mp1 = Mamplan(mamplan_data)
         mp2 = Mamplan(copy.deepcopy(mamplan_data))
-        # Schema-Cache ist dasselbe Objekt (nicht nur gleich)
+        # Schema cache is the same object (not just equal)
         assert mp1.schema is mp2.schema
 
     def test_mamplan_and_mamplate_have_separate_caches(self, mamplan_data, mamplate_data):
@@ -123,7 +123,7 @@ class TestMamplanBase:
 # ---------------------------------------------------------------------------
 
 class TestMamplan:
-    """Tests für die Mamplan-Klasse."""
+    """Tests for the Mamplan class."""
 
     # --- __init__ ---
 
@@ -371,8 +371,8 @@ class TestMamplan:
                 "bucket": "b",
                 "lifetime": "2026-12-31T00:00:00Z",
                 "url": "",
-                "status": True,   # explizit gesetzt
-                "auth": True,     # explizit gesetzt
+                "status": True,   # explicitly set
+                "auth": True,     # explicitly set
             },
             service={
                 "analyst": ["u"],
@@ -417,10 +417,10 @@ class TestMamplan:
         mp = Mamplan(mamplan_data)
         mt = Mamplate(mamplate_data)
         result = mp.merge_container_config(mt, mamplan_data)
-        # cpu überschrieben, memory aus Mamplate erhalten
+        # cpu overridden, memory kept from Mamplate
         assert result["main"]["resources"]["limits"]["cpu"] == "8"
         assert result["main"]["resources"]["limits"]["memory"] == "4Gi"
-        # requests aus Mamplate vollständig erhalten
+        # requests fully kept from Mamplate
         assert result["main"]["resources"]["requests"]["cpu"] == "500m"
 
     def test_merge_replaces_list_fields(self, mamplan_data, mamplate_data):
@@ -478,7 +478,7 @@ class TestMamplan:
 # ---------------------------------------------------------------------------
 
 class TestMamplate:
-    """Tests für die Mamplate-Klasse."""
+    """Tests for the Mamplate class."""
 
     # --- __init__ ---
 
@@ -576,7 +576,7 @@ class TestMamplate:
 
 
 class TestMamplanIsExpired:
-    """Tests für Mamplan.is_expired Property."""
+    """Tests for the Mamplan.is_expired property."""
 
     def test_expired_active_returns_true(self, mamplan_data):
         mamplan_data["deployment"]["status"] = True
@@ -609,7 +609,7 @@ class TestMamplanIsExpired:
 # ---------------------------------------------------------------------------
 
 class TestTemplateSubstitution:
-    """Tests für __key.subkey__-Template-Substitution in merge_container_config."""
+    """Tests for __key.subkey__ template substitution in merge_container_config."""
 
     def _make_mamplate_with_args(self, mamplate_data, args):
         data = copy.deepcopy(mamplate_data)

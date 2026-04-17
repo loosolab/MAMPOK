@@ -1,4 +1,4 @@
-"""S3-Modul — boto3-Wrapper für Storage-Operationen."""
+"""S3 module — boto3 wrapper for storage operations."""
 
 from mampok.s3.s3 import S3
 

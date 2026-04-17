@@ -1,4 +1,4 @@
-"""Tests für MampokConfig — Config-Modul."""
+"""Tests for MampokConfig — config module."""
 
 import json
 from pathlib import Path
@@ -64,7 +64,7 @@ FULL_CONFIG = {
 
 
 class TestMampokConfigFromDict:
-    """Tests für MampokConfig.from_dict."""
+    """Tests for MampokConfig.from_dict."""
 
     def test_minimal_config_valid(self):
         cfg = MampokConfig.from_dict(MINIMAL_CONFIG)
@@ -176,7 +176,7 @@ class TestMampokConfigFromDict:
 
 
 class TestMampokConfigFromFile:
-    """Tests für MampokConfig.from_file."""
+    """Tests for MampokConfig.from_file."""
 
     def test_load_from_file(self, tmp_path):
         config_file = tmp_path / "config.json"
@@ -196,7 +196,7 @@ class TestMampokConfigFromFile:
 
 
 class TestGetCluster:
-    """Tests für MampokConfig.get_cluster."""
+    """Tests for MampokConfig.get_cluster."""
 
     def test_returns_cluster_config(self):
         cfg = MampokConfig.from_dict(FULL_CONFIG)
@@ -211,7 +211,7 @@ class TestGetCluster:
 
 
 class TestBuildClients:
-    """Tests für MampokConfig.build_deployment_manager und build_s3_client."""
+    """Tests for MampokConfig.build_deployment_manager and build_s3_client."""
 
     def test_build_s3_client(self):
         cfg = MampokConfig.from_dict(MINIMAL_CONFIG)
@@ -267,7 +267,7 @@ def _config_with_auth_proxy(auth_proxy_dict: dict | None = None) -> dict:
 
 
 class TestClusterConfigAuthProxy:
-    """Tests für AuthProxyConfig-Parsing in MampokConfig.from_dict()."""
+    """Tests for AuthProxyConfig parsing in MampokConfig.from_dict()."""
 
     def test_auth_proxy_parsed(self):
         cfg = MampokConfig.from_dict(_config_with_auth_proxy())
@@ -316,7 +316,7 @@ from unittest.mock import patch as _patch
 
 
 class TestMampokVersionCheck:
-    """Tests für den mampok_version-Versionscheck in MampokConfig.from_dict."""
+    """Tests for the mampok_version version check in MampokConfig.from_dict."""
 
     def test_matching_version_ok(self):
         data = _copy.deepcopy(MINIMAL_CONFIG)

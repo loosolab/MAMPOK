@@ -1,4 +1,4 @@
-"""Tests für Mampok-Orchestrator."""
+"""Tests for the Mampok orchestrator."""
 
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
@@ -10,7 +10,7 @@ from mampok.mampok.mampok import Mampok
 
 
 class TestMampokInit:
-    """Tests für Mampok.__init__."""
+    """Tests for Mampok.__init__."""
 
     def test_stores_all_dependencies(self, mock_mamplan, mock_mamplate, mock_kube, mock_s3):
         mampok = Mampok(mock_mamplan, mock_mamplate, mock_kube, mock_s3)
@@ -21,7 +21,7 @@ class TestMampokInit:
 
 
 class TestBuildDeploymentConfig:
-    """Tests für Mampok._build_deployment_config."""
+    """Tests for Mampok._build_deployment_config."""
 
     def test_maps_project_id_and_tool(self, mampok, mock_config):
         cfg = mampok._build_deployment_config(mock_config)
@@ -143,7 +143,7 @@ class TestBuildDeploymentConfig:
         assert cfg.url == "https://bioinformatics-cluster.example.com/mampok-bn/test-proj/cellxgene/"
 
     def test_custom_url_id_replaces_project_id(self, mampok, mock_config):
-        # custom_url_id gesetzt → ersetzt project_id im URL-Pfad
+        # custom_url_id set → replaces project_id in URL path
         mampok.mamplan.data["deployment"]["custom_url_id"] = "my-custom-slug"
         cfg = mampok._build_deployment_config(mock_config)
         assert cfg.url == "https://bioinformatics-cluster.example.com/mampok-bn/my-custom-slug/cellxgene/"
@@ -194,7 +194,7 @@ class TestBuildDeploymentConfig:
 
 
 class TestIsExpired:
-    """Tests dass Mampok.is_expired an mamplan.is_expired delegiert."""
+    """Tests that Mampok.is_expired delegates to mamplan.is_expired."""
 
     def test_delegates_true(self, mampok):
         mampok.mamplan.is_expired = True
@@ -206,7 +206,7 @@ class TestIsExpired:
 
 
 class TestDeploy:
-    """Tests für Mampok.deploy (Generator)."""
+    """Tests for Mampok.deploy (generator)."""
 
     def test_creates_bucket(self, mampok, mock_config, mock_s3):
         list(mampok.deploy(mock_config))
@@ -319,7 +319,7 @@ class TestDeploy:
 
 
 class TestDeployCleanup:
-    """Tests für automatisches K8s-Cleanup bei fehlgeschlagenem Deploy."""
+    """Tests for automatic K8s cleanup on failed deploy."""
 
     def test_cleanup_on_timeout_calls_kube_delete(self, mampok, mock_config, mock_kube):
         """Bei TimeoutError in wait_for_ready wird kube.delete() aufgerufen."""
@@ -343,8 +343,8 @@ class TestDeployCleanup:
         assert cleanup_events[0]["project_id"] == "test-proj"
 
     def test_cleanup_on_k8s_apply_error(self, mampok, mock_config, mock_kube):
-        """Bei Fehler nach erstem k8s_apply-Event wird cleanup ausgeführt."""
-        # Erster yield (k8s_validate) geht durch, dann Fehler
+        """Cleanup is executed on error after first k8s_apply event."""
+        # First yield (k8s_validate) passes through, then error
         def deploy_with_error(cfg, creds):
             yield {"stage": "k8s_validate", "status": "done", "count": 1}
             raise RuntimeError("apply failed")
@@ -354,21 +354,21 @@ class TestDeployCleanup:
         mock_kube.delete.assert_called_once()
 
     def test_no_cleanup_flag_skips_delete_on_timeout(self, mampok, mock_config, mock_kube):
-        """Mit cleanup=False wird kube.delete() bei Timeout nicht aufgerufen."""
+        """With cleanup=False, kube.delete() is not called on timeout."""
         mock_kube.wait_for_ready.side_effect = TimeoutError("not ready")
         with pytest.raises(TimeoutError):
             list(mampok.deploy(mock_config, cleanup=False))
         mock_kube.delete.assert_not_called()
 
     def test_no_cleanup_on_s3_error(self, mampok, mock_config, mock_kube, mock_s3):
-        """Bei Fehler vor K8s-Start (S3-Phase) wird kein Cleanup ausgeführt."""
+        """No cleanup is executed on error before K8s start (S3 phase)."""
         mock_s3.create_bucket.side_effect = RuntimeError("s3 error")
         with pytest.raises(RuntimeError):
             list(mampok.deploy(mock_config, cleanup=True))
         mock_kube.delete.assert_not_called()
 
     def test_mamplan_not_updated_after_cleanup(self, mampok, mock_config, mock_kube):
-        """Nach Cleanup bleibt der Mamplan-Status auf False."""
+        """After cleanup, the Mamplan status remains False."""
         mock_kube.wait_for_ready.side_effect = TimeoutError("not ready")
         with pytest.raises(TimeoutError):
             list(mampok.deploy(mock_config, cleanup=True))
@@ -376,7 +376,7 @@ class TestDeployCleanup:
 
 
 class TestStop:
-    """Tests für Mampok.stop."""
+    """Tests for Mampok.stop."""
 
     def test_calls_kube_delete(self, mampok, mock_config, mock_kube):
         list(mampok.stop(mock_config))
@@ -396,7 +396,7 @@ class TestStop:
 
 
 class TestStopTransactional:
-    """Tests für transaktionales Verhalten von Mampok.stop (Feature I)."""
+    """Tests for transactional behaviour of Mampok.stop (Feature I)."""
 
     def test_mamplan_not_updated_when_delete_fails(self, mampok, mock_config, mock_kube):
         """Mamplan status must stay True when K8s delete raises."""
@@ -422,7 +422,7 @@ class TestStopTransactional:
 
 
 class TestCheckStatus:
-    """Tests für Mampok.check_status."""
+    """Tests for Mampok.check_status."""
 
     def test_healthy_when_both_active(self, mampok, mock_config, mock_kube):
         mampok.mamplan.data["deployment"]["status"] = True
@@ -458,7 +458,7 @@ class TestCheckStatus:
 
 
 class TestUpdateAuthSecret:
-    """Tests für Mampok.update_auth_secret."""
+    """Tests for Mampok.update_auth_secret."""
 
     def _get_auth_proxy_data(self, mock_kube):
         import base64, json
@@ -502,7 +502,7 @@ class TestUpdateAuthSecret:
 
 
 class TestBuildDeploymentConfigAuthProxy:
-    """Tests für auth_proxy-Verdrahtung in _build_deployment_config."""
+    """Tests for auth_proxy wiring in _build_deployment_config."""
 
     def test_auth_proxy_image_mapped(self, mampok, mock_config_with_auth):
         cfg = mampok._build_deployment_config(mock_config_with_auth)

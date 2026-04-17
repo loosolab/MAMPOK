@@ -38,7 +38,7 @@ def sample_s3_credentials() -> dict:
 
 @pytest.fixture
 def make_auth_config(make_config):
-    """Factory für auth-aktivierte DeploymentConfig."""
+    """Factory for auth-enabled DeploymentConfig."""
 
     def _make(**overrides) -> DeploymentConfig:
         defaults = {

@@ -1,4 +1,4 @@
-"""Python-API — programmatische Schnittstelle für andere Tools."""
+"""Python API — programmatic interface for other tools."""
 
 from __future__ import annotations
 
@@ -17,33 +17,33 @@ from mampok.mamplan.shmamplan import SHMamplan
 
 
 def _parse_iso_to_datetime(value: str) -> datetime | None:
-    """ISO 8601 UTC string → timezone-aware datetime. Leer/None → None."""
+    """ISO 8601 UTC string → timezone-aware datetime. Empty/None → None."""
     if not value:
         return None
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 class API:
-    """Importierbare Python-API für programmatischen Mampok-Zugriff.
+    """Importable Python API for programmatic Mampok access.
 
-    Für jede Operation wird pro Mamplan eine Mampok-Instanz erstellt
-    und die Operation delegiert.
+    For each operation, one Mampok instance is created per Mamplan
+    and the operation is delegated.
 
-    Im Gegensatz zur CLI:
-    - Kein interaktiver User-Input
-    - deploy() / redeploy() geben Fortschritts-Iteratoren zurück
-    - Explizite Edit-Methoden (edit_lifetime, edit_sharing) statt String-Parsing
-    - Keine Error Tolerance — Exceptions propagieren direkt
+    Unlike the CLI:
+    - No interactive user input
+    - deploy() / redeploy() return progress iterators
+    - Explicit edit methods (edit_lifetime, edit_sharing) instead of string parsing
+    - No error tolerance — exceptions propagate directly
 
     Args:
-        config_path: Pfad zur MampokConfig-JSON-Datei.
+        config_path: Path to the MampokConfig JSON file.
     """
 
     def __init__(self, config_path: Path) -> None:
-        """Initialisiert API mit Pfad zur Config-Datei.
+        """Initialize API with path to the config file.
 
         Args:
-            config_path: Pfad zur MampokConfig-JSON-Datei.
+            config_path: Path to the MampokConfig JSON file.
         """
         self.config_path = Path(config_path)
 
@@ -419,7 +419,7 @@ class API:
                 "metadata":         s.get("metadata", []),
                 "download_allowed": s.get("download_allowed", False),
                 "user":             s.get("user", []),
-                # freie Tags (gse, pubmedid, etc.) – user/organization nicht doppelt
+                # free tags (gse, pubmedid, etc.) – user/organization not duplicated
                 **{k: v for k, v in tags.items() if k not in ("user", "organization")},
             }
         }

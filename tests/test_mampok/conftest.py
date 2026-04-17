@@ -1,4 +1,4 @@
-"""Pytest-Fixtures für Mampok-Orchestrator-Tests."""
+"""Pytest fixtures for Mampok orchestrator tests."""
 
 from unittest.mock import MagicMock
 
@@ -12,7 +12,7 @@ from mampok.s3.s3 import S3
 
 @pytest.fixture
 def mock_mamplan():
-    """Mamplan-Mock mit minimalen Daten."""
+    """Mamplan mock with minimal data."""
     mp = MagicMock()
     mp.auth = False
     mp.data = {
@@ -106,7 +106,7 @@ def mock_config():
 
 @pytest.fixture
 def mock_config_with_auth():
-    """MampokConfig mit auth_proxy-Konfiguration."""
+    """MampokConfig with auth_proxy configuration."""
     cluster = ClusterConfig(
         host="bioinformatics-cluster.example.com",
         namespace="mampok-bn",
@@ -141,5 +141,5 @@ def mock_config_with_auth():
 
 @pytest.fixture
 def mampok(mock_mamplan, mock_mamplate, mock_kube, mock_s3):
-    """Mampok-Instanz mit Mock-Dependencies."""
+    """Mampok instance with mock dependencies."""
     return Mampok(mock_mamplan, mock_mamplate, mock_kube, mock_s3)

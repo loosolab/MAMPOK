@@ -1,4 +1,4 @@
-"""Mamplan/Mamplate-Modul — Deployment-Konfigurationen mit JSON-Schema-Validation."""
+"""Mamplan/Mamplate module — deployment configurations with JSON schema validation."""
 
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate

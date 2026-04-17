@@ -1,4 +1,4 @@
-"""DeploymentManager — Schicht 3: Orchestrierung von KubeClient und ManifestBuilder."""
+"""DeploymentManager — layer 3: orchestration of KubeClient and ManifestBuilder."""
 
 from __future__ import annotations
 
@@ -330,7 +330,7 @@ class DeploymentManager:
                         "message": (
                             f"Container '{cs.name}' OOMKilled "
                             f"(Restarts: {cs.restart_count}). "
-                            "Memory limit möglicherweise zu niedrig."
+                            "Memory limit possibly too low."
                         ),
                     }
                 # Check current waiting state
@@ -344,7 +344,7 @@ class DeploymentManager:
                         "container": cs.name,
                         "restart_count": cs.restart_count,
                         "message": (
-                            f"Container '{cs.name}' ist in Status '{waiting.reason}'"
+                            f"Container '{cs.name}' is in status '{waiting.reason}'"
                             f" (Restarts: {cs.restart_count})"
                             + (f": {waiting.message}" if waiting.message else "")
                         ),
@@ -354,7 +354,7 @@ class DeploymentManager:
             "reason": "Timeout",
             "container": "",
             "restart_count": 0,
-            "message": "Pods nicht innerhalb des Timeouts gestartet",
+            "message": "Pods did not start within the timeout",
         }
 
     def _check_and_yield_pod_warning(

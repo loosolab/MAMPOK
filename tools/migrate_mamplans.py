@@ -135,11 +135,11 @@ def convert(old: dict, source_path: Path) -> tuple[dict, list[str], list[str]]:
         except ValueError:
             project["creation_date"] = mtime_as_iso(source_path)
             warnings.append(
-                f"creation_date '{creationdate_raw}' nicht parsebar → mtime genutzt"
+                f"creation_date '{creationdate_raw}' not parseable → mtime used"
             )
     else:
         project["creation_date"] = mtime_as_iso(source_path)
-        warnings.append("creation_date fehlend → mtime genutzt")
+        warnings.append("creation_date missing → mtime used")
 
     # project_size: convert bytes → kilobytes
     total_size = tags_old.get("total_project_size")
@@ -161,10 +161,10 @@ def convert(old: dict, source_path: Path) -> tuple[dict, list[str], list[str]]:
             deployment["lifetime"] = convert_date(str(lifetime_raw))
         except ValueError:
             deployment["lifetime"] = ""
-            warnings.append(f"lifetime '{lifetime_raw}' nicht parsebar → leer gesetzt")
+            warnings.append(f"lifetime '{lifetime_raw}' not parseable → set to empty")
     else:
         deployment["lifetime"] = ""
-        warnings.append("lifetime fehlend → leer gesetzt")
+        warnings.append("lifetime missing → set to empty")
 
     # hints for manual review
     if not deployment["auth"]:
@@ -175,14 +175,14 @@ def convert(old: dict, source_path: Path) -> tuple[dict, list[str], list[str]]:
     analyst_raw = tags_old.get("analyst")
     if analyst_raw is None:
         analyst = [owner] if owner else []
-        warnings.append("analyst fehlend → owner übernommen")
+        warnings.append("analyst missing → owner used")
     else:
         analyst = to_list(analyst_raw)
 
     metadata_raw = tags_old.get("metadata")
     metadata = to_list(metadata_raw) if metadata_raw is not None else []
     if not metadata:
-        hints.append("keine Metadaten")
+        hints.append("no metadata")
 
     service: dict = {
         "owner": owner,
@@ -248,8 +248,8 @@ def _format_validation_error(e: jsonschema.ValidationError) -> str:
     if e.validator == "pattern" and isinstance(e.instance, str):
         # Extract only the characters that violate the pattern ^[^A-Z_]*$
         bad = sorted(set(c for c in e.instance if c.isupper() or c == "_"))
-        bad_str = ", ".join(f"'{c}'" for c in bad) if bad else "ungültige Zeichen"
-        return f"{field}: enthält {bad_str} (nicht erlaubt laut Schema)"
+        bad_str = ", ".join(f"'{c}'" for c in bad) if bad else "invalid characters"
+        return f"{field}: contains {bad_str} (not allowed per schema)"
     return f"{field}: {e.message}"
 
 
@@ -264,7 +264,7 @@ def validate(new: dict, schema: dict, registry: Registry) -> list[str]:
     except jsonschema.ValidationError as e:
         errors.append(_format_validation_error(e))
     except jsonschema.SchemaError as e:
-        errors.append(f"Schema-Fehler: {e.message}")
+        errors.append(f"Schema error: {e.message}")
     return errors
 
 
@@ -338,13 +338,13 @@ def format_report(results: list[dict], total: int | None = None) -> str:
     shown = len(results)
     total = total if total is not None else shown
     if shown < total:
-        lines.append(f"Gefunden: {total} Dateien  (angezeigt: {shown})\n")
+        lines.append(f"Found: {total} files  (shown: {shown})\n")
     else:
-        lines.append(f"Gefunden: {total} Dateien\n")
+        lines.append(f"Found: {total} files\n")
 
     header = (
-        f"{'Datei':<{col_file}} {'Status':<{col_status}} "
-        f"{'Fehler/Warnung':<{col_msg}} {'Hinweise':<{col_hint}}"
+        f"{'File':<{col_file}} {'Status':<{col_status}} "
+        f"{'Error/Warning':<{col_msg}} {'Hints':<{col_hint}}"
     )
     lines.append(header)
     lines.append("-" * table_width)
@@ -378,8 +378,8 @@ def format_report(results: list[dict], total: int | None = None) -> str:
     warn = sum(1 for r in all_results if r["status"] == "WARNING")
     err = sum(1 for r in all_results if r["status"] == "ERROR")
     lines.append("")
-    suffix = f" (von {total} gesamt)" if shown < total else ""
-    lines.append(f"Zusammenfassung: {ok} OK, {warn} WARNING, {err} ERROR{suffix}")
+    suffix = f" (of {total} total)" if shown < total else ""
+    lines.append(f"Summary: {ok} OK, {warn} WARNING, {err} ERROR{suffix}")
     return "\n".join(lines)
 
 
@@ -403,11 +403,11 @@ def interactive_confirm(result: dict) -> bool:
     """Ask the user whether to migrate a WARNING/ERROR file. Default: No."""
     print(f"\n[{result['status']}] {result['path'].name}")
     if result["errors"]:
-        print(f"  Fehler:   {'; '.join(result['errors'])}")
+        print(f"  Errors:   {'; '.join(result['errors'])}")
     if result["warnings"]:
-        print(f"  Warnung:  {'; '.join(result['warnings'])}")
+        print(f"  Warnings: {'; '.join(result['warnings'])}")
     if result["hints"]:
-        print(f"  Hinweise: {', '.join(result['hints'])}")
+        print(f"  Hints:    {', '.join(result['hints'])}")
     answer = input("  Migrieren? [y/N]: ").strip().lower()
     return answer == "y"
 
@@ -424,38 +424,38 @@ def main() -> None:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("input_dir", type=Path, help="Verzeichnis mit alten YAML-Mamplans (rekursiv)")
+    parser.add_argument("input_dir", type=Path, help="Directory containing old YAML mamplans (recursive)")
     parser.add_argument(
         "output_dir",
         type=Path,
         nargs="?",
-        help="Zielverzeichnis für neue JSON-Dateien (nicht nötig mit --keep-path)",
+        help="Target directory for new JSON files (not needed with --keep-path)",
     )
     parser.add_argument(
         "--migrate",
         action="store_true",
-        help="Schreibmodus aktivieren (nach Bestätigung). Ohne diesen Flag: nur Dry-Run.",
+        help="Enable write mode (after confirmation). Without this flag: dry-run only.",
     )
     parser.add_argument(
         "--keep-path",
         action="store_true",
-        help="JSON neben der Quelldatei ablegen statt in OUTPUT_DIR.",
+        help="Place JSON next to the source file instead of in OUTPUT_DIR.",
     )
     parser.add_argument(
         "--interactive",
         action="store_true",
-        help="Bei WARNING/ERROR jede Datei einzeln bestätigen (erfordert --migrate).",
+        help="Confirm each file individually on WARNING/ERROR (requires --migrate).",
     )
     parser.add_argument(
         "-o",
         metavar="REPORT_FILE",
         type=Path,
-        help="Report zusätzlich als Textdatei speichern.",
+        help="Save report as a text file in addition to stdout.",
     )
     parser.add_argument(
         "--cleanup",
         action="store_true",
-        help="Alte YAML-Quelldateien nach erfolgreicher Migration löschen (erfordert --migrate).",
+        help="Delete old YAML source files after successful migration (requires --migrate).",
     )
     parser.add_argument(
         "--show",
@@ -463,15 +463,15 @@ def main() -> None:
         nargs="+",
         choices=["ok", "warning", "error"],
         default=["ok", "warning", "error"],
-        help="Welche Status-Level in der Tabelle angezeigt werden. "
-             "Werte: ok warning error (mehrere kombinierbar, z.B. --show warning error). "
-             "Standard: alle.",
+        help="Status levels to display in the table. "
+             "Values: ok warning error (combinable, e.g. --show warning error). "
+             "Default: all.",
     )
     args = parser.parse_args()
 
     # Argument validation
     if args.migrate and not args.keep_path and args.output_dir is None:
-        parser.error("Mit --migrate muss entweder OUTPUT_DIR oder --keep-path angegeben werden.")
+        parser.error("With --migrate, either OUTPUT_DIR or --keep-path must be provided.")
     if args.cleanup and not args.migrate:
         parser.error("--cleanup erfordert --migrate.")
 
@@ -481,7 +481,7 @@ def main() -> None:
         / "src/mampok/mamplan/schemas/mamplan_schema.json"
     )
     if not schema_path.exists():
-        print(f"Schema nicht gefunden: {schema_path}", file=sys.stderr)
+        print(f"Schema not found: {schema_path}", file=sys.stderr)
         sys.exit(1)
 
     schema, registry = load_schema_and_registry(schema_path)
@@ -489,7 +489,7 @@ def main() -> None:
     # Discover files
     files = find_mamplan_files(args.input_dir)
     if not files:
-        print("Keine Mamplan-Dateien gefunden.")
+        print("No Mamplan files found.")
         sys.exit(0)
 
     # Process all files
@@ -503,10 +503,10 @@ def main() -> None:
 
     if args.o:
         args.o.write_text(report + "\n", encoding="utf-8")
-        print(f"\nReport gespeichert: {args.o}")
+        print(f"\nReport saved: {args.o}")
 
     if not args.migrate:
-        print("\n(Dry-Run — keine Dateien geschrieben. Mit --migrate aktivieren.)")
+        print("\n(Dry-run — no files written. Use --migrate to enable.)")
         return
 
     # Confirm before writing
@@ -547,18 +547,18 @@ def main() -> None:
         print(f"  OK: {result['path'].name} → {out}")
         migrated.append((result["path"], out))
 
-    print(f"\nMigriert: {len(migrated)}, Übersprungen: {len(skipped)}")
+    print(f"\nMigrated: {len(migrated)}, Skipped: {len(skipped)}")
 
     if args.cleanup and migrated:
         answer = input(
-            f"\n{len(migrated)} alte YAML-Datei(en) löschen? [y/N]: "
+            f"\nDelete {len(migrated)} old YAML file(s)? [y/N]: "
         ).strip().lower()
         if answer == "y":
             for source, _ in migrated:
                 source.unlink()
-                print(f"  Gelöscht: {source}")
+                print(f"  Deleted: {source}")
         else:
-            print("Cleanup abgebrochen.")
+            print("Cleanup aborted.")
 
 
 if __name__ == "__main__":

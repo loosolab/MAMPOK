@@ -1,1 +1,1 @@
-"""Tests für den Mampok-Orchestrator."""
+"""Tests for the Mampok orchestrator."""

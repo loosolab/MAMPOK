@@ -1,4 +1,4 @@
-"""Tests für Python-API."""
+"""Tests for the Python API."""
 
 from __future__ import annotations
 
@@ -20,19 +20,19 @@ from mampok.mamplan.mamplan import Mamplan
 
 @pytest.fixture
 def config_path(tmp_path):
-    """Dummy config path (existiert nicht — wird via from_file gepatcht)."""
+    """Dummy config path (does not exist — patched via from_file)."""
     return tmp_path / "config.json"
 
 
 @pytest.fixture
 def mamplan_path(tmp_path):
-    """Temp-Verzeichnis mit einer Mamplan-Datei."""
+    """Temp directory with a single Mamplan file."""
     return tmp_path / "test-proj-mamplan.json"
 
 
 @pytest.fixture
 def mock_mamplan_data():
-    """Minimales Mamplan-Dict für Tests."""
+    """Minimal Mamplan dict for tests."""
     return {
         "project": {
             "project_id": "test-proj",
@@ -65,7 +65,7 @@ def mock_mamplan_data():
 
 @pytest.fixture
 def mock_mampok():
-    """Mock Mampok-Orchestrator-Instanz."""
+    """Mock Mampok orchestrator instance."""
     mampok = MagicMock()
     mampok.deploy.return_value = iter([
         {"stage": "init", "status": "done", "project_id": "test-proj"},
@@ -84,7 +84,7 @@ def mock_mampok():
 
 
 def _mock_mamplate(tool_displayname=None):
-    """Hilfsfunktion: erzeugt ein Mamplate-Mock mit echtem data-Dict."""
+    """Helper: creates a Mamplate mock with a real data dict."""
     m = MagicMock()
     m.data = {"tool": "cellxgene"}
     if tool_displayname is not None:
@@ -94,13 +94,13 @@ def _mock_mamplate(tool_displayname=None):
 
 @pytest.fixture
 def api(config_path):
-    """API-Instanz."""
+    """API instance."""
     return API(config_path)
 
 
 @pytest.fixture
 def patched_api(api, mock_mamplan_data, mock_mampok, tmp_path):
-    """API mit gepatchten _load und create_mampok_instance."""
+    """API with patched _load and create_mampok_instance."""
     mamplan = MagicMock()
     mamplan.data = mock_mamplan_data
     mamplan.data["project"]["project_id"] = "test-proj"
@@ -118,7 +118,7 @@ def patched_api(api, mock_mamplan_data, mock_mampok, tmp_path):
 
 
 class TestAPIInit:
-    """Tests für API.__init__."""
+    """Tests for API.__init__."""
 
     def test_stores_config_path(self, tmp_path):
         path = tmp_path / "config.json"
@@ -137,7 +137,7 @@ class TestAPIInit:
 
 
 class TestAPIDeploy:
-    """Tests für API.deploy()."""
+    """Tests for API.deploy()."""
 
     def test_returns_iterator(self, patched_api):
         api, mamplan, mampok = patched_api
@@ -168,7 +168,7 @@ class TestAPIDeploy:
 
 
 class TestAPIStop:
-    """Tests für API.stop()."""
+    """Tests for API.stop()."""
 
     def test_calls_mampok_stop(self, patched_api):
         api, mamplan, mampok = patched_api
@@ -187,7 +187,7 @@ class TestAPIStop:
 
 
 class TestAPIRedeploy:
-    """Tests für API.redeploy()."""
+    """Tests for API.redeploy()."""
 
     def test_returns_iterator(self, patched_api):
         api, mamplan, mampok = patched_api
@@ -216,7 +216,7 @@ class TestAPIRedeploy:
 
 
 class TestAPIEditMamplan:
-    """Tests für API.edit_mamplan()."""
+    """Tests for API.edit_mamplan()."""
 
     def test_updates_field_and_writes(self, tmp_path, mock_mamplan_data):
         mamplan_file = tmp_path / "test-proj-mamplan.json"
@@ -240,7 +240,7 @@ class TestAPIEditMamplan:
 
 
 class TestAPIEditLifetime:
-    """Tests für API.edit_lifetime()."""
+    """Tests for API.edit_lifetime()."""
 
     def test_calls_edit_with_correct_key(self, tmp_path, mock_mamplan_data):
         mamplan_file = tmp_path / "test-proj-mamplan.json"
@@ -263,7 +263,7 @@ class TestAPIEditLifetime:
 
 
 class TestAPIEditSharing:
-    """Tests für API.edit_sharing()."""
+    """Tests for API.edit_sharing()."""
 
     def test_yields_saved_event(self, tmp_path, mock_mamplan_data, api):
         with patch("mampok.interfaces.api.Mamplan.read_in") as mock_read:
@@ -335,7 +335,7 @@ class TestAPIEditSharing:
     def test_rollback_on_auth_secret_failure(
         self, tmp_path, mock_mamplan_data, api, mock_mampok
     ):
-        """Mamplan wird zurückgesetzt wenn auth secret update fehlschlägt."""
+        """Mamplan is rolled back when auth secret update fails."""
         mock_mamplan_data["deployment"]["auth"] = True
         mock_mamplan_data["deployment"]["status"] = True
         mock_mampok.update_auth_secret.side_effect = RuntimeError("K8s unreachable")
@@ -356,8 +356,8 @@ class TestAPIEditSharing:
         stages = [e["stage"] for e in events]
         assert "auth_secret" in stages
         assert "rollback" in stages
-        # Rollback: write wurde nach dem Fehler aufgerufen
-        assert mock_mp.write.call_count >= 2  # einmal für save, einmal für rollback
+        # Rollback: write was called after the error
+        assert mock_mp.write.call_count >= 2  # once for save, once for rollback
 
 
 # ---------------------------------------------------------------------------
@@ -366,7 +366,7 @@ class TestAPIEditSharing:
 
 
 class TestAPIProjectInfo:
-    """Tests für API.project_info()."""
+    """Tests for API.project_info()."""
 
     def test_returns_projects_dict(self, patched_api, tmp_path):
         api, mamplan, mampok = patched_api
@@ -440,7 +440,7 @@ class TestAPIProjectInfo:
 
 
 class TestAPICreateMamplan:
-    """Tests für API.create_mamplan()."""
+    """Tests for API.create_mamplan()."""
 
     def test_creates_and_writes_mamplan(self, tmp_path):
         api = API(tmp_path / "config.json")
@@ -469,7 +469,7 @@ class TestAPICreateMamplan:
 
 
 class TestAPIListExpiring:
-    """Tests für API.list_expiring()."""
+    """Tests for API.list_expiring()."""
 
     def _make_mamplan(self, status: bool, lifetime: str, project_id: str = "proj") -> MagicMock:
         mp = MagicMock()

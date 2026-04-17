@@ -1,4 +1,4 @@
-"""DeploymentConfig — Schicht 2: typisierte Deployment-Konfiguration."""
+"""DeploymentConfig — layer 2: typed deployment configuration."""
 
 from __future__ import annotations
 
@@ -69,25 +69,25 @@ class DeploymentConfig:
     """Whether basic auth is enabled."""
 
     auth_proxy_image: str = ""
-    """Docker-Image des Gatekeeper-Sidecar-Containers."""
+    """Docker image of the Gatekeeper sidecar container."""
 
     proxy_port: int = 8080
-    """Port, auf dem der Gatekeeper lauscht."""
+    """Port on which the Gatekeeper listens."""
 
     proxy_cpu: str = "100m"
-    """CPU-Limit für den Gatekeeper-Sidecar."""
+    """CPU limit for the Gatekeeper sidecar."""
 
     proxy_memory: str = "128Mi"
-    """Memory-Limit für den Gatekeeper-Sidecar."""
+    """Memory limit for the Gatekeeper sidecar."""
 
     auth_annotations: dict = field(default_factory=dict)
-    """Extra Ingress-Annotations, nur bei auth=True hinzugefügt."""
+    """Extra Ingress annotations, added only when auth=True."""
 
     image_pull_secrets: list[str] = field(default_factory=list)
-    """Pull-Secret-Namen — als imagePullSecrets auf Pod-Ebene gesetzt."""
+    """Pull secret names — set as imagePullSecrets at pod level."""
 
     auth_config_mount_path: str = "/etc/config"
-    """Mount-Pfad des Auth-Secret-Volumes im Gatekeeper-Container."""
+    """Mount path of the auth secret volume in the Gatekeeper container."""
 
     labels: dict = field(default_factory=dict)
     """Additional K8s labels (merged with standard labels)."""

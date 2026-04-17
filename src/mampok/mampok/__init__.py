@@ -1,4 +1,4 @@
-"""Mampok-Orchestrator-Modul."""
+"""Mampok orchestrator module."""
 
 from mampok.mampok.mampok import Mampok
 

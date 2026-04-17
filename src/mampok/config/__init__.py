@@ -1,4 +1,4 @@
-"""Mampok-Konfigurations-Modul."""
+"""Mampok configuration module."""
 
 from mampok.config.config import AuthProxyConfig, ClusterConfig, MampokConfig, S3Config
 

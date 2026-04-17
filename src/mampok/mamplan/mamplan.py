@@ -1,4 +1,4 @@
-"""Mamplan — konkrete Deployment-Konfiguration."""
+"""Mamplan — concrete deployment configuration."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import ClassVar
 from mampok.mamplan.base import MamplanBase
 
 
-# Felder mit Schema-Defaults die bei create() automatisch gesetzt werden
+# Fields with schema defaults that are automatically set by create()
 _DEPLOYMENT_DEFAULTS: dict = {
     "status": False,
     "auth": False,
@@ -22,16 +22,16 @@ _SERVICE_DEFAULTS: dict = {
 
 
 class Mamplan(MamplanBase):
-    """Konkrete Deployment-Konfiguration für ein Mampok-Projekt.
+    """Concrete deployment configuration for a Mampok project.
 
-    Beschreibt welches Tool, welches Image, welche Ressourcen, Expiration, etc.
-    Wird gegen ``mamplan_schema.json`` validiert.
+    Describes which tool, image, resources, expiration, etc.
+    Validated against ``mamplan_schema.json``.
 
     Args:
-        data: Mamplan-Konfigurations-Dict.
+        data: Mamplan configuration dict.
 
     Raises:
-        jsonschema.ValidationError: Wenn data das Schema verletzt.
+        jsonschema.ValidationError: If data violates the schema.
     """
 
     _schema_name: ClassVar[str] = "mamplan_schema.json"
@@ -39,18 +39,18 @@ class Mamplan(MamplanBase):
     _registry: ClassVar[object | None] = None
 
     def __init__(self, data: dict) -> None:
-        """Initialisiert Mamplan.
+        """Initialize Mamplan.
 
         Args:
-            data: Mamplan-Konfigurations-Dict.
+            data: Mamplan configuration dict.
 
         Raises:
-            jsonschema.ValidationError: Wenn data das Schema verletzt.
+            jsonschema.ValidationError: If data violates the schema.
         """
         super().__init__(data)
 
     def _get_auto_filename(self) -> str:
-        """Gibt den auto-generierten Dateinamen zurück.
+        """Return the auto-generated filename.
 
         Returns:
             '{project_id}-mamplan.json'
@@ -59,56 +59,56 @@ class Mamplan(MamplanBase):
 
     @classmethod
     def read_in(cls, path: Path) -> "Mamplan":
-        """Lädt einen Mamplan aus einer JSON-Datei.
+        """Load a Mamplan from a JSON file.
 
         Args:
-            path: Pfad zur Mamplan-Datei.
+            path: Path to the Mamplan file.
 
         Returns:
-            Neue Mamplan-Instanz.
+            New Mamplan instance.
 
         Raises:
-            FileNotFoundError: Wenn die Datei nicht existiert.
-            json.JSONDecodeError: Wenn die JSON-Syntax ungültig ist.
-            jsonschema.ValidationError: Wenn der Inhalt das Schema verletzt.
+            FileNotFoundError: If the file does not exist.
+            json.JSONDecodeError: If the JSON syntax is invalid.
+            jsonschema.ValidationError: If the content violates the schema.
         """
         return super().read_in(path)  # type: ignore[return-value]
 
     @classmethod
     def create(cls, **kwargs) -> "Mamplan":
-        """Factory-Methode für neue Mamplans.
+        """Factory method for new Mamplans.
 
-        Normalisiert ``project_id`` (lowercase, ``_`` → ``-``) und füllt
-        fehlende optionale Felder mit Schema-Defaults.
+        Normalises ``project_id`` (lowercase, ``_`` → ``-``) and fills
+        missing optional fields with schema defaults.
 
         Args:
-            **kwargs: Verschachtelte Sections des Mamplans:
-                project (dict): Pflichtfelder: project_id, tool, files, creation_date.
-                deployment (dict): Pflichtfelder: cluster, lifetime, bucket, url.
-                    Optionale Felder werden mit Defaults gefüllt.
-                service (dict): Pflichtfelder: analyst, datatype, owner, user, metadata, organization.
-                container (dict, optional): Container-Overrides.
-                tags (dict, optional): Freie Metadaten.
+            **kwargs: Nested sections of the Mamplan:
+                project (dict): Required fields: project_id, tool, files, creation_date.
+                deployment (dict): Required fields: cluster, lifetime, bucket, url.
+                    Optional fields are filled with defaults.
+                service (dict): Required fields: analyst, datatype, owner, user, metadata, organization.
+                container (dict, optional): Container overrides.
+                tags (dict, optional): Free metadata.
 
         Returns:
-            Validierte Mamplan-Instanz mit normalisierten Feldern und Defaults.
+            Validated Mamplan instance with normalised fields and defaults.
 
         Raises:
-            jsonschema.ValidationError: Wenn Pflichtfelder fehlen oder ungültig sind.
+            jsonschema.ValidationError: If required fields are missing or invalid.
         """
         data = copy.deepcopy(kwargs)
 
-        # project_id normalisieren: lowercase, _ → -
+        # normalise project_id: lowercase, _ → -
         if "project" in data and "project_id" in data["project"]:
             pid = data["project"]["project_id"]
             data["project"]["project_id"] = pid.lower().replace("_", "-")
 
-        # Deployment-Defaults für fehlende optionale Felder
+        # Deployment defaults for missing optional fields
         if "deployment" in data:
             for key, default_val in _DEPLOYMENT_DEFAULTS.items():
                 data["deployment"].setdefault(key, default_val)
 
-        # Service-Defaults
+        # Service defaults
         if "service" in data:
             for key, default_val in _SERVICE_DEFAULTS.items():
                 data["service"].setdefault(key, default_val)

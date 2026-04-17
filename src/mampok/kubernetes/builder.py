@@ -1,4 +1,4 @@
-"""ManifestBuilder — Schicht 2: reine Datentransformation Config → K8s-Manifest."""
+"""ManifestBuilder — layer 2: pure data transformation Config → K8s manifest."""
 
 from __future__ import annotations
 
@@ -189,7 +189,7 @@ class ManifestBuilder:
                 for p in cfg.container_data_paths
             ]
             if cfg.container_data_s3_root:
-                # full_bucket_overwrite: ganzer Bucket → einziger Container-Pfad
+                # full_bucket_overwrite: entire bucket → single container path
                 target = cfg.container_data_paths[0].rstrip("/")
                 restore_cmd_parts = (
                     f"rclone copy S3:$(s3bucket)/ {target}/ "
@@ -328,12 +328,12 @@ class ManifestBuilder:
             #   3. || --resync fallback in the loop: recovers if .lst files are ever
             #      renamed to .lst-err by a mid-run critical error.
             if cfg.container_data_s3_root:
-                # full_bucket_overwrite: Bucket-Root ↔ spezifischer Sidecar-Subpfad
+                # full_bucket_overwrite: bucket root ↔ specific sidecar subpath
                 subpath = _sync_sidecar_subpath(cfg.container_data_paths[0])
                 local_path = f"/sync/{subpath}/"
                 s3_path = "S3:$s3bucket/"
             else:
-                # Normaler Mamplan: alle Pfade unter container_data/
+                # Standard Mamplan: all paths under container_data/
                 local_path = "/sync/"
                 s3_path = "S3:$s3bucket/container_data/"
 

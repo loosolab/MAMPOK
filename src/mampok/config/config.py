@@ -1,4 +1,4 @@
-"""MampokConfig — typisierte Konfiguration für Mampok v2."""
+"""MampokConfig — typed configuration for Mampok v2."""
 
 from __future__ import annotations
 
@@ -23,13 +23,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class AuthProxyConfig:
-    """Auth-Proxy-Konfiguration für den Gatekeeper-Sidecar.
+    """Auth proxy configuration for the Gatekeeper sidecar.
 
     Args:
-        auth_proxy_image: Docker-Image des Gatekeeper-Containers.
-        proxy_port: Port, auf dem der Gatekeeper lauscht.
-        auth_annotations: Extra Ingress-Annotations bei auth=True.
-        image_pull_secrets: Pull-Secrets für das Proxy-Image.
+        auth_proxy_image: Docker image of the Gatekeeper container.
+        proxy_port: Port on which the Gatekeeper listens.
+        auth_annotations: Extra Ingress annotations when auth=True.
+        image_pull_secrets: Pull secrets for the proxy image.
     """
 
     auth_proxy_image: str
@@ -104,7 +104,7 @@ class MampokConfig:
     mampok_version: str
     default_cluster: str | None = None
     auth_proxy: AuthProxyConfig | None = None
-    """Gatekeeper-Proxy-Konfiguration. Erforderlich wenn Deployments auth=True nutzen."""
+    """Gatekeeper proxy configuration. Required when deployments use auth=True."""
 
     _schema_cache: ClassVar[dict | None] = None
 

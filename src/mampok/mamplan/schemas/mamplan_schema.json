@@ -52,7 +52,7 @@
         "cluster": { "$ref": "#/definitions/cluster" },
         "custom_url_id": {
           "type": "string",
-          "description": "Optionaler Ersatz für die project-id im URL-Pfad. Wenn gesetzt, ersetzt dieser Wert die project-id in der URL. Domain, Namespace und Tool kommen immer aus der Config. Keine Großbuchstaben oder Unterstriche erlaubt.",
+          "description": "Optional replacement for the project-id in the URL path. When set, this value replaces the project-id in the URL. Domain, namespace, and tool always come from the config. No capital letters or underscores allowed.",
           "minLength": 1,
           "pattern": "^[^A-Z_]*$"
         },
@@ -159,7 +159,7 @@
     },
     "url": {
       "type": "string",
-      "description": "Vollständige Deployment-URL (wird automatisch aus Config-Komponenten konstruiert und hier gespeichert). No capital letters or underscores allowed.",
+      "description": "Full deployment URL (automatically constructed from config components and stored here). No capital letters or underscores allowed.",
       "pattern": "^[^A-Z_]*$"
     },
     "cluster": {

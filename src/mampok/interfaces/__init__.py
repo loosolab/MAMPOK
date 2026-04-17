@@ -1,1 +1,1 @@
-"""Interfaces-Modul — CLI (Typer) und Python-API."""
+"""Interfaces module — CLI (Typer) and Python API."""

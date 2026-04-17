@@ -62,36 +62,36 @@
     },
     "auth_proxy": {
       "type": "object",
-      "description": "Gatekeeper-Proxy-Konfiguration. Nur nötig wenn Deployments auth=True nutzen.",
+      "description": "Gatekeeper proxy configuration. Only needed when deployments use auth=True.",
       "required": ["auth_proxy_image"],
       "additionalProperties": false,
       "properties": {
         "auth_proxy_image": {
           "type": "string",
-          "description": "Docker-Image des Gatekeeper-Containers."
+          "description": "Docker image of the Gatekeeper container."
         },
         "proxy_port": {
           "type": "integer",
-          "description": "Port, auf dem der Gatekeeper lauscht.",
+          "description": "Port on which the Gatekeeper listens.",
           "default": 8080,
           "minimum": 1,
           "maximum": 65535
         },
         "auth_annotations": {
           "type": "object",
-          "description": "Extra Ingress-Annotations bei auth=True.",
+          "description": "Extra Ingress annotations when auth=True.",
           "additionalProperties": {"type": "string"},
           "default": {}
         },
         "image_pull_secrets": {
           "type": "array",
-          "description": "Pull-Secret-Namen für das Proxy-Image.",
+          "description": "Pull secret names for the proxy image.",
           "items": {"type": "string"},
           "default": []
         },
         "project_auth_path": {
           "type": "string",
-          "description": "Absoluter Pfad zu project_auth.json (für den Flask-API-/openProject-Endpoint).",
+          "description": "Absolute path to project_auth.json (for the Flask API /openProject endpoint).",
           "default": ""
         }
       }

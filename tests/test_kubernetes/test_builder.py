@@ -1,4 +1,4 @@
-"""Tests für ManifestBuilder und DeploymentConfig."""
+"""Tests for ManifestBuilder and DeploymentConfig."""
 
 from __future__ import annotations
 
@@ -452,7 +452,7 @@ class TestBuildAll:
 
 
 class TestDeploymentConfigGatekeeper:
-    """Tests für __post_init__-Validierung und neue auth-Felder."""
+    """Tests for __post_init__ validation and new auth fields."""
 
     def test_proxy_port_conflict_raises(self):
         with pytest.raises(ValueError, match="proxy_port"):
@@ -497,7 +497,7 @@ class TestDeploymentConfigGatekeeper:
 
 
 class TestBuildDeploymentWithAuth:
-    """Tests für Gatekeeper-Sidecar in build_deployment."""
+    """Tests for Gatekeeper sidecar in build_deployment."""
 
     def test_two_containers_present(self, make_auth_config):
         builder = ManifestBuilder()
@@ -664,7 +664,7 @@ class TestBuildDeploymentWithAuth:
 
 
 class TestBuildServiceWithAuth:
-    """Tests für zwei Named Ports bei auth=True."""
+    """Tests for two named ports when auth=True."""
 
     def test_two_named_ports(self, make_auth_config):
         builder = ManifestBuilder()
@@ -707,7 +707,7 @@ class TestBuildServiceWithAuth:
 
 
 class TestBuildIngressWithAuth:
-    """Tests für Ingress-Routing und Annotation-Merge bei auth=True."""
+    """Tests for Ingress routing and annotation merge when auth=True."""
 
     def test_auth_backend_named_port(self, make_auth_config):
         builder = ManifestBuilder()
@@ -762,7 +762,7 @@ class TestBuildIngressWithAuth:
 
 
 class TestBuildDeploymentContainerData:
-    """Tests für container_data Sidecar-Sync-Feature."""
+    """Tests for the container_data sidecar sync feature."""
 
     def test_sidecar_added_when_container_data_paths_set(self, make_config):
         builder = ManifestBuilder()
@@ -954,7 +954,7 @@ class TestBuildDeploymentContainerData:
         assert "terminationGracePeriodSeconds" not in spec
 
     def test_normal_sidecar_syncs_to_container_data_prefix(self, make_config):
-        """Normaler Mamplan: Sidecar-Command referenziert container_data/ Präfix."""
+        """Standard Mamplan: sidecar command references container_data/ prefix."""
         builder = ManifestBuilder()
         cfg = make_config(
             container_data_paths=["/app/annotations/"],
@@ -985,7 +985,7 @@ class TestBuildDeploymentContainerData:
 
 
 class TestNoAwsEnvInMainContainer:
-    """Main-Container darf keine AWS_*-Credentials enthalten (FUSE ist obsolet)."""
+    """Main container must not contain AWS_* credentials (FUSE is obsolete)."""
 
     def test_no_aws_access_key_in_env(self, make_config):
         builder = ManifestBuilder()
@@ -1013,7 +1013,7 @@ class TestNoAwsEnvInMainContainer:
 
 
 class TestFullBucketOverwrite:
-    """Tests für container_data_s3_root=True (full_bucket_overwrite im Mamplate)."""
+    """Tests for container_data_s3_root=True (full_bucket_overwrite in Mamplate)."""
 
     def _make_fbo_cfg(self, make_config, mount_path="/home/appuser/"):
         return make_config(
@@ -1025,7 +1025,7 @@ class TestFullBucketOverwrite:
         )
 
     def test_sidecar_syncs_to_bucket_root(self, make_config):
-        """full_bucket_overwrite: Sidecar synct direkt zum Bucket-Root, kein container_data/."""
+        """full_bucket_overwrite: Sidecar syncs directly to the bucket root, no container_data/."""
         builder = ManifestBuilder()
         cfg = self._make_fbo_cfg(make_config)
         dep = builder.build_deployment(cfg)
@@ -1035,7 +1035,7 @@ class TestFullBucketOverwrite:
         assert "container_data" not in sync_script
 
     def test_sidecar_uses_subpath_not_sync_root(self, make_config):
-        """full_bucket_overwrite: Sidecar-Command verwendet /sync/{subpath}/, nicht /sync/."""
+        """full_bucket_overwrite: Sidecar command uses /sync/{subpath}/, not /sync/."""
         builder = ManifestBuilder()
         cfg = self._make_fbo_cfg(make_config, "/home/appuser/")
         dep = builder.build_deployment(cfg)
@@ -1044,7 +1044,7 @@ class TestFullBucketOverwrite:
         assert "/sync/home-appuser/" in sync_script
 
     def test_restore_copies_from_bucket_root(self, make_config):
-        """full_bucket_overwrite: Restore-Init-Container lädt ganzen Bucket (kein container_data/)."""
+        """full_bucket_overwrite: Restore init container downloads the whole bucket (no container_data/)."""
         builder = ManifestBuilder()
         cfg = self._make_fbo_cfg(make_config)
         dep = builder.build_deployment(cfg)
@@ -1056,7 +1056,7 @@ class TestFullBucketOverwrite:
         assert "container_data" not in restore_script
 
     def test_restore_targets_mount_path(self, make_config):
-        """full_bucket_overwrite: Restore-Ziel ist der Mount-Pfad aus full_bucket_overwrite."""
+        """full_bucket_overwrite: Restore target is the mount path from full_bucket_overwrite."""
         builder = ManifestBuilder()
         cfg = self._make_fbo_cfg(make_config, "/home/appuser/")
         dep = builder.build_deployment(cfg)
@@ -1066,7 +1066,7 @@ class TestFullBucketOverwrite:
         assert "/home/appuser/" in restore_script
 
     def test_sidecar_bisync_still_bidirectional(self, make_config):
-        """full_bucket_overwrite ändert den Pfad, aber nicht die Bidirektionalität."""
+        """full_bucket_overwrite changes the path, but not the bidirectionality."""
         builder = ManifestBuilder()
         cfg = self._make_fbo_cfg(make_config)
         dep = builder.build_deployment(cfg)

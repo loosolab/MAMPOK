@@ -1,1 +1,1 @@
-"""Tests für das S3-Modul."""
+"""Tests for the S3 module."""

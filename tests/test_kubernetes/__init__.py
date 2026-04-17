@@ -1,1 +1,1 @@
-"""Tests für das Kubernetes-Modul."""
+"""Tests for the Kubernetes module."""

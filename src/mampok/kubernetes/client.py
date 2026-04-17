@@ -1,4 +1,4 @@
-"""Kubernetes client — Schicht 1: generischer K8s-Wrapper ohne Mampok-Logik."""
+"""Kubernetes client — layer 1: generic K8s wrapper without Mampok logic."""
 
 from __future__ import annotations
 

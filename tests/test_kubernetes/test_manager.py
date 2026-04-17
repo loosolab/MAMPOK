@@ -1,4 +1,4 @@
-"""Tests für DeploymentManager."""
+"""Tests for DeploymentManager."""
 
 from __future__ import annotations
 
@@ -196,7 +196,7 @@ class TestRolloutRestart:
 
 
 class TestDeploymentExists:
-    """Tests für DeploymentManager.deployment_exists."""
+    """Tests for DeploymentManager.deployment_exists."""
 
     def test_returns_true_when_deployment_exists(self, make_config):
         kube = MagicMock()
@@ -217,7 +217,7 @@ class TestDeploymentExists:
 
 
 class TestWaitForReady:
-    """Tests für DeploymentManager.wait_for_ready."""
+    """Tests for DeploymentManager.wait_for_ready."""
 
     def _make_event(self, ready_replicas, replicas=1):
         obj = MagicMock()

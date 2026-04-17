@@ -1,4 +1,4 @@
-"""MamplanBase — abstrakte Basisklasse für Mamplan und Mamplate."""
+"""MamplanBase — abstract base class for Mamplan and Mamplate."""
 
 from __future__ import annotations
 
@@ -18,33 +18,33 @@ from referencing import Registry, Resource
 if TYPE_CHECKING:
     from mampok.mamplan.mamplate import Mamplate
 
-# Dict-Felder: bei merge_container_config deep-mergen statt ersetzen
+# Dict fields: deep-merge in merge_container_config instead of replacing
 _DICT_FIELDS = {"resources", "volume", "downloadpaths", "annotation", "readinessProbe"}
-# Listen-Felder: bei merge_container_config komplett ersetzen
+# List fields: fully replace in merge_container_config
 _LIST_FIELDS = {"args", "command", "env"}
 
 _TEMPLATE_PATTERN = re.compile(r"__([a-zA-Z0-9_.]+)__")
 
 
 def _resolve_path(data: dict, path: str) -> str:
-    """Löst einen Punkt-separierten Pfad im Dict auf und gibt String zurück."""
+    """Resolve a dot-separated path in a dict and return a string."""
     keys = path.split(".")
     current = data
     for key in keys:
         if not isinstance(current, dict) or key not in current:
-            raise ValueError(f"Template-Pfad '{path}' nicht im Mamplan gefunden")
+            raise ValueError(f"Template path '{path}' not found in Mamplan")
         current = current[key]
     if isinstance(current, list):
         return ",".join(str(v) for v in current)
     if isinstance(current, bool):
         return "true" if current else "false"
     if current is None:
-        raise ValueError(f"Template-Pfad '{path}' ist None")
+        raise ValueError(f"Template path '{path}' is None")
     return str(current)
 
 
 def _apply_template_substitution(merged: dict, mamplan_data: dict) -> dict:
-    """Ersetzt __key.subkey__-Tokens in args, command und env-Werten."""
+    """Replace __key.subkey__ tokens in args, command, and env values."""
     def replace_token(match, _data=mamplan_data):
         return _resolve_path(_data, match.group(1))
 
@@ -70,14 +70,14 @@ logger = logging.getLogger(__name__)
 
 
 class MamplanBase(ABC):
-    """Abstrakte Basisklasse für Mamplan und Mamplate.
+    """Abstract base class for Mamplan and Mamplate.
 
-    Verwaltet ein Konfigurations-Dict und validiert es gegen ein JSON-Schema.
-    Das Schema wird per Subklasse gecacht (einmal laden, für alle Instanzen).
+    Manages a configuration dict and validates it against a JSON schema.
+    The schema is cached per subclass (loaded once, shared across all instances).
 
-    Subklassen müssen setzen:
-        _schema_name (ClassVar[str]): Dateiname des JSON-Schemas.
-        _schema_cache (ClassVar[dict | None]): Auf None initialisieren (eigener Cache).
+    Subclasses must set:
+        _schema_name (ClassVar[str]): Filename of the JSON schema.
+        _schema_cache (ClassVar[dict | None]): Initialize to None (own cache).
     """
 
     _schema_name: ClassVar[str]
@@ -85,16 +85,16 @@ class MamplanBase(ABC):
     _registry: ClassVar[Registry | None] = None
 
     def __init__(self, data: dict) -> None:
-        """Initialisiert MamplanBase.
+        """Initialize MamplanBase.
 
-        Lädt das Schema aus dem Package-Data-Verzeichnis (gecacht pro Subklasse)
-        und validiert sofort gegen das Schema.
+        Loads the schema from the package data directory (cached per subclass)
+        and immediately validates against the schema.
 
         Args:
-            data: Konfigurations-Dict (Mamplan oder Mamplate).
+            data: Configuration dict (Mamplan or Mamplate).
 
         Raises:
-            jsonschema.ValidationError: Wenn data das Schema verletzt.
+            jsonschema.ValidationError: If data violates the schema.
         """
         cls = type(self)
         if cls.__dict__.get("_schema_cache") is None:
@@ -111,16 +111,16 @@ class MamplanBase(ABC):
         self.check_schema()
 
     def check_schema(self) -> bool:
-        """Validiert das Konfigurations-Dict gegen das JSON-Schema.
+        """Validate the configuration dict against the JSON schema.
 
-        Verwendet eine ``referencing``-Registry, damit $ref-Verweise zwischen
-        Schemas (mamplan_schema.json → mamplate_schema.json) korrekt aufgelöst werden.
+        Uses a ``referencing`` registry so that $ref references between
+        schemas (mamplan_schema.json → mamplate_schema.json) are resolved correctly.
 
         Returns:
-            True wenn valide.
+            True if valid.
 
         Raises:
-            jsonschema.ValidationError: Wenn die Konfiguration ungültig ist.
+            jsonschema.ValidationError: If the configuration is invalid.
         """
         cls = type(self)
         if cls.__dict__.get("_registry") is None:
@@ -130,22 +130,22 @@ class MamplanBase(ABC):
 
     @classmethod
     def read_in(cls, path: Path) -> "MamplanBase":
-        """Lädt eine Konfiguration aus einer JSON-Datei.
+        """Load a configuration from a JSON file.
 
         Args:
-            path: Pfad zur JSON-Datei.
+            path: Path to the JSON file.
 
         Returns:
-            Neue validierte Instanz der konkreten Subklasse.
+            New validated instance of the concrete subclass.
 
         Raises:
-            FileNotFoundError: Wenn die Datei nicht existiert.
-            json.JSONDecodeError: Wenn die JSON-Syntax ungültig ist.
-            jsonschema.ValidationError: Wenn der Inhalt das Schema verletzt.
+            FileNotFoundError: If the file does not exist.
+            json.JSONDecodeError: If the JSON syntax is invalid.
+            jsonschema.ValidationError: If the content violates the schema.
         """
         path = Path(path)
         if not path.exists():
-            raise FileNotFoundError(f"Datei nicht gefunden: {path}")
+            raise FileNotFoundError(f"File not found: {path}")
         logger.debug("read_in: %s", path)
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
@@ -154,11 +154,11 @@ class MamplanBase(ABC):
         return instance
 
     def write(self, path: Path) -> None:
-        """Schreibt die Konfiguration als JSON-Datei (indent=2).
+        """Write the configuration as a JSON file (indent=2).
 
         Args:
-            path: Zielpfad. Wenn ein Verzeichnis, wird der Dateiname
-                auto-generiert via _get_auto_filename().
+            path: Target path. If a directory, the filename is
+                auto-generated via _get_auto_filename().
         """
         path = Path(path)
         if path.is_dir():
@@ -168,17 +168,17 @@ class MamplanBase(ABC):
             json.dump(self.data, f, indent=2, ensure_ascii=False)
 
     def edit(self, **kwargs) -> None:
-        """Aktualisiert Felder im Konfigurations-Dict und re-validiert atomar.
+        """Update fields in the configuration dict and re-validate atomically.
 
-        Verschachtelte Keys via ``__``-Notation (z.B. ``deployment__status=True``).
-        Bei Schema-Verletzung wird das Dict auf den alten Zustand zurückgerollt.
+        Nested keys via ``__`` notation (e.g. ``deployment__status=True``).
+        On schema violation, the dict is rolled back to its previous state.
 
         Args:
-            **kwargs: Felder und neue Werte. Verschachtelte Keys als ``a__b__c``.
+            **kwargs: Fields and new values. Nested keys as ``a__b__c``.
 
         Raises:
-            jsonschema.ValidationError: Wenn das Ergebnis das Schema verletzt.
-                Das Dict bleibt in diesem Fall unverändert (Rollback).
+            jsonschema.ValidationError: If the result violates the schema.
+                The dict remains unchanged in this case (rollback).
         """
         logger.debug("edit: %s", kwargs)
         backup = copy.deepcopy(self.data)
@@ -196,27 +196,27 @@ class MamplanBase(ABC):
 
     @abstractmethod
     def _get_auto_filename(self) -> str:
-        """Gibt den auto-generierten Dateinamen zurück (wenn write() ein Verzeichnis erhält).
+        """Return the auto-generated filename (when write() receives a directory).
 
         Returns:
-            Dateiname, z.B. 'my-project-mamplan.json' oder 'cellxgene-mamplate.json'.
+            Filename, e.g. 'my-project-mamplan.json' or 'cellxgene-mamplate.json'.
         """
 
     @property
     def auth(self) -> bool:
-        """True wenn das Deployment auth-geschützt ist.
+        """True if the deployment is auth-protected.
 
         Returns:
-            deployment.auth aus dem Konfigurations-Dict.
+            deployment.auth from the configuration dict.
         """
         return self.data["deployment"]["auth"]
 
     @property
     def is_expired(self) -> bool:
-        """True wenn deployment.status=True und deployment.lifetime abgelaufen.
+        """True if deployment.status=True and deployment.lifetime has passed.
 
         Returns:
-            True wenn das Deployment aktiv und abgelaufen ist.
+            True if the deployment is active and expired.
         """
         deployment = self.data["deployment"]
         if not deployment.get("status", False):
@@ -232,21 +232,21 @@ class MamplanBase(ABC):
         mamplan_data: dict,
         init_mamplates: "list[Mamplate] | None" = None,
     ) -> dict:
-        """Merged die Container-Konfiguration von Mamplate mit Mamplan-Overrides.
+        """Merge the container configuration from Mamplate with Mamplan overrides.
 
-        Mamplan-Werte haben Vorrang. Dicts werden gemergt, Listen ersetzt.
-        Template-Tokens der Form __key.subkey__ in args/command werden durch
-        die entsprechenden Werte aus mamplan_data ersetzt.
+        Mamplan values take precedence. Dicts are merged, lists are replaced.
+        Template tokens of the form __key.subkey__ in args/command are replaced
+        with the corresponding values from mamplan_data.
 
         Args:
-            mamplate: Das zugehörige Mamplate mit Container-Blueprint.
-            mamplan_data: Das vollständige Mamplan-Dict für Template-Substitution.
-            init_mamplates: Optionale Liste von Mamplates für custom Init-Container.
+            mamplate: The associated Mamplate with the container blueprint.
+            mamplan_data: The full Mamplan dict for template substitution.
+            init_mamplates: Optional list of Mamplates for custom init containers.
 
         Returns:
-            Dict mit 'main'-Key (und optional 'init'-Key als Liste), bereit für
-            den Mampok-Orchestrator zur Umwandlung in DeploymentConfig.
-            Beispiel: {'main': {tool, image, ports, resources, ...}, 'init': [{...}, ...]}
+            Dict with a 'main' key (and optionally an 'init' key as a list), ready for
+            the Mampok orchestrator to convert into a DeploymentConfig.
+            Example: {'main': {tool, image, ports, resources, ...}, 'init': [{...}, ...]}
         """
         mamplan_container = self.data.get("container", {})
 
@@ -272,16 +272,16 @@ class MamplanBase(ABC):
 
 
 def _deep_merge_container(base: dict, overrides: dict) -> dict:
-    """Merged override-Dict in base-Dict gemäß Container-Merge-Regeln.
+    """Merge override dict into base dict according to container merge rules.
 
-    Dicts werden rekursiv gemergt, Listen vom Override ersetzt, Skalare ersetzt.
+    Dicts are merged recursively, lists are replaced by the override, scalars are replaced.
 
     Args:
-        base: Basis-Dict (Mamplate-Daten).
-        overrides: Override-Dict (Mamplan container.main oder container.init).
+        base: Base dict (Mamplate data).
+        overrides: Override dict (Mamplan container.main or container.init).
 
     Returns:
-        Gemergtes Dict.
+        Merged dict.
     """
     result = copy.deepcopy(base)
     for key, value in overrides.items():
@@ -295,7 +295,7 @@ def _deep_merge_container(base: dict, overrides: dict) -> dict:
 
 
 def _merge_dicts(base: dict, override: dict) -> dict:
-    """Rekursiver Dict-Merge: override-Werte überschreiben base-Werte."""
+    """Recursive dict merge: override values overwrite base values."""
     result = copy.deepcopy(base)
     for key, value in override.items():
         if isinstance(value, dict) and isinstance(result.get(key), dict):
@@ -306,12 +306,12 @@ def _merge_dicts(base: dict, override: dict) -> dict:
 
 
 def _build_registry() -> Registry:
-    """Baut eine referencing-Registry mit beiden Schemas für $ref-Auflösung.
+    """Build a referencing Registry with both schemas for $ref resolution.
 
-    Wird pro Subklasse einmalig erstellt und in _registry gecacht.
+    Created once per subclass and cached in _registry.
 
     Returns:
-        Registry mit mamplan_schema.json und mamplate_schema.json.
+        Registry with mamplan_schema.json and mamplate_schema.json.
     """
     schemas_pkg = importlib.resources.files("mampok.mamplan").joinpath("schemas")
     resources = []

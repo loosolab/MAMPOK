@@ -1,4 +1,4 @@
-"""S3-Client — boto3-Wrapper für alle Storage-Operationen."""
+"""S3 client — boto3 wrapper for all storage operations."""
 
 from __future__ import annotations
 
@@ -15,16 +15,16 @@ logger = logging.getLogger(__name__)
 
 
 class S3:
-    """Wrapper um boto3 für S3-kompatible Storage-Operationen.
+    """Wrapper around boto3 for S3-compatible storage operations.
 
-    Unterstützt AWS S3 sowie kompatible Endpoints (MinIO, Ceph).
+    Supports AWS S3 as well as compatible endpoints (MinIO, Ceph).
 
     Args:
-        bucket: Standard-Bucket-Name für Operationen.
-        endpoint_url: S3-Endpoint-URL. None für AWS-Standard.
-        access_key: S3-Access-Key-ID.
-        secret_key: S3-Secret-Access-Key.
-        client: Optionaler vorkonfigurierter boto3-Client (für Tests).
+        bucket: Default bucket name for operations.
+        endpoint_url: S3 endpoint URL. None for AWS default.
+        access_key: S3 access key ID.
+        secret_key: S3 secret access key.
+        client: Optional pre-configured boto3 client (for tests).
     """
 
     def __init__(
@@ -35,14 +35,14 @@ class S3:
         secret_key: str | None = None,
         client: Any | None = None,
     ) -> None:
-        """Initialisiert S3-Client.
+        """Initialize S3 client.
 
         Args:
-            bucket: Standard-Bucket-Name.
-            endpoint_url: S3-Endpoint-URL. None für AWS-Standard.
-            access_key: S3-Access-Key-ID.
-            secret_key: S3-Secret-Access-Key.
-            client: Optionaler vorkonfigurierter boto3-Client (für Tests).
+            bucket: Default bucket name.
+            endpoint_url: S3 endpoint URL. None for AWS default.
+            access_key: S3 access key ID.
+            secret_key: S3 secret access key.
+            client: Optional pre-configured boto3 client (for tests).
         """
         self.bucket = bucket
         if client is not None:
@@ -59,26 +59,26 @@ class S3:
             )
 
     def upload(self, local_path: Path, key: str, callback: Any | None = None) -> None:
-        """Lädt eine lokale Datei in den konfigurierten Bucket hoch.
+        """Upload a local file to the configured bucket.
 
         Args:
-            local_path: Pfad zur lokalen Datei.
-            key: S3-Objekt-Key (Zielname im Bucket).
-            callback: Optionaler boto3-Callback, der mit der Anzahl übertragener Bytes
-                aufgerufen wird. Nützlich für Fortschrittsanzeigen.
+            local_path: Path to the local file.
+            key: S3 object key (target name in the bucket).
+            callback: Optional boto3 callback invoked with the number of bytes
+                transferred. Useful for progress displays.
         """
         logger.debug("upload: %s -> s3://%s/%s", local_path, self.bucket, key)
         self.client.upload_file(str(local_path), self.bucket, key, Callback=callback)
 
     def download_to_local(self, key: str, local_path: Path) -> Path:
-        """Lädt ein S3-Objekt auf das lokale Filesystem herunter.
+        """Download an S3 object to the local filesystem.
 
         Args:
-            key: S3-Objekt-Key.
-            local_path: Zielpfad auf dem lokalen Filesystem.
+            key: S3 object key.
+            local_path: Target path on the local filesystem.
 
         Returns:
-            Pfad zur heruntergeladenen Datei.
+            Path to the downloaded file.
         """
         logger.debug("download: s3://%s/%s -> %s", self.bucket, key, local_path)
         self.client.download_file(self.bucket, key, str(local_path))
@@ -91,13 +91,13 @@ class S3:
         dest_bucket: str,
         dest_key: str,
     ) -> None:
-        """Kopiert ein Objekt zwischen Buckets (server-side copy).
+        """Copy an object between buckets (server-side copy).
 
         Args:
-            source_bucket: Quell-Bucket-Name.
-            source_key: Quell-Objekt-Key.
-            dest_bucket: Ziel-Bucket-Name.
-            dest_key: Ziel-Objekt-Key.
+            source_bucket: Source bucket name.
+            source_key: Source object key.
+            dest_bucket: Destination bucket name.
+            dest_key: Destination object key.
         """
         self.client.copy_object(
             CopySource={"Bucket": source_bucket, "Key": source_key},
@@ -106,19 +106,19 @@ class S3:
         )
 
     def compare_size(self, key: str, local_path: Path) -> bool:
-        """Vergleicht die Dateigröße zwischen S3-Objekt und lokaler Datei.
+        """Compare the file size between an S3 object and a local file.
 
-        Gibt False zurück wenn das Objekt nicht existiert oder die Größen
-        abweichen. Kann als Pre-Upload-Check genutzt werden:
+        Returns False if the object does not exist or sizes differ.
+        Can be used as a pre-upload check:
         ``if not compare_size(key, local): upload(local, key)``
 
         Args:
-            key: S3-Objekt-Key.
-            local_path: Pfad zur lokalen Datei.
+            key: S3 object key.
+            local_path: Path to the local file.
 
         Returns:
-            True wenn das Objekt existiert und die Größen übereinstimmen.
-            False wenn das Objekt nicht existiert oder die Größen abweichen.
+            True if the object exists and sizes match.
+            False if the object does not exist or sizes differ.
         """
         try:
             response = self.client.head_object(Bucket=self.bucket, Key=key)
@@ -145,21 +145,21 @@ class S3:
         return keys
 
     def create_bucket(self) -> None:
-        """Erstellt den konfigurierten Bucket (idempotent).
+        """Create the configured bucket (idempotent).
 
-        Kein Fehler wenn der Bucket bereits existiert.
+        No error if the bucket already exists.
         """
         if not self.bucket_exists():
             logger.debug("create_bucket: %s", self.bucket)
             self.client.create_bucket(Bucket=self.bucket)
 
     def set_lifecycle_policy(self) -> None:
-        """Setzt eine Lifecycle-Rule zum Abbruch unvollständiger Multipart-Uploads nach 7 Tagen.
+        """Set a lifecycle rule to abort incomplete multipart uploads after 7 days.
 
-        Verhindert unbeabsichtigte Storage-Kosten durch unterbrochene Uploads
-        (z.B. wenn der preStop-Sync per SIGKILL abgebrochen wurde).
-        Schlägt auf älteren MinIO-Versionen fehl (kein Support für
-        AbortIncompleteMultipartUpload) — Fehler werden geloggt, nicht geworfen.
+        Prevents unintended storage costs from interrupted uploads
+        (e.g. when the preStop sync was killed by SIGKILL).
+        Fails on older MinIO versions (no support for
+        AbortIncompleteMultipartUpload) — errors are logged, not raised.
         """
         logger.debug("set_lifecycle_policy: %s", self.bucket)
         try:
@@ -177,13 +177,13 @@ class S3:
                 },
             )
         except ClientError as e:
-            logger.warning("set_lifecycle_policy fehlgeschlagen (MinIO-Kompatibilität): %s", e)
+            logger.warning("set_lifecycle_policy failed (MinIO compatibility): %s", e)
 
     def delete_bucket(self) -> None:
-        """Leert den Bucket und löscht ihn (idempotent).
+        """Empty the bucket and delete it (idempotent).
 
-        Löscht zuerst alle Objekte, dann den Bucket selbst.
-        Kein Fehler wenn der Bucket nicht existiert.
+        Deletes all objects first, then the bucket itself.
+        No error if the bucket does not exist.
         """
         if not self.bucket_exists():
             return
@@ -193,10 +193,10 @@ class S3:
         self.client.delete_bucket(Bucket=self.bucket)
 
     def bucket_exists(self) -> bool:
-        """Prüft ob der konfigurierte Bucket existiert.
+        """Check whether the configured bucket exists.
 
         Returns:
-            True wenn der Bucket existiert, False wenn nicht.
+            True if the bucket exists, False otherwise.
         """
         try:
             self.client.head_bucket(Bucket=self.bucket)

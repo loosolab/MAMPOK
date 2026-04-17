@@ -1,1 +1,1 @@
-"""Tests für das Mamplan/Mamplate-Modul."""
+"""Tests for the Mamplan/Mamplate module."""

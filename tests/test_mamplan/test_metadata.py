@@ -1,4 +1,4 @@
-"""Tests für mampok.mamplan.metadata."""
+"""Tests for mampok.mamplan.metadata."""
 
 from pathlib import Path
 
@@ -9,7 +9,7 @@ from mampok.mamplan.metadata import _merge_unique, parse_metadata_files
 
 
 # ---------------------------------------------------------------------------
-# Fixtures: YAML-Inhalte
+# Fixtures: YAML contents
 # ---------------------------------------------------------------------------
 
 _YAML_SCH79 = {

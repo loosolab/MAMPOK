@@ -1,4 +1,4 @@
-"""Tests für KubeClient."""
+"""Tests for KubeClient."""
 
 from __future__ import annotations
 

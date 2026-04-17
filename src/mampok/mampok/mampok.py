@@ -1,4 +1,4 @@
-"""Mampok — zentraler Orchestrator für Kubernetes-Deployments."""
+"""Mampok — central orchestrator for Kubernetes deployments."""
 
 from __future__ import annotations
 
@@ -27,17 +27,17 @@ logger = logging.getLogger(__name__)
 
 
 class Mampok:
-    """Zentraler Orchestrator — verbindet alle Mampok-Module.
+    """Central orchestrator — connects all Mampok modules.
 
-    Wird von den Interfaces (CLI, API) instanziiert und delegiert Operationen
-    an die zuständigen Module (DeploymentManager, S3, Mamplan, Mamplate).
-    MampokConfig wird nicht gespeichert, sondern an Methoden übergeben.
+    Instantiated by the interfaces (CLI, API) and delegates operations
+    to the responsible modules (DeploymentManager, S3, Mamplan, Mamplate).
+    MampokConfig is not stored, but passed to individual methods.
 
     Args:
-        mamplan: Geladene und validierte Mamplan-Instanz.
-        mamplate: Passendes Mamplate für das Tool im Mamplan.
-        kube: Konfigurierter DeploymentManager für den Ziel-Cluster.
-        s3: Konfigurierter S3-Client für den Projekt-Bucket.
+        mamplan: Loaded and validated Mamplan instance.
+        mamplate: Matching Mamplate for the tool in the Mamplan.
+        kube: Configured DeploymentManager for the target cluster.
+        s3: Configured S3 client for the project bucket.
     """
 
     def __init__(
@@ -48,14 +48,14 @@ class Mampok:
         s3: S3,
         init_mamplates: list[Mamplate] | None = None,
     ) -> None:
-        """Initialisiert Mampok.
+        """Initialize Mampok.
 
         Args:
-            mamplan: Geladene und validierte Mamplan-Instanz.
-            mamplate: Passendes Mamplate für das Tool im Mamplan.
-            kube: Konfigurierter DeploymentManager für den Ziel-Cluster.
-            s3: Konfigurierter S3-Client für den Projekt-Bucket.
-            init_mamplates: Optionale Liste von Mamplates für custom Init-Container.
+            mamplan: Loaded and validated Mamplan instance.
+            mamplate: Matching Mamplate for the tool in the Mamplan.
+            kube: Configured DeploymentManager for the target cluster.
+            s3: Configured S3 client for the project bucket.
+            init_mamplates: Optional list of Mamplates for custom init containers.
         """
         self.mamplan = mamplan
         self.mamplate = mamplate
@@ -65,35 +65,35 @@ class Mampok:
 
     @property
     def is_expired(self) -> bool:
-        """True wenn deployment.lifetime abgelaufen UND deployment.status=True.
+        """True if deployment.lifetime has passed AND deployment.status=True.
 
         Returns:
-            True wenn das Deployment aktiv und abgelaufen ist.
+            True if the deployment is active and expired.
         """
         return self.mamplan.is_expired
 
     def deploy(self, config: MampokConfig, timeout: int = 900, cleanup: bool = True, reupload: bool = False) -> Iterator[dict]:
-        """Deployt das Projekt auf Kubernetes.
+        """Deploy the project to Kubernetes.
 
-        Ablauf:
-        1. DeploymentConfig aus Mamplan + Mamplate + ClusterConfig ableiten
-        2. S3-Bucket erstellen
-        3. Dateien hochladen (nur wenn nicht bereits vorhanden mit gleicher Größe)
-        4. Kubernetes-Ressourcen erstellen
-        5. Warten bis alle Pods ready sind
-        6. Mamplan aktualisieren (status=True, url)
+        Steps:
+        1. Derive DeploymentConfig from Mamplan + Mamplate + ClusterConfig
+        2. Create S3 bucket
+        3. Upload files (only if not already present with matching size)
+        4. Create Kubernetes resources
+        5. Wait until all pods are ready
+        6. Update Mamplan (status=True, url)
 
-        Bei Fehler während Schritt 4 oder 5 werden bereits erstellte K8s-Ressourcen
-        automatisch bereinigt (sofern cleanup=True).
+        If an error occurs during steps 4 or 5, already created K8s resources
+        are automatically cleaned up (if cleanup=True).
 
         Args:
-            config: Konfiguration mit Cluster- und S3-Credentials.
-            timeout: Maximale Wartezeit in Sekunden bis Pods ready sind.
-            cleanup: Falls True, werden K8s-Ressourcen bei Fehler automatisch gelöscht.
-            reupload: Falls True, werden alle Dateien erneut hochgeladen (Größenvergleich wird übersprungen).
+            config: Configuration with cluster and S3 credentials.
+            timeout: Maximum wait time in seconds until pods are ready.
+            cleanup: If True, K8s resources are automatically deleted on failure.
+            reupload: If True, all files are re-uploaded (size comparison is skipped).
 
         Yields:
-            Fortschritts-Dicts für jeden Schritt des Deployments:
+            Progress dicts for each step of the deployment:
             - {"stage": "init", "status": "done", "project_id": str}
             - {"stage": "s3_bucket", "status": "created"|"exists"}
             - {"stage": "s3_upload", "status": "starting", "file": str, "size_bytes": int}
@@ -102,13 +102,13 @@ class Mampok:
             - {"stage": "s3_upload", "status": "complete", "total_files": int, "total_bytes": int}
             - {"stage": "k8s_validate", "status": "done", "count": int}
             - {"stage": "k8s_apply", "status": "done", "resource": str}
-            - {"stage": "k8s_init", "status": "running"}  (nur bei Init-Containern)
+            - {"stage": "k8s_init", "status": "running"}  (only with init containers)
             - {"stage": "init_container_progress", "container": str, "status": "progress"|"done",
-               "transferred_pct": int, ...rclone_stats}  (nur bei Init-Containern mit --stats)
+               "transferred_pct": int, ...rclone_stats}  (only with init containers using --stats)
             - {"stage": "k8s_ready", "status": "running", "ready_replicas": int}
             - {"stage": "k8s_pod_warning", "reason": str, "container": str,
-               "restart_count": int, "message": str, "fatal": bool}  (bei Pod-Fehlern)
-            - {"stage": "k8s_cleanup", "status": "done", "project_id": str}  (nur bei Fehler+cleanup)
+               "restart_count": int, "message": str, "fatal": bool}  (on pod errors)
+            - {"stage": "k8s_cleanup", "status": "done", "project_id": str}  (only on error+cleanup)
             - {"stage": "done", "selfservice": {"url": str, "token_url": str|None,
                "project_id": str, "auth": bool}}
         """
@@ -117,7 +117,7 @@ class Mampok:
         logger.debug("deploy: project_id=%s, namespace=%s, image=%s, replicas=%s, auth=%s, url=%s",
                      cfg.project_id, cfg.namespace, cfg.image, cfg.replicas, cfg.auth, cfg.url)
 
-        # Auth-Secret VOR kube.deploy() anlegen — Pod-Start scheitert sonst am fehlenden Secret
+        # Create auth secret BEFORE kube.deploy() — pod start fails without it
         token_url: str | None = None
         if cfg.auth:
             service = self.mamplan.data["service"]
@@ -210,18 +210,18 @@ class Mampok:
         yield step
 
     def _upload_with_progress(self, local: Path, key: str, file_size: int) -> Iterator[dict]:
-        """Führt S3-Upload in Daemon-Thread durch und yieldet progress-Events pro %-Schritt.
+        """Run S3 upload in a daemon thread and yield progress events per percent step.
 
-        Da boto3's Callback synchron im Upload-Thread läuft, kann aus ihm heraus nicht
-        yield aufgerufen werden. Der Upload wird in einem Daemon-Thread ausgeführt;
-        Fortschrittsupdates werden über eine Queue an den Generator-Thread übergeben.
-        Exceptions aus dem Upload-Thread werden über die Queue propagiert und im
-        Hauptthread re-geraist, damit der normale Fehlerfluss in deploy() erhalten bleibt.
+        Because boto3's callback runs synchronously in the upload thread, yield cannot
+        be called from within it. The upload runs in a daemon thread; progress updates
+        are passed via a Queue to the generator thread. Exceptions from the upload
+        thread are propagated via the Queue and re-raised in the main thread so that
+        the normal error flow in deploy() is preserved.
 
         Args:
-            local: Pfad zur lokalen Datei.
-            key: S3-Objekt-Key (Zielname im Bucket).
-            file_size: Dateigröße in Bytes (für Prozentberechnung).
+            local: Path to the local file.
+            key: S3 object key (target name in the bucket).
+            file_size: File size in bytes (for percentage calculation).
 
         Yields:
             {"stage": "s3_upload", "status": "progress", "file": str,
@@ -241,9 +241,9 @@ class Mampok:
         def run() -> None:
             try:
                 self.s3.upload(local, key, callback=callback)
-                q.put(None)  # Sentinel: Upload fertig
+                q.put(None)  # Sentinel: upload complete
             except Exception as e:
-                q.put(e)  # Exception in Hauptthread propagieren
+                q.put(e)  # propagate exception to main thread
 
         t = threading.Thread(target=run, daemon=True)
         t.start()
@@ -255,13 +255,13 @@ class Mampok:
         t.join()
 
     def stop(self, config: MampokConfig) -> Iterator[dict]:
-        """Stoppt das Deployment — entfernt K8s-Ressourcen, S3-Bucket bleibt erhalten.
+        """Stop the deployment — removes K8s resources, S3 bucket is preserved.
 
         Yields progress dicts (analogous to deploy()). Caller must iterate to drive execution.
         Mamplan status is updated only after the generator is fully consumed.
 
         Args:
-            config: Konfiguration mit Cluster-Credentials.
+            config: Configuration with cluster credentials.
 
         Yields:
             Progress dicts from DeploymentManager.delete().
@@ -280,13 +280,13 @@ class Mampok:
         self.mamplan.edit(deployment__status=False)
 
     def download(self, output_dir: Path) -> Iterator[dict]:
-        """Lädt container_data aus dem S3-Bucket in ein lokales Verzeichnis herunter.
+        """Download container_data from the S3 bucket to a local directory.
 
-        Lädt ausschließlich container_data/ aus dem Projekt-Bucket.
-        Lokale Struktur: output_dir/<project_id>/container_data/...
+        Downloads only container_data/ from the project bucket.
+        Local structure: output_dir/<project_id>/container_data/...
 
         Args:
-            output_dir: Zielverzeichnis. Unterordner <project_id> wird erstellt.
+            output_dir: Target directory. Subdirectory <project_id> is created.
 
         Yields:
             - {"stage": "s3_download", "status": "starting", "project_id": str, "total": int}
@@ -306,10 +306,10 @@ class Mampok:
         yield {"stage": "s3_download", "status": "complete", "total": len(keys), "dest": str(dest)}
 
     def check_status(self, config: MampokConfig) -> dict:
-        """Vergleicht den lokalen Mamplan-Status mit dem K8s-Realzustand.
+        """Compare the local Mamplan status with the actual K8s state.
 
         Args:
-            config: Konfiguration mit Cluster-Credentials.
+            config: Configuration with cluster credentials.
 
         Returns:
             Dict mit project_id, expected_active, actually_deployed, healthy.
@@ -327,18 +327,18 @@ class Mampok:
         return result
 
     def update_auth_secret(self, users: list[str], config: MampokConfig) -> str:
-        """Generiert ein neues JWT-Auth-Secret und aktualisiert es auf dem Cluster.
+        """Generate a new JWT auth secret and update it on the cluster.
 
-        Erzeugt einen zufälligen secret_key, baut das K8s-Secret im Format des
-        bcu-container-auth-proxy, persistiert den secret_key in project_auth.json
-        und gibt eine initiale Token-URL zurück.
+        Creates a random secret_key, builds the K8s secret in the format of the
+        bcu-container-auth-proxy, persists the secret_key in project_auth.json,
+        and returns an initial token URL.
 
         Args:
-            users: Liste von Usernamen/Organisationen mit Zugriff.
-            config: Konfiguration mit Cluster-Credentials.
+            users: List of usernames/organisations with access.
+            config: Configuration with cluster credentials.
 
         Returns:
-            Initiale Token-URL (cfg.url + ?token=<jwt>) für sofortigen Zugang.
+            Initial token URL (cfg.url + ?token=<jwt>) for immediate access.
         """
         cfg = self._build_deployment_config(config)
         service = self.mamplan.data["service"]
@@ -353,12 +353,12 @@ class Mampok:
             "groups": groups,
         }
 
-        # K8s Secret anlegen/aktualisieren
+        # Create/update K8s secret
         builder = ManifestBuilder()
         manifest = builder.build_auth_secret(cfg, auth_data)
         self.kube._kube.apply(manifest)
 
-        # secret_key in project_auth.json persistieren (für Flask-API /openProject)
+        # Persist secret_key in project_auth.json (for Flask API /openProject)
         auth_proxy = config.auth_proxy
         if auth_proxy and auth_proxy.project_auth_path:
             path = Path(auth_proxy.project_auth_path)
@@ -370,7 +370,7 @@ class Mampok:
             with path.open("w", encoding="utf-8") as f:
                 json.dump(existing, f, indent=2)
 
-        # Initialen JWT für sofortigen Zugang generieren
+        # Generate initial JWT for immediate access
         payload = {
             "groups": groups,
             "username": owner,
@@ -380,13 +380,13 @@ class Mampok:
         return f"{cfg.url}?token={token}"
 
     def _build_deployment_config(self, config: MampokConfig) -> DeploymentConfig:
-        """Leitet eine DeploymentConfig aus Mamplan, Mamplate und ClusterConfig ab.
+        """Derive a DeploymentConfig from Mamplan, Mamplate, and ClusterConfig.
 
         Args:
-            config: MampokConfig mit Cluster- und S3-Daten.
+            config: MampokConfig with cluster and S3 data.
 
         Returns:
-            Vollständig befüllte DeploymentConfig.
+            Fully populated DeploymentConfig.
         """
         cluster_name = self.mamplan.data["deployment"]["cluster"]
         cluster_cfg = config.get_cluster(cluster_name)
@@ -397,7 +397,7 @@ class Mampok:
         )
         main = merged["main"]
 
-        # ports: Mamplate-Schema verwendet einzelnen int → zu Liste konvertieren
+        # ports: Mamplate schema uses single int → convert to list
         raw_ports = main.get("ports")
         ports = [raw_ports] if isinstance(raw_ports, int) else (raw_ports or [])
 
@@ -493,13 +493,13 @@ class Mampok:
 
 
 def _generate_secret_key(length: int = 32) -> str:
-    """Generiert einen kryptographisch sicheren zufälligen Secret-Key.
+    """Generate a cryptographically secure random secret key.
 
     Args:
-        length: Länge des Keys.
+        length: Length of the key.
 
     Returns:
-        Zufälliger alphanumerischer String.
+        Random alphanumeric string.
     """
     characters = string.ascii_letters + string.digits
     return "".join(secrets.choice(characters) for _ in range(length))

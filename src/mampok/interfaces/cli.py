@@ -473,15 +473,15 @@ def _confirm_mamplans(
     action: str,
     yes: bool = False,
 ) -> bool:
-    """Zeigt betroffene Mamplans und fragt nach Bestätigung.
+    """Show affected Mamplans and ask for confirmation.
 
     Args:
-        mamplans: Betroffene Mamplans.
-        action: Beschreibung der Aktion (z. B. 'deployed', 'gestoppt').
-        yes: Wenn True, wird der Prompt übersprungen.
+        mamplans: Affected Mamplans.
+        action: Description of the action (e.g. 'deployed', 'stopped').
+        yes: If True, the prompt is skipped.
 
     Returns:
-        True wenn bestätigt oder yes=True, sonst False.
+        True if confirmed or yes=True, otherwise False.
     """
     if not mamplans:
         return True
@@ -490,11 +490,11 @@ def _confirm_mamplans(
 
     header = (
         f"  {'Project ID':<{_W_ID}}  {'Cluster':<{_W_CLUSTER}}  "
-        f"{'Owner':<{_W_OWNER}}  {'URL':<{_W_URL}}  Pfad"
+        f"{'Owner':<{_W_OWNER}}  {'URL':<{_W_URL}}  Path"
     )
     separator = "  " + "-" * (len(header) - 2)
 
-    typer.echo(f"\nDie folgenden {len(mamplans)} Mamplan(s) werden {action}:")
+    typer.echo(f"\nThe following {len(mamplans)} Mamplan(s) will be {action}:")
     typer.echo(header)
     typer.echo(separator)
 
@@ -526,9 +526,9 @@ def _confirm_mamplans(
 
     if yes:
         return True
-    confirmed = typer.confirm(f"Fortfahren?")
+    confirmed = typer.confirm("Continue?")
     if not confirmed:
-        typer.echo("Abgebrochen.")
+        typer.echo("Aborted.")
     return confirmed
 
 
@@ -645,7 +645,7 @@ class CLI:
         mamplans, mamplates = self._load(mamplan_path)
         mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
 
-        if not _confirm_mamplans(mamplans, "gestoppt", yes):
+        if not _confirm_mamplans(mamplans, "stopped", yes):
             return
 
         config = self.config
@@ -741,7 +741,7 @@ class CLI:
             typer.echo("No expired deployments found.")
             return
 
-        if not _confirm_mamplans(expired, "gestoppt (abgelaufen)", yes):
+        if not _confirm_mamplans(expired, "stopped (expired)", yes):
             return
 
         mamplates = load_mamplates(self.config.mamplates_path)
@@ -870,20 +870,20 @@ class CLI:
         expanded_fields = _expand_relative_lifetime(fields or [], mamplan)
 
         typer.echo(f"Mamplan: {mamplan.data['project']['project_id']}")
-        typer.echo("Geplante Änderungen:")
+        typer.echo("Planned changes:")
         for token in expanded_fields:
             parts = token.split(":", 2)
             if len(parts) == 3:
                 section, key, new_value = parts
-                old_value = mamplan.data.get(section, {}).get(key, "(nicht gesetzt)")
+                old_value = mamplan.data.get(section, {}).get(key, "(not set)")
                 typer.echo(f"  {section}.{key}: {old_value!r} → {new_value!r}")
         if redeploy:
-            typer.echo("  (wird nach der Änderung redeployed)")
+            typer.echo("  (will be redeployed after the change)")
 
         if not yes:
-            confirmed = typer.confirm("Fortfahren?")
+            confirmed = typer.confirm("Continue?")
             if not confirmed:
-                typer.echo("Abgebrochen.")
+                typer.echo("Aborted.")
                 return
 
         kwargs = _parse_edit_args(expanded_fields)
@@ -991,7 +991,7 @@ class CLI:
         """
         mamplans, mamplates = self._load(mamplan_path)
 
-        if not _confirm_mamplans(mamplans, "auth-aktualisiert", yes):
+        if not _confirm_mamplans(mamplans, "auth-updated", yes):
             return
 
         config = self.config
@@ -1308,14 +1308,14 @@ def create_mamplan(
     resolved_owner = owner or yaml_svc.get("owner", "")
     if not resolved_owner:
         raise typer.BadParameter(
-            "Entweder --owner oder --metadata-file mit owner angeben.",
+            "Provide either --owner or a --metadata-file with an owner field.",
             param_hint="'--owner'",
         )
 
     resolved_datatype = _merge_unique(datatype, yaml_svc.get("datatype", []))
     if not resolved_datatype:
         raise typer.BadParameter(
-            "Entweder --datatype oder --metadata-file mit datatype angeben.",
+            "Provide either --datatype or a --metadata-file with a datatype field.",
             param_hint="'--datatype'",
         )
 
@@ -1329,14 +1329,14 @@ def create_mamplan(
     mamplates = load_mamplates(cfg.mamplates_path)
     if tool not in mamplates:
         raise typer.BadParameter(
-            f"Kein Mamplate für Tool '{tool}' in {cfg.mamplates_path}. "
-            f"Verfügbar: {sorted(mamplates)}",
+            f"No Mamplate found for tool '{tool}' in {cfg.mamplates_path}. "
+            f"Available: {sorted(mamplates)}",
             param_hint="'--tool'",
         )
     if cluster not in cfg.clusters:
         raise typer.BadParameter(
-            f"Cluster '{cluster}' nicht in der Config. "
-            f"Verfügbar: {sorted(cfg.clusters)}",
+            f"Cluster '{cluster}' not in config. "
+            f"Available: {sorted(cfg.clusters)}",
             param_hint="'--cluster'",
         )
 

@@ -1,4 +1,4 @@
-"""Parsing von Projekt-Metadaten-Files (YAML) für die Mamplan-Generierung."""
+"""Parsing of project metadata files (YAML) for Mamplan generation."""
 
 from pathlib import Path
 
@@ -6,25 +6,25 @@ import yaml
 
 
 def parse_metadata_files(paths: list[Path]) -> dict:
-    """Liest YAML-Metadaten-Files und gibt einen gemergten service-Dict zurück.
+    """Read YAML metadata files and return a merged service dict.
 
-    Extrahiert aus jedem File:
-    - ``project.owner.ldap_name`` → ``owner`` (aus erstem File)
-    - ``project.nerd.ldap_name`` → ``analyst`` (aus allen Files, kein Fallback)
-    - ``project.owner.department`` → ``organization`` (aus allen Files)
-    - ``technical_details.techniques[].technique[]`` → ``datatype`` (aus allen Files)
-    - ``project.id`` → ``metadata`` (aus allen Files)
+    Extracts from each file:
+    - ``project.owner.ldap_name`` → ``owner`` (from first file)
+    - ``project.nerd.ldap_name`` → ``analyst`` (from all files, no fallback)
+    - ``project.owner.department`` → ``organization`` (from all files)
+    - ``technical_details.techniques[].technique[]`` → ``datatype`` (from all files)
+    - ``project.id`` → ``metadata`` (from all files)
 
-    Bei mehreren Files werden Listen kombiniert (dedupliziert, Reihenfolge erhalten).
-    ``owner`` stammt aus dem ersten File, das dieses Feld enthält.
+    When multiple files are given, lists are combined (deduplicated, order preserved).
+    ``owner`` comes from the first file that contains this field.
 
     Args:
-        paths: Liste von Pfaden zu YAML-Metadaten-Files.
+        paths: List of paths to YAML metadata files.
 
     Returns:
-        Dict mit den Schlüsseln ``owner``, ``analyst``, ``organization``,
-        ``datatype``, ``metadata``. Fehlende Felder ergeben leere Strings
-        bzw. leere Listen.
+        Dict with keys ``owner``, ``analyst``, ``organization``,
+        ``datatype``, ``metadata``. Missing fields result in empty strings
+        or empty lists respectively.
     """
     result: dict = {
         "owner": "",
@@ -43,7 +43,7 @@ def parse_metadata_files(paths: list[Path]) -> dict:
 
         project = data.get("project", {}) or {}
 
-        # owner: erstes File mit gültigem Wert gewinnt
+        # owner: first file with a valid value wins
         if not result["owner"]:
             owner_block = project.get("owner", {}) or {}
             ldap = owner_block.get("ldap_name", "")
@@ -56,7 +56,7 @@ def parse_metadata_files(paths: list[Path]) -> dict:
         if dept:
             result["organization"] = _merge_unique(result["organization"], [dept])
 
-        # analyst: project.nerd[].ldap_name – kein Fallback auf owner
+        # analyst: project.nerd[].ldap_name – no fallback to owner
         nerd_list = project.get("nerd") or []
         nerd_ldaps = [n["ldap_name"] for n in nerd_list if isinstance(n, dict) and n.get("ldap_name")]
         result["analyst"] = _merge_unique(result["analyst"], nerd_ldaps)
@@ -77,15 +77,15 @@ def parse_metadata_files(paths: list[Path]) -> dict:
 
 
 def _merge_unique(base: list, additions: list) -> list:
-    """Kombiniert zwei Listen ohne Duplikate, erhält die Reihenfolge.
+    """Combine two lists without duplicates, preserving order.
 
     Args:
-        base: Ausgangsliste.
-        additions: Hinzuzufügende Elemente.
+        base: Starting list.
+        additions: Elements to add.
 
     Returns:
-        Neue Liste mit allen Elementen aus ``base`` gefolgt von Elementen
-        aus ``additions``, die noch nicht in ``base`` enthalten waren.
+        New list with all elements from ``base`` followed by elements
+        from ``additions`` that were not already in ``base``.
     """
     seen = set(base)
     result = list(base)

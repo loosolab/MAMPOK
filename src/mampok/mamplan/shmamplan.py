@@ -1,4 +1,4 @@
-"""SHMamplan — Software Hub Deployment-Konfiguration (minimales Format)."""
+"""SHMamplan — Software Hub deployment configuration (minimal format)."""
 
 from __future__ import annotations
 
@@ -12,22 +12,22 @@ from mampok.mamplan.base import MamplanBase
 class SHMamplan(MamplanBase):
     """Software Hub deployment configuration.
 
-    Minimales persistentes Format für Self-Service Tool-Deployments.
-    Wird gegen ``shmamplan_schema.json`` validiert.
+    Minimal persistent format for self-service tool deployments.
+    Validated against ``shmamplan_schema.json``.
 
-    Im Gegensatz zu ``Mamplan`` enthält SHMamplan keine Analyse-Metadaten
-    (datatype, analyst, metadata, organization). Folgende Werte sind implizit:
-    - deployment.auth = True (immer auth-geschützt)
-    - service.user = [] (kein Sharing; Owner-Zugriff via deployment auth secret)
-    - service.organization = [] (kein Sharing)
+    Unlike ``Mamplan``, SHMamplan contains no analysis metadata
+    (datatype, analyst, metadata, organization). The following values are implicit:
+    - deployment.auth = True (always auth-protected)
+    - service.user = [] (no sharing; owner access via deployment auth secret)
+    - service.organization = [] (no sharing)
 
-    Dateibenennung auf Disk: ``{project_id}-shmamplan.json``
+    Filename on disk: ``{project_id}-shmamplan.json``
 
     Args:
-        data: SHMamplan-Konfigurations-Dict.
+        data: SHMamplan configuration dict.
 
     Raises:
-        jsonschema.ValidationError: Wenn data das Schema verletzt.
+        jsonschema.ValidationError: If data violates the schema.
     """
 
     _schema_name: ClassVar[str] = "shmamplan_schema.json"
@@ -36,7 +36,7 @@ class SHMamplan(MamplanBase):
 
     @property
     def auth(self) -> bool:
-        """Immer True — SHMamplans sind stets auth-geschützt.
+        """Always True — SHMamplans are always auth-protected.
 
         Returns:
             True
@@ -45,10 +45,10 @@ class SHMamplan(MamplanBase):
 
     @property
     def is_expired(self) -> bool:
-        """True wenn deployment.status=True und deployment.lifetime abgelaufen.
+        """True if deployment.status=True and deployment.lifetime has passed.
 
         Returns:
-            True wenn das Deployment aktiv und abgelaufen ist.
+            True if the deployment is active and expired.
         """
         deployment = self.data["deployment"]
         if not deployment.get("status", False):
@@ -59,7 +59,7 @@ class SHMamplan(MamplanBase):
         return lifetime < datetime.now(timezone.utc)
 
     def _get_auto_filename(self) -> str:
-        """Gibt den auto-generierten Dateinamen zurück.
+        """Return the auto-generated filename.
 
         Returns:
             '{project_id}-shmamplan.json'
@@ -68,28 +68,28 @@ class SHMamplan(MamplanBase):
 
     @classmethod
     def create(cls, **kwargs) -> "SHMamplan":
-        """Factory-Methode für neue SHMamplans.
+        """Factory method for new SHMamplans.
 
-        Normalisiert ``project_id`` (lowercase, ``_`` → ``-``) und füllt
-        fehlende optionale Felder mit SH-Defaults.
+        Normalises ``project_id`` (lowercase, ``_`` → ``-``) and fills
+        missing optional fields with SH defaults.
 
         Args:
-            **kwargs: Sections des SHMamplans:
-                project (dict): Pflichtfelder: project_id, tool.
-                deployment (dict): Pflichtfelder: cluster, bucket, lifetime.
-                    Optionale Felder werden mit SH-Defaults gefüllt.
-                service (dict): Pflichtfelder: owner.
-                container (dict, optional): Container-Overrides.
+            **kwargs: Sections of the SHMamplan:
+                project (dict): Required fields: project_id, tool.
+                deployment (dict): Required fields: cluster, bucket, lifetime.
+                    Optional fields are filled with SH defaults.
+                service (dict): Required fields: owner.
+                container (dict, optional): Container overrides.
 
         Returns:
-            Validierte SHMamplan-Instanz mit normalisierten Feldern und Defaults.
+            Validated SHMamplan instance with normalised fields and defaults.
 
         Raises:
-            jsonschema.ValidationError: Wenn Pflichtfelder fehlen oder ungültig sind.
+            jsonschema.ValidationError: If required fields are missing or invalid.
         """
         data = copy.deepcopy(kwargs)
 
-        # project_id normalisieren: lowercase, _ → -
+        # normalise project_id: lowercase, _ → -
         if "project" in data and "project_id" in data["project"]:
             pid = data["project"]["project_id"]
             data["project"]["project_id"] = pid.lower().replace("_", "-")
@@ -103,20 +103,20 @@ class SHMamplan(MamplanBase):
 
     @classmethod
     def read_in(cls, path: "Path") -> "SHMamplan":
-        """Lädt einen SHMamplan aus einer JSON-Datei.
+        """Load a SHMamplan from a JSON file.
 
         Args:
-            path: Pfad zur SHMamplan-Datei.
+            path: Path to the SHMamplan file.
 
         Returns:
-            Neue SHMamplan-Instanz.
+            New SHMamplan instance.
 
         Raises:
-            FileNotFoundError: Wenn die Datei nicht existiert.
-            json.JSONDecodeError: Wenn die JSON-Syntax ungültig ist.
-            jsonschema.ValidationError: Wenn der Inhalt das Schema verletzt.
+            FileNotFoundError: If the file does not exist.
+            json.JSONDecodeError: If the JSON syntax is invalid.
+            jsonschema.ValidationError: If the content violates the schema.
         """
         instance = super().read_in(path)
-        # Pipeline-Defaults nach dem Laden sicherstellen
+        # ensure pipeline defaults after loading
         instance.data["deployment"].setdefault("status", False)
         return instance  # type: ignore[return-value]

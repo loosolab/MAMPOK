@@ -1,1 +1,1 @@
-"""Tests für CLI und API."""
+"""Tests for CLI and API."""
