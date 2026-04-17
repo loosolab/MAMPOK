@@ -11,7 +11,7 @@ build-pages:
   script:
     - apt-get update -qq && apt-get install -qq -y pandoc  # system install of pandoc is needed
     - pip install --upgrade pip # carsten 20251208: just to remove warning; no other effect?
-    - pip install sphinx sphinx-rtd-theme
+    - pip install "sphinx<9" sphinx-rtd-theme
     - pip install myst_parser
     - pip install sphinx-toolbox
     - pip install nbsphinx
