@@ -65,3 +65,9 @@ html_css_files = ['custom.css']
 #
 # html_theme = 'alabaster'
 html_theme = 'sphinx_rtd_theme'
+
+html_logo = 'images/LOGO.png'
+
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', None),
+}

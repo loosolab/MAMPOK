@@ -1,0 +1,289 @@
+Advanced Topics
+===============
+
+This page covers features for power users and administrators.
+
+Auth-Protected Deployments
+--------------------------
+
+Mampok can deploy tools behind a Gatekeeper authentication proxy. When
+``deployment.auth: true``, access to the deployment URL requires a valid
+JWT token.
+
+**Prerequisites**
+
+The ``auth_proxy`` section must be configured in ``config.json`` (see
+:doc:`configuration`).
+
+**Deploying with auth**
+
+Set ``auth: true`` in the Mamplan's ``deployment`` section::
+
+    "deployment": {
+      "auth": true,
+      ...
+    }
+
+Or use ``create-mamplan``::
+
+    mampok create-mamplan --auth ...
+
+**What Mampok creates**
+
+With ``auth: true``, Mampok additionally:
+
+1. Creates a Kubernetes Secret containing a JWT secret key and the list of
+   authorized users.
+2. Adds a Gatekeeper sidecar container to the Deployment.
+3. Merges ``auth_proxy.auth_annotations`` from config into the Ingress
+   annotations.
+
+The Gatekeeper sidecar validates incoming requests against the JWT secret.
+
+**Token URL**
+
+After deployment, ``mampok deploy`` or ``mampok update-auth`` prints a
+**token URL** — a URL with a pre-embedded JWT token. Share this URL with the
+users listed in ``service.organization`` and ``service.user``.
+
+**Updating auth without redeployment**
+
+To change the user list or rotate the secret key without redeploying::
+
+    mampok update-auth my-project-mamplan.json -Y
+
+This regenerates the Kubernetes Secret and prints the new token URL. No pod
+restart is required.
+
+**User list derivation**
+
+The authorized user list is derived from ``service.organization`` plus
+``service.user``. If ``"public"`` appears in ``service.organization``, the
+deployment is treated as publicly accessible.
+
+.. _shmamplan:
+
+SHMamplan (Software Hub Mode)
+------------------------------
+
+A **SHMamplan** (Software Hub Mamplan) is a lightweight variant of the
+standard Mamplan. It is designed for deployments managed by a Software Hub
+portal where each user gets their own instance of a tool.
+
+Key differences from a regular Mamplan:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30 35
+
+   * - Feature
+     - Mamplan
+     - SHMamplan
+   * - Schema
+     - Full (project, deployment, service)
+     - Simplified (project, deployment, service with fewer fields)
+   * - Auth
+     - Optional
+     - Always enabled
+   * - Required service fields
+     - owner, analyst, datatype, organization, user
+     - owner only
+   * - Filename suffix
+     - ``-mamplan.json``
+     - ``-shmamplan.json``
+
+SHMamplan files are automatically detected by the ``-shmamplan.json`` suffix
+and are loaded alongside regular Mamplans when scanning a repository.
+
+**Creating a SHMamplan via the Python API**
+
+The Python API provides a dedicated method (see :doc:`python_api`)::
+
+    from mampok.interfaces.api import API
+
+    api = API("~/.mampok/config.json")
+    project_id = api.create_sh_mamplan(
+        output="/path/to/mamplans/",
+        username="alice",
+        tool="cellxgene",
+        bucket="alice-cellxgene-bucket",
+        cluster="BN",
+    )
+
+This creates ``alice-cellxgene-mamplan.json`` with auth always set to
+``true``.
+
+Automated Expiry Management
+---------------------------
+
+For production deployments, it is recommended to run ``stop-expired``
+automatically on a schedule to clean up overdue projects.
+
+**Cron job example** (runs daily at 2 AM)::
+
+    0 2 * * * /path/to/mampok stop-expired /home/user/mamplans/ \
+      --config /home/user/.mampok/config.json -Y \
+      >> /var/log/mampok-expire.log 2>&1
+
+The exit code is ``1`` if any projects failed to stop. You can use this
+for monitoring::
+
+    mampok stop-expired ~/mamplans/ -Y || notify_on_failure
+
+**Pre-expiry alerting**
+
+Use ``list-expiring`` to get warned before projects expire::
+
+    # Projects expiring in the next 7 days
+    mampok list-expiring ~/mamplans/ --within 7d
+
+    # Projects expiring in the next 2 weeks
+    mampok list-expiring ~/mamplans/ --within 2w
+
+Error Tolerance
+---------------
+
+By default, Mampok's batch commands (``deploy``, ``stop``, ``redeploy``,
+``stop-expired``, ``check-status``, ``update-auth``, ``download``) process
+all Mamplans even when individual ones fail. Errors are collected and
+printed as a summary at the end. The exit code is ``1`` if any errors
+occurred.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 60
+
+   * - Behavior
+     - Description
+   * - Default (tolerant)
+     - Process all Mamplans; collect errors; print summary at end; exit
+       code 1 if any failed.
+   * - ``--throw-error``
+     - Abort immediately on the first failure; no summary; exit code 1.
+
+Use ``--throw-error`` for scripts where partial success is unacceptable (e.g.
+deployment pipelines that expect all-or-nothing semantics).
+
+Working with Metadata Files
+----------------------------
+
+The ``--metadata-file`` option of ``mampok create-mamplan`` accepts one or
+more YAML files that populate the service section automatically. This is
+useful when project metadata is generated by an analysis pipeline.
+
+**Example metadata YAML**::
+
+    project:
+      owner:
+        ldap_name: jdoe
+        full_name: Jane Doe
+      nerd:
+        - ldap_name: alice
+          full_name: Alice Smith
+      organization:
+        - mpi-bn
+      datatype:
+        - scRNA-seq
+      metadata:
+        - GSE123456
+
+The fields are mapped as follows:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 35
+
+   * - YAML path
+     - Mamplan field
+   * - ``project.owner.ldap_name``
+     - ``service.owner``
+   * - ``project.nerd[].ldap_name``
+     - ``service.analyst``
+   * - ``project.organization``
+     - ``service.organization``
+   * - ``project.datatype``
+     - ``service.datatype``
+   * - ``project.metadata``
+     - ``service.metadata``
+
+Explicit CLI flags (``--owner``, ``--analyst``, etc.) take precedence over
+values from the metadata file for scalar fields. For list fields, the values
+are merged.
+
+Relative Lifetime Syntax
+------------------------
+
+The ``edit-mamplan`` command supports a ``+Nd/w/m`` offset syntax for the
+``deployment:lifetime`` field. The offset is added to the **existing lifetime**
+in the Mamplan — not to today.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 55
+
+   * - Token
+     - Effect
+   * - ``+30d``
+     - Add 30 days to the current lifetime
+   * - ``+4w``
+     - Add 4 weeks (28 days) to the current lifetime
+   * - ``+3m``
+     - Add 3 months (90 days) to the current lifetime
+
+Example — renewing a project that expires on 2026-05-01 by 30 days::
+
+    mampok edit-mamplan my-project-mamplan.json \
+      -e deployment:lifetime:+30d -Y
+    # new lifetime: 2026-05-31T...
+
+This is the canonical way to renew a project. Repeated renewal is safe
+because each extension builds on the previous expiry date.
+
+Container Data Persistence Patterns
+-------------------------------------
+
+See :ref:`s3-persistence` in :doc:`mamplates` for the field reference.
+Here is guidance on which mechanism to choose:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 35 35
+
+   * - Tool type
+     - Recommended mechanism
+     - Reason
+   * - Cellxgene, IGV, WilsON
+     - ``container_data``
+     - Users generate annotation files in specific paths; selective sync
+       is sufficient and avoids syncing unnecessary data.
+   * - RStudio, Jupyter
+     - ``full_bucket_overwrite``
+     - The entire working directory is the user's workspace; bidirectional
+       sync keeps it consistent across redeployments.
+   * - Read-only viewers
+     - Neither (no ``container_data``)
+     - No user-generated output to persist.
+
+Custom URL IDs
+--------------
+
+By default, the deployment URL uses ``project_id`` as the path segment::
+
+    https://ingress.example.com/my-cellxgene-project
+
+You can override this with ``custom_url_id`` in the Mamplan::
+
+    "deployment": {
+      "custom_url_id": "mouse-atlas",
+      ...
+    }
+
+Result::
+
+    https://ingress.example.com/mouse-atlas
+
+Alternatively, ``random_url_suffix: true`` appends five random characters::
+
+    https://ingress.example.com/my-cellxgene-project-a3f7k
+
+This provides light obfuscation without requiring auth.
