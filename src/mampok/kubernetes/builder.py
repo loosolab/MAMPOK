@@ -152,7 +152,7 @@ class ManifestBuilder:
         if cfg.readiness_probe:
             base_path = urlparse(cfg.url).path
             probe_str = json.dumps(cfg.readiness_probe).replace(
-                "${MAMPOK_BASE_PATH}", base_path
+                "__url_base_path__", base_path
             )
             container["readinessProbe"] = json.loads(probe_str)
 

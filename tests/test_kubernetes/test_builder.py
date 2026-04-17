@@ -185,6 +185,18 @@ class TestBuildDeployment:
             {"name": "vol", "emptyDir": {}}
         ]
 
+    def test_readiness_probe_url_base_path_substitution(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            url="https://cluster.example.com/ns/myproject/tool/",
+            readiness_probe={"httpGet": {"path": "__url_base_path__", "port": 8888}},
+        )
+        dep = builder.build_deployment(cfg)
+        container = dep["spec"]["template"]["spec"]["containers"][0]
+        assert container["readinessProbe"] == {
+            "httpGet": {"path": "/ns/myproject/tool/", "port": 8888}
+        }
+
     def test_init_container(self, make_config):
         builder = ManifestBuilder()
         init = {"name": "init", "image": "busybox", "command": ["sh", "-c", "echo"]}
