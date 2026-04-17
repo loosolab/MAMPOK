@@ -17,7 +17,7 @@ _S3DOWNLOAD_IMAGE = _RCLONE_IMAGE
 _S3DOWNLOAD_COMMAND = ["/bin/sh", "-c"]
 _S3DOWNLOAD_ARGS = [
     "rclone copy S3:$(s3bucket)/analysis_data/ /analysis_data/ "
-    "--transfers 4 --retries 5 --log-level ERROR"
+    "--transfers 4 --retries 5 --stats 10s --log-level INFO"
 ]
 _S3DOWNLOAD_RESOURCES = {
     "limits": {"cpu": "1", "memory": "1Gi"},
@@ -193,12 +193,12 @@ class ManifestBuilder:
                 target = cfg.container_data_paths[0].rstrip("/")
                 restore_cmd_parts = (
                     f"rclone copy S3:$(s3bucket)/ {target}/ "
-                    "--ignore-errors --retries 3 --log-level ERROR"
+                    "--ignore-errors --retries 3 --stats 10s --log-level INFO"
                 )
             else:
                 restore_cmd_parts = " && ".join(
                     f"rclone copy S3:$(s3bucket)/container_data/{_sync_sidecar_subpath(p)}/ "
-                    f"{p.rstrip('/')}/ --ignore-errors --retries 3 --log-level ERROR"
+                    f"{p.rstrip('/')}/ --ignore-errors --retries 3 --stats 10s --log-level INFO"
                     for p in cfg.container_data_paths
                 )
             init_containers.append(

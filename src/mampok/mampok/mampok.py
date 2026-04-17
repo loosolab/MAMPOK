@@ -7,8 +7,10 @@ import logging
 import os
 import secrets
 import string
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from queue import Queue
 from typing import Iterator
 
 import jwt
@@ -94,10 +96,15 @@ class Mampok:
             Fortschritts-Dicts für jeden Schritt des Deployments:
             - {"stage": "init", "status": "done", "project_id": str}
             - {"stage": "s3_bucket", "status": "created"|"exists"}
-            - {"stage": "s3_upload", "status": "done", "file": str}
-            - {"stage": "s3_upload", "status": "complete", "total_files": int}
+            - {"stage": "s3_upload", "status": "starting", "file": str, "size_bytes": int}
+            - {"stage": "s3_upload", "status": "progress", "file": str, "transferred_pct": int, "size_bytes": int}
+            - {"stage": "s3_upload", "status": "done", "file": str, "size_bytes": int}
+            - {"stage": "s3_upload", "status": "complete", "total_files": int, "total_bytes": int}
             - {"stage": "k8s_validate", "status": "done", "count": int}
             - {"stage": "k8s_apply", "status": "done", "resource": str}
+            - {"stage": "k8s_init", "status": "running"}  (nur bei Init-Containern)
+            - {"stage": "init_container_progress", "container": str, "status": "progress"|"done",
+               "transferred_pct": int, ...rclone_stats}  (nur bei Init-Containern mit --stats)
             - {"stage": "k8s_ready", "status": "running", "ready_replicas": int}
             - {"stage": "k8s_pod_warning", "reason": str, "container": str,
                "restart_count": int, "message": str, "fatal": bool}  (bei Pod-Fehlern)
@@ -140,13 +147,17 @@ class Mampok:
             if not local.is_absolute():
                 local = mamplan_dir / local
             key = f"analysis_data/{local.name}"
-            total_size_bytes += os.path.getsize(local)
-            if reupload or not self.s3.compare_size(key, local):
-                self.s3.upload(local, key)
-            step = {"stage": "s3_upload", "status": "done", "file": key}
+            file_size = os.path.getsize(local)
+            total_size_bytes += file_size
+            step = {"stage": "s3_upload", "status": "starting", "file": key, "size_bytes": file_size}
             logger.debug("step: %s", step)
             yield step
-        step = {"stage": "s3_upload", "status": "complete", "total_files": len(files)}
+            if reupload or not self.s3.compare_size(key, local):
+                yield from self._upload_with_progress(local, key, file_size)
+            step = {"stage": "s3_upload", "status": "done", "file": key, "size_bytes": file_size}
+            logger.debug("step: %s", step)
+            yield step
+        step = {"stage": "s3_upload", "status": "complete", "total_files": len(files), "total_bytes": total_size_bytes}
         logger.debug("step: %s", step)
         yield step
 
@@ -197,6 +208,51 @@ class Mampok:
         step = {"stage": "done", "selfservice": {"url": cfg.url, "token_url": token_url, "project_id": project_id, "auth": cfg.auth}}
         logger.debug("step: %s", step)
         yield step
+
+    def _upload_with_progress(self, local: Path, key: str, file_size: int) -> Iterator[dict]:
+        """Führt S3-Upload in Daemon-Thread durch und yieldet progress-Events pro %-Schritt.
+
+        Da boto3's Callback synchron im Upload-Thread läuft, kann aus ihm heraus nicht
+        yield aufgerufen werden. Der Upload wird in einem Daemon-Thread ausgeführt;
+        Fortschrittsupdates werden über eine Queue an den Generator-Thread übergeben.
+        Exceptions aus dem Upload-Thread werden über die Queue propagiert und im
+        Hauptthread re-geraist, damit der normale Fehlerfluss in deploy() erhalten bleibt.
+
+        Args:
+            local: Pfad zur lokalen Datei.
+            key: S3-Objekt-Key (Zielname im Bucket).
+            file_size: Dateigröße in Bytes (für Prozentberechnung).
+
+        Yields:
+            {"stage": "s3_upload", "status": "progress", "file": str,
+             "transferred_pct": int, "size_bytes": int}
+        """
+        q: Queue = Queue()
+        transferred = [0]
+        last_pct = [-1]
+
+        def callback(bytes_amount: int) -> None:
+            transferred[0] += bytes_amount
+            pct = min(100, int(transferred[0] / file_size * 100)) if file_size > 0 else 100
+            if pct != last_pct[0]:
+                last_pct[0] = pct
+                q.put(pct)
+
+        def run() -> None:
+            try:
+                self.s3.upload(local, key, callback=callback)
+                q.put(None)  # Sentinel: Upload fertig
+            except Exception as e:
+                q.put(e)  # Exception in Hauptthread propagieren
+
+        t = threading.Thread(target=run, daemon=True)
+        t.start()
+        for item in iter(q.get, None):
+            if isinstance(item, Exception):
+                raise item
+            yield {"stage": "s3_upload", "status": "progress", "file": key,
+                   "transferred_pct": item, "size_bytes": file_size}
+        t.join()
 
     def stop(self, config: MampokConfig) -> Iterator[dict]:
         """Stoppt das Deployment — entfernt K8s-Ressourcen, S3-Bucket bleibt erhalten.

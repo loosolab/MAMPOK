@@ -58,15 +58,17 @@ class S3:
                 config=Config(signature_version="s3v4"),
             )
 
-    def upload(self, local_path: Path, key: str) -> None:
+    def upload(self, local_path: Path, key: str, callback: Any | None = None) -> None:
         """Lädt eine lokale Datei in den konfigurierten Bucket hoch.
 
         Args:
             local_path: Pfad zur lokalen Datei.
             key: S3-Objekt-Key (Zielname im Bucket).
+            callback: Optionaler boto3-Callback, der mit der Anzahl übertragener Bytes
+                aufgerufen wird. Nützlich für Fortschrittsanzeigen.
         """
         logger.debug("upload: %s -> s3://%s/%s", local_path, self.bucket, key)
-        self.client.upload_file(str(local_path), self.bucket, key)
+        self.client.upload_file(str(local_path), self.bucket, key, Callback=callback)
 
     def download_to_local(self, key: str, local_path: Path) -> Path:
         """Lädt ein S3-Objekt auf das lokale Filesystem herunter.

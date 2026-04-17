@@ -439,6 +439,69 @@ class DeploymentManager:
                     return "starting"
         return None
 
+    def _get_running_init_container(self, cfg: DeploymentConfig) -> str | None:
+        """Return the name of the currently running init container, or None.
+
+        Args:
+            cfg: Deployment configuration.
+
+        Returns:
+            Name of the running init container, or None if no init container is running.
+        """
+        import kubernetes.client
+
+        v1 = kubernetes.client.CoreV1Api(api_client=self._kube._api_client)
+        try:
+            pods = v1.list_namespaced_pod(
+                namespace=cfg.namespace,
+                label_selector=f"app={cfg.app_label}",
+            )
+            for pod in pods.items:
+                for cs in (pod.status.init_container_statuses or []):
+                    if cs.state and cs.state.running is not None:
+                        return cs.name
+        except Exception as e:
+            logger.debug("Could not get running init container for %s: %s", cfg.project_id, e)
+        return None
+
+    def _get_init_container_log_progress(self, cfg: DeploymentConfig, container_name: str) -> dict:
+        """Read init container logs and parse rclone stats.
+
+        Works for both running and completed init containers since read_namespaced_pod_log
+        does not filter on container state.
+
+        Args:
+            cfg: Deployment configuration.
+            container_name: Name of the init container to read logs from.
+
+        Returns:
+            Dict with rclone stats (subset of transferred_pct, transferred_bytes_human,
+            total_bytes_human, speed, elapsed). Empty dict on failure or no stats found.
+        """
+        import kubernetes.client
+
+        v1 = kubernetes.client.CoreV1Api(api_client=self._kube._api_client)
+        try:
+            pods = v1.list_namespaced_pod(
+                namespace=cfg.namespace,
+                label_selector=f"app={cfg.app_label}",
+            )
+            for pod in pods.items:
+                try:
+                    log = v1.read_namespaced_pod_log(
+                        name=pod.metadata.name,
+                        namespace=cfg.namespace,
+                        container=container_name,
+                        tail_lines=100,
+                    )
+                    return _parse_rclone_stats(log)
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.debug("Could not get init container log for %s/%s: %s",
+                         cfg.project_id, container_name, e)
+        return {}
+
     def wait_for_ready(self, cfg: DeploymentConfig, timeout: int = 900) -> Iterator[dict]:
         """Wait until all replicas are ready via the Kubernetes Watch API.
 
@@ -455,12 +518,25 @@ class DeploymentManager:
         Fatal conditions (ImagePullBackOff, or restart_count >= _FAIL_FAST_RESTART_THRESHOLD
         for OOM/Crash) trigger an early abort instead of waiting for the full timeout.
 
+        Init containers (s3-restore, s3-download) are tracked separately as the k8s_init
+        stage. Periodic progress events are yielded while init containers run. The k8s_ready
+        stage only covers the main container + sidecars startup.
+
         Args:
             cfg: Deployment configuration.
             timeout: Maximum seconds to wait for pods to become ready. Default: 900s (15min).
 
         Yields:
+            {"stage": "k8s_init", "status": "running"}
+              — while init containers are running (replaces k8s_ready with phase=init_containers)
+            {"stage": "init_container_progress", "container": str, "status": "progress"|"done",
+             "transferred_pct": int, ...rclone_stats}
+              — periodically while an init container with --stats output is running, plus a
+                final "done" event when the init container completes
             {"stage": "k8s_ready", "status": "running", "ready_replicas": N}
+              — while main container + sidecars are starting
+            {"stage": "k8s_ready", "status": "running", "ready_replicas": N, "phase": "starting"}
+              — while main container is running but readiness probe not yet passed
             {"stage": "k8s_pod_warning", "reason": str, "container": str,
              "restart_count": int, "message": str, "fatal": bool}
 
@@ -479,6 +555,9 @@ class DeploymentManager:
         apps_v1 = kubernetes.client.AppsV1Api(api_client=self._kube._api_client)
         last_restart_counts: dict[str, int] = {}
         last_ready: int = -1  # sentinel: -1 = not yet reported; triggers yield on first event
+        last_phase: str | None = None
+        last_init_pct: int = -1
+        last_init_container: str | None = None  # tracks container for done-event on phase change
         deadline = time.monotonic() + timeout
 
         logger.debug("wait_for_ready: deployment=%s, replicas=%s, timeout=%s",
@@ -496,14 +575,34 @@ class DeploymentManager:
             ):
                 status = event["object"].status
                 ready = status.ready_replicas if (status and status.ready_replicas is not None) else 0
-                if ready != last_ready:
-                    logger.debug("ready_replicas=%s/%s (was %s)", ready, cfg.replicas, last_ready)
-                    phase = self._get_pod_phase(cfg) if ready == 0 else None
-                    step: dict = {"stage": "k8s_ready", "status": "running", "ready_replicas": ready}
-                    if phase:
-                        step["phase"] = phase
-                    yield step
+                phase = self._get_pod_phase(cfg) if ready == 0 else None
+
+                if ready != last_ready or phase != last_phase:
+                    logger.debug("ready_replicas=%s/%s phase=%s (was ready=%s phase=%s)",
+                                 ready, cfg.replicas, phase, last_ready, last_phase)
+
+                    # Detect init container phase completion → yield final done-event
+                    if last_phase == "init_containers" and phase != "init_containers" and last_init_container:
+                        final_stats = self._get_init_container_log_progress(cfg, last_init_container)
+                        logger.debug("init container %s done: %s", last_init_container, final_stats)
+                        yield {"stage": "init_container_progress",
+                               "container": last_init_container,
+                               "status": "done", **final_stats}
+                        last_init_container = None
+                        last_init_pct = -1
+
                     last_ready = ready
+                    last_phase = phase
+
+                    if phase == "init_containers":
+                        yield {"stage": "k8s_init", "status": "running"}
+                    else:
+                        step: dict = {"stage": "k8s_ready", "status": "running",
+                                      "ready_replicas": ready}
+                        if phase:
+                            step["phase"] = phase
+                        yield step
+
                 if ready >= cfg.replicas:
                     return
 
@@ -518,6 +617,22 @@ class DeploymentManager:
             yield from self._check_and_yield_pod_warning(
                 cfg, last_restart_counts, _FAIL_FAST_REASONS, _FAIL_FAST_RESTART_THRESHOLD
             )
+
+            # Periodically check init container progress (~10 s, matching rclone --stats 10s).
+            # Also handles the case where no Watch events fired while init containers ran.
+            container_name = self._get_running_init_container(cfg)
+            if container_name:
+                last_init_container = container_name
+                if last_phase != "init_containers":
+                    last_phase = "init_containers"
+                    yield {"stage": "k8s_init", "status": "running"}
+                stats = self._get_init_container_log_progress(cfg, container_name)
+                pct = stats.get("transferred_pct", -1)
+                if stats and pct != last_init_pct:
+                    last_init_pct = pct
+                    yield {"stage": "init_container_progress",
+                           "container": container_name,
+                           "status": "progress", **stats}
 
         # Total timeout reached
         diagnosis = self._diagnose_pod_failure(cfg)
