@@ -9,6 +9,7 @@ from typing import Iterator
 
 from mampok.config.config import MampokConfig
 from mampok.interfaces.cli import create_mampok_instance
+from mampok.kubernetes.builder import _sync_sidecar_subpath
 from mampok.mamplan.base import MamplanBase
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
@@ -395,6 +396,7 @@ class API:
         tool = p["tool"]
         mamplate = mamplates.get(tool)
         tool_displayname = mamplate.data.get("toolDisplayname", tool) if mamplate else tool
+        cd_raw_paths = mamplate.data.get("container_data", {}).get("paths", []) if mamplate else []
         projects: dict = {
             project_id: {
                 # project section
@@ -419,6 +421,8 @@ class API:
                 "metadata":         s.get("metadata", []),
                 "download_allowed": s.get("download_allowed", False),
                 "user":             s.get("user", []),
+                # S3 subpaths under container_data/ derived from mamplate container_data.paths
+                "container_data_paths": [_sync_sidecar_subpath(cp) for cp in cd_raw_paths],
                 # free tags (gse, pubmedid, etc.) – user/organization not duplicated
                 **{k: v for k, v in tags.items() if k not in ("user", "organization")},
             }
