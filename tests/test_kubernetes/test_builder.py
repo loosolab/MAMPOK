@@ -1012,22 +1012,23 @@ class TestNoAwsEnvInMainContainer:
         assert "AWS_ENDPOINT_URL" not in env_names
 
 
-class TestFullBucketOverwrite:
-    """Tests for container_data_s3_root=True (full_bucket_overwrite in Mamplate)."""
+class TestBucketOverwrite:
+    """Tests for is_bucket_overwrite=True (bucket_overwrite in Mamplate)."""
 
-    def _make_fbo_cfg(self, make_config, mount_path="/home/appuser/"):
+    def _make_cfg(self, make_config, mount_path="/home/appuser/", s3_subpath=""):
         return make_config(
             container_data_paths=[mount_path],
             container_data_restore=True,
-            container_data_s3_root=True,
+            is_bucket_overwrite=True,
+            container_data_s3_subpath=s3_subpath,
             bucket="user-bucket",
             endpoint="https://s3.example.com",
         )
 
     def test_sidecar_syncs_to_bucket_root(self, make_config):
-        """full_bucket_overwrite: Sidecar syncs directly to the bucket root, no container_data/."""
+        """bucket_overwrite without s3_subpath: Sidecar syncs to bucket root, no container_data/."""
         builder = ManifestBuilder()
-        cfg = self._make_fbo_cfg(make_config)
+        cfg = self._make_cfg(make_config)
         dep = builder.build_deployment(cfg)
         sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
         sync_script = sidecar["args"][0]
@@ -1035,18 +1036,18 @@ class TestFullBucketOverwrite:
         assert "container_data" not in sync_script
 
     def test_sidecar_uses_subpath_not_sync_root(self, make_config):
-        """full_bucket_overwrite: Sidecar command uses /sync/{subpath}/, not /sync/."""
+        """bucket_overwrite: Sidecar command uses /sync/{subpath}/, not /sync/."""
         builder = ManifestBuilder()
-        cfg = self._make_fbo_cfg(make_config, "/home/appuser/")
+        cfg = self._make_cfg(make_config, "/home/appuser/")
         dep = builder.build_deployment(cfg)
         sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
         sync_script = sidecar["args"][0]
         assert "/sync/home-appuser/" in sync_script
 
     def test_restore_copies_from_bucket_root(self, make_config):
-        """full_bucket_overwrite: Restore init container downloads the whole bucket (no container_data/)."""
+        """bucket_overwrite without s3_subpath: Restore downloads whole bucket (no container_data/)."""
         builder = ManifestBuilder()
-        cfg = self._make_fbo_cfg(make_config)
+        cfg = self._make_cfg(make_config)
         dep = builder.build_deployment(cfg)
         init_containers = dep["spec"]["template"]["spec"].get("initContainers", [])
         restore = next((ic for ic in init_containers if ic["name"] == "s3-restore"), None)
@@ -1056,9 +1057,9 @@ class TestFullBucketOverwrite:
         assert "container_data" not in restore_script
 
     def test_restore_targets_mount_path(self, make_config):
-        """full_bucket_overwrite: Restore target is the mount path from full_bucket_overwrite."""
+        """bucket_overwrite: Restore target is path_in_container."""
         builder = ManifestBuilder()
-        cfg = self._make_fbo_cfg(make_config, "/home/appuser/")
+        cfg = self._make_cfg(make_config, "/home/appuser/")
         dep = builder.build_deployment(cfg)
         init_containers = dep["spec"]["template"]["spec"].get("initContainers", [])
         restore = next(ic for ic in init_containers if ic["name"] == "s3-restore")
@@ -1066,11 +1067,32 @@ class TestFullBucketOverwrite:
         assert "/home/appuser/" in restore_script
 
     def test_sidecar_bisync_still_bidirectional(self, make_config):
-        """full_bucket_overwrite changes the path, but not the bidirectionality."""
+        """bucket_overwrite changes the path, but not the bidirectionality."""
         builder = ManifestBuilder()
-        cfg = self._make_fbo_cfg(make_config)
+        cfg = self._make_cfg(make_config)
         dep = builder.build_deployment(cfg)
         sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
         sync_script = sidecar["args"][0]
         assert "rclone bisync" in sync_script
         assert "--conflict-resolve newer" in sync_script
+
+    def test_s3_subpath_sidecar_uses_subpath(self, make_config):
+        """bucket_overwrite with s3_subpath: Sidecar syncs to S3:$bucket/{subpath}/, not root."""
+        builder = ManifestBuilder()
+        cfg = self._make_cfg(make_config, "/home/appuser/", s3_subpath="user_data")
+        dep = builder.build_deployment(cfg)
+        sidecar = next(c for c in dep["spec"]["template"]["spec"]["containers"] if c["name"] == "mampok-s3-sync")
+        sync_script = sidecar["args"][0]
+        assert "S3:$s3bucket/user_data/" in sync_script
+        assert "container_data" not in sync_script
+
+    def test_s3_subpath_restore_uses_subpath(self, make_config):
+        """bucket_overwrite with s3_subpath: Restore downloads from S3:$bucket/{subpath}/, not root."""
+        builder = ManifestBuilder()
+        cfg = self._make_cfg(make_config, "/home/appuser/", s3_subpath="user_data")
+        dep = builder.build_deployment(cfg)
+        init_containers = dep["spec"]["template"]["spec"].get("initContainers", [])
+        restore = next(ic for ic in init_containers if ic["name"] == "s3-restore")
+        restore_script = restore["args"][0]
+        assert "S3:$(s3bucket)/user_data/" in restore_script
+        assert "container_data" not in restore_script

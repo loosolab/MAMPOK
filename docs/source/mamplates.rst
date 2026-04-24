@@ -155,12 +155,12 @@ Field Reference
      - no
      - Sync specific container paths to S3 during runtime. See
        :ref:`s3-persistence`.
-   * - ``full_bucket_overwrite``
-     - string
+   * - ``bucket_overwrite``
+     - object
      - no
-     - Sync the entire container path bidirectionally with the S3 bucket
-       root. Mutually exclusive with ``container_data``. See
-       :ref:`s3-persistence`.
+     - Sync a container directory bidirectionally with the S3 bucket (or a
+       specific bucket subdirectory). Mutually exclusive with
+       ``container_data``. See :ref:`s3-persistence`.
 
 .. _resources:
 
@@ -296,7 +296,7 @@ to persist this data to S3 so it survives stops and redeployments.
 
 .. important::
 
-   ``container_data`` and ``full_bucket_overwrite`` are **mutually
+   ``container_data`` and ``bucket_overwrite`` are **mutually
    exclusive** — you can use at most one per Mamplate.
 
 ``container_data`` (selective sync)
@@ -348,20 +348,24 @@ rclone sidecar container that runs during the pod's lifetime.
 **Best for:** Tools with specific output directories (Cellxgene annotations,
 pipeline outputs).
 
-``full_bucket_overwrite`` (bidirectional sync)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``bucket_overwrite`` (bidirectional sync)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Syncs an entire container directory bidirectionally with the S3 bucket root
-using rclone bisync. No ``container_data/`` prefix — the entire bucket is
-treated as the container directory.
+Syncs a container directory bidirectionally with the S3 bucket (or a specific
+bucket subdirectory) using rclone bisync. No ``container_data/`` prefix.
 
 .. code-block:: json
 
-    "full_bucket_overwrite": "/home/user/workspace/"
+    "bucket_overwrite": {
+      "path_in_container": "/home/user/workspace/",
+      "s3_subpath": "user_data"
+    }
 
-The value is the absolute container path to sync. On pod start, the entire
-S3 bucket is downloaded to this path. During runtime, rclone bisync keeps
-them in sync in both directions.
+``path_in_container`` is the absolute container path to sync. On pod start,
+the bucket (or ``s3_subpath`` subdirectory if set) is downloaded to this path.
+During runtime, rclone bisync keeps them in sync in both directions.
+
+If ``s3_subpath`` is omitted, the entire bucket root is synced.
 
 **Best for:** Workspace-style tools where the entire working directory should
 persist (RStudio, Jupyter).

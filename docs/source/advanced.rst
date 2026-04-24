@@ -257,7 +257,7 @@ Here is guidance on which mechanism to choose:
      - Users generate annotation files in specific paths; selective sync
        is sufficient and avoids syncing unnecessary data.
    * - RStudio, Jupyter
-     - ``full_bucket_overwrite``
+     - ``bucket_overwrite``
      - The entire working directory is the user's workspace; bidirectional
        sync keeps it consistent across redeployments.
    * - Read-only viewers

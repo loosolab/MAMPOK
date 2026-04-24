@@ -18,7 +18,7 @@
     },
     {
       "if": {
-        "required": ["full_bucket_overwrite"]
+        "required": ["bucket_overwrite"]
       },
       "then": {
         "not": {
@@ -92,10 +92,22 @@
             }
           }
         },
-        "full_bucket_overwrite": {
-          "type": "string",
-          "pattern": "^/",
-          "description": "If set, the entire S3 bucket root is synced bidirectionally into this container path (no 'container_data/' prefix). Value is the absolute container path (e.g. '/home/appuser/'). On pod start, the whole bucket is downloaded to this path (overwrite/restore). During runtime, rclone bisync keeps the path and S3 bucket in sync bidirectionally. Mutually exclusive with 'container_data'."
+        "bucket_overwrite": {
+          "type": "object",
+          "required": ["path_in_container"],
+          "additionalProperties": false,
+          "description": "Sync a container directory bidirectionally with the S3 bucket. If s3_subpath is set, only that subdirectory is synced (e.g. 'user_data'); otherwise the entire bucket root is used. On pod start the bucket (or subpath) is downloaded to path_in_container; during runtime rclone bisync keeps them in sync. Mutually exclusive with 'container_data'.",
+          "properties": {
+            "path_in_container": {
+              "type": "string",
+              "pattern": "^/",
+              "description": "Absolute container path to sync."
+            },
+            "s3_subpath": {
+              "type": "string",
+              "description": "S3 subdirectory to sync instead of the bucket root (e.g. 'user_data')."
+            }
+          }
         },
         "resources": {
           "type": "object",

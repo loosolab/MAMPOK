@@ -133,10 +133,14 @@ class DeploymentConfig:
     compatible stores, 'AWS' for native AWS S3. Controls ETag behavior and
     provider-specific optimisations."""
 
-    container_data_s3_root: bool = False
-    """If True, sync container_data_paths[0] directly to/from the bucket root (no
-    'container_data/' prefix). Set by the builder when the mamplate defines
-    'full_bucket_overwrite'. Requires exactly one entry in container_data_paths."""
+    is_bucket_overwrite: bool = False
+    """True when the mamplate uses 'bucket_overwrite'. Syncs container_data_paths[0]
+    directly to/from the bucket (or bucket subpath). Requires exactly one entry in
+    container_data_paths."""
+
+    container_data_s3_subpath: str = ""
+    """S3 subpath when is_bucket_overwrite=True.
+    Empty = sync from bucket root. Set (e.g. 'user_data') = sync from S3:$bucket/{subpath}/."""
 
     container_data_paths: list[str] = field(default_factory=list)
     """Container paths to sync to s3://bucket/container_data/ (e.g. '/app/.cellxgene/annotations/')."""

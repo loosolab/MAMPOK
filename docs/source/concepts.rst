@@ -97,7 +97,7 @@ A Mamplate describes:
 * **Resource requests and limits** (CPU, memory)
 * **Port** that the container listens on
 * **Startup command and arguments** (with template token substitution)
-* Optional **S3 data persistence** (``container_data`` or ``full_bucket_overwrite``)
+* Optional **S3 data persistence** (``container_data`` or ``bucket_overwrite``)
 * **Readiness probe** (HTTP or TCP)
 
 See :doc:`mamplates` for the complete field reference.

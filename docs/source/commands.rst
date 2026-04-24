@@ -717,7 +717,7 @@ filesystem. A subdirectory named after the ``project_id`` is created inside
 ``--output-dir``.
 
 This command downloads ``container_data/`` from S3 (the paths defined in the
-Mamplate's ``container_data.paths`` or ``full_bucket_overwrite`` setting). It
+Mamplate's ``container_data.paths`` or ``bucket_overwrite`` setting). It
 does **not** stop the deployment.
 
 **Arguments**

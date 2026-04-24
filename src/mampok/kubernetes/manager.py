@@ -181,15 +181,19 @@ class DeploymentManager:
         pod_name = pod_names[0]
         yield {"stage": "s3_final_sync", "status": "starting", "pod": pod_name}
         # Use the same local↔S3 path mapping as the bisync loop in the sidecar.
-        # Full-bucket mode syncs a subpath of /sync/ directly to the bucket root;
-        # normal mode syncs all of /sync/ into the container_data/ prefix.
+        # bucket_overwrite mode syncs a subpath of /sync/ directly to the bucket (or
+        # bucket subpath); normal mode syncs all of /sync/ into the container_data/ prefix.
         # Using the wrong paths here (e.g. always container_data/) would create a
         # spurious container_data/ folder in the bucket root that the bisync loop
         # then mirrors back locally, causing recursive folder growth on re-deploy.
-        if cfg.container_data_s3_root:
+        if cfg.is_bucket_overwrite:
             subpath = _sync_sidecar_subpath(cfg.container_data_paths[0])
             final_local = f"/sync/{subpath}/"
-            final_s3 = "S3:$s3bucket/"
+            final_s3 = (
+                f"S3:$s3bucket/{cfg.container_data_s3_subpath}/"
+                if cfg.container_data_s3_subpath
+                else "S3:$s3bucket/"
+            )
         else:
             final_local = "/sync/"
             final_s3 = "S3:$s3bucket/container_data/"

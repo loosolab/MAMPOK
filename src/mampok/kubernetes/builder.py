@@ -25,7 +25,7 @@ _S3DOWNLOAD_RESOURCES = {
 }
 _FILEDIR_VOLUME_NAME = "filedir"
 _FILEDIR_MOUNT_PATH = "/analysis_data"
-_MAMPOK_FIELDS = {"tool", "containertype", "container_data", "volume"}
+_MAMPOK_FIELDS = {"tool", "containertype", "container_data", "bucket_overwrite", "volume"}
 _S3SYNC_IMAGE = _RCLONE_IMAGE
 _S3SYNC_SIDECAR_NAME = "mampok-s3-sync"
 _S3SYNC_RESOURCES = {
@@ -181,18 +181,23 @@ class ManifestBuilder:
             container.setdefault("volumeMounts", []).extend(sync_volume_mounts_main)
 
         # --- Restore init container (independent of include_s3download) ---
-        # For full_bucket_overwrite: downloads entire bucket into the single container path.
+        # For bucket_overwrite: downloads bucket (or subpath) into the single container path.
         # For normal mamplan: downloads per-path from container_data/ prefix.
         if cfg.container_data_restore and cfg.container_data_paths:
             restore_mounts = [
                 {"name": _sync_volume_name(p), "mountPath": p.rstrip("/")}
                 for p in cfg.container_data_paths
             ]
-            if cfg.container_data_s3_root:
-                # full_bucket_overwrite: entire bucket → single container path
+            if cfg.is_bucket_overwrite:
+                # bucket_overwrite: bucket (or subpath) → single container path
                 target = cfg.container_data_paths[0].rstrip("/")
+                s3_src = (
+                    f"S3:$(s3bucket)/{cfg.container_data_s3_subpath}/"
+                    if cfg.container_data_s3_subpath
+                    else "S3:$(s3bucket)/"
+                )
                 restore_cmd_parts = (
-                    f"rclone copy S3:$(s3bucket)/ {target}/ "
+                    f"rclone copy {s3_src} {target}/ "
                     "--ignore-errors --retries 3 --stats 10s --log-level INFO"
                 )
             else:
@@ -327,11 +332,15 @@ class ManifestBuilder:
             #   2. Loop with normal bisync: differential sync using the .lst baseline.
             #   3. || --resync fallback in the loop: recovers if .lst files are ever
             #      renamed to .lst-err by a mid-run critical error.
-            if cfg.container_data_s3_root:
-                # full_bucket_overwrite: bucket root ↔ specific sidecar subpath
+            if cfg.is_bucket_overwrite:
+                # bucket_overwrite: bucket (or subpath) ↔ specific sidecar subpath
                 subpath = _sync_sidecar_subpath(cfg.container_data_paths[0])
                 local_path = f"/sync/{subpath}/"
-                s3_path = "S3:$s3bucket/"
+                s3_path = (
+                    f"S3:$s3bucket/{cfg.container_data_s3_subpath}/"
+                    if cfg.container_data_s3_subpath
+                    else "S3:$s3bucket/"
+                )
             else:
                 # Standard Mamplan: all paths under container_data/
                 local_path = "/sync/"
