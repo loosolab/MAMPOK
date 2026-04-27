@@ -16,6 +16,35 @@ from mampok.kubernetes.validator import ManifestValidationError, ManifestValidat
 logger = logging.getLogger(__name__)
 
 
+def _compute_average_speed(transferred_human: str, elapsed: str) -> str | None:
+    """Compute average transfer speed from total bytes and elapsed time."""
+    elapsed_s: float = 0.0
+    for value, unit in re.findall(r"([\d.]+)([a-z]+)", elapsed):
+        if unit == "s":
+            elapsed_s += float(value)
+        elif unit == "m":
+            elapsed_s += float(value) * 60
+        elif unit == "h":
+            elapsed_s += float(value) * 3600
+    if elapsed_s <= 0:
+        return None
+    _UNITS = {"B": 1, "KiB": 1024, "MiB": 1024**2, "GiB": 1024**3}
+    m = re.match(r"([\d.]+)\s*(\S+)", transferred_human)
+    if not m:
+        return None
+    try:
+        size_val, unit = float(m.group(1)), m.group(2)
+    except ValueError:
+        return None
+    if unit not in _UNITS:
+        return None
+    speed_bps = size_val * _UNITS[unit] / elapsed_s
+    for label, div in [("GiB/s", 1024**3), ("MiB/s", 1024**2), ("KiB/s", 1024), ("B/s", 1)]:
+        if speed_bps >= div or label == "B/s":
+            return f"{speed_bps / div:.1f} {label}"
+    return None
+
+
 def _parse_rclone_stats(output: str) -> dict:
     """Extract transfer progress, speed, and elapsed time from rclone --stats output.
 
@@ -53,6 +82,12 @@ def _parse_rclone_stats(output: str) -> dict:
     matches = re.findall(r"Elapsed time:\s+([\d.]+\S+)", output)
     if matches:
         result["elapsed"] = matches[-1]
+    if (result.get("speed", "").startswith("0 ")
+            and "transferred_bytes_human" in result
+            and "elapsed" in result):
+        avg = _compute_average_speed(result["transferred_bytes_human"], result["elapsed"])
+        if avg:
+            result["speed"] = avg
     return result
 
 
@@ -468,6 +503,29 @@ class DeploymentManager:
             logger.debug("Could not get running init container for %s: %s", cfg.project_id, e)
         return None
 
+    def _get_completed_init_containers(self, cfg: DeploymentConfig) -> list[str]:
+        """Return names of successfully-terminated init containers for the deployment."""
+        import kubernetes.client
+
+        v1 = kubernetes.client.CoreV1Api(api_client=self._kube._api_client)
+        try:
+            pods = v1.list_namespaced_pod(
+                namespace=cfg.namespace,
+                label_selector=f"app={cfg.app_label}",
+            )
+            for pod in pods.items:
+                completed = [
+                    cs.name
+                    for cs in (pod.status.init_container_statuses or [])
+                    if cs.state and cs.state.terminated is not None
+                    and cs.state.terminated.exit_code == 0
+                ]
+                if completed:
+                    return completed
+        except Exception as e:
+            logger.debug("Could not get completed init containers for %s: %s", cfg.project_id, e)
+        return []
+
     def _get_init_container_log_progress(self, cfg: DeploymentConfig, container_name: str) -> dict:
         """Read init container logs and parse rclone stats.
 
@@ -562,10 +620,21 @@ class DeploymentManager:
         last_phase: str | None = None
         last_init_pct: int = -1
         last_init_container: str | None = None  # tracks container for done-event on phase change
+        reported_init_containers: set[str] = set()
         deadline = time.monotonic() + timeout
 
         logger.debug("wait_for_ready: deployment=%s, replicas=%s, timeout=%s",
                      cfg.deployment_name, cfg.replicas, timeout)
+
+        # Retroactive check: init container may have completed before the Watch loop starts
+        for cname in self._get_completed_init_containers(cfg):
+            if cname not in reported_init_containers:
+                reported_init_containers.add(cname)
+                final_stats = self._get_init_container_log_progress(cfg, cname)
+                logger.debug("init container %s already completed before watch: %s", cname, final_stats)
+                yield {"stage": "k8s_init", "status": "running"}
+                yield {"stage": "init_container_progress",
+                       "container": cname, "status": "done", **final_stats}
 
         while time.monotonic() < deadline:
             remaining = deadline - time.monotonic()
@@ -586,12 +655,15 @@ class DeploymentManager:
                                  ready, cfg.replicas, phase, last_ready, last_phase)
 
                     # Detect init container phase completion → yield final done-event
-                    if last_phase == "init_containers" and phase != "init_containers" and last_init_container:
+                    if (last_phase == "init_containers" and phase != "init_containers"
+                            and last_init_container
+                            and last_init_container not in reported_init_containers):
                         final_stats = self._get_init_container_log_progress(cfg, last_init_container)
                         logger.debug("init container %s done: %s", last_init_container, final_stats)
                         yield {"stage": "init_container_progress",
                                "container": last_init_container,
                                "status": "done", **final_stats}
+                        reported_init_containers.add(last_init_container)
                         last_init_container = None
                         last_init_pct = -1
 
@@ -637,6 +709,16 @@ class DeploymentManager:
                     yield {"stage": "init_container_progress",
                            "container": container_name,
                            "status": "progress", **stats}
+            else:
+                for cname in self._get_completed_init_containers(cfg):
+                    if cname not in reported_init_containers:
+                        reported_init_containers.add(cname)
+                        final_stats = self._get_init_container_log_progress(cfg, cname)
+                        logger.debug("init container %s completed during poll: %s", cname, final_stats)
+                        if last_phase != "init_containers":
+                            yield {"stage": "k8s_init", "status": "running"}
+                        yield {"stage": "init_container_progress",
+                               "container": cname, "status": "done", **final_stats}
 
         # Total timeout reached
         diagnosis = self._diagnose_pod_failure(cfg)

@@ -392,3 +392,151 @@ class TestFinalSyncBeforeDelete:
         list(DeploymentManager(kube).delete(cfg))
 
         assert kube.exec_in_pod_stream.call_args.kwargs["timeout"] == 120
+
+
+# ---------------------------------------------------------------------------
+# TestParseRcloneStats
+# ---------------------------------------------------------------------------
+
+
+class TestParseRcloneStats:
+    """Tests for _parse_rclone_stats and _compute_average_speed."""
+
+    _STATS_TEMPLATE = (
+        "Transferred:   {transferred} / {total}, 100%, {speed}\n"
+        "Elapsed time: {elapsed}\n"
+        "Transferred:         1 / 1, 100%\n"
+    )
+
+    def test_zero_speed_replaced_with_computed_average(self):
+        from mampok.kubernetes.manager import _parse_rclone_stats
+
+        output = self._STATS_TEMPLATE.format(
+            transferred="10.0 MiB",
+            total="10.0 MiB",
+            speed="0 B/s",
+            elapsed="0.2s",
+        )
+        result = _parse_rclone_stats(output)
+        assert result["speed"] != "0 B/s"
+        # 10 MiB / 0.2s = 50 MiB/s
+        assert result["speed"] == "50.0 MiB/s"
+
+    def test_nonzero_speed_not_replaced(self):
+        from mampok.kubernetes.manager import _parse_rclone_stats
+
+        output = self._STATS_TEMPLATE.format(
+            transferred="10.0 MiB",
+            total="10.0 MiB",
+            speed="51.2 MiB/s",
+            elapsed="0.2s",
+        )
+        result = _parse_rclone_stats(output)
+        assert result["speed"] == "51.2 MiB/s"
+
+    def test_zero_speed_without_elapsed_left_unchanged(self):
+        from mampok.kubernetes.manager import _parse_rclone_stats
+
+        output = "Transferred:   10.0 MiB / 10.0 MiB, 100%, 0 B/s\n"
+        result = _parse_rclone_stats(output)
+        assert result["speed"] == "0 B/s"
+
+
+# ---------------------------------------------------------------------------
+# TestFastInitContainer (additional TestWaitForReady cases)
+# ---------------------------------------------------------------------------
+
+
+class TestFastInitContainer:
+    """Tests for wait_for_ready handling of already-completed init containers."""
+
+    def _make_ready_event(self):
+        obj = MagicMock()
+        obj.status.ready_replicas = 1
+        return {"object": obj}
+
+    def test_fast_init_already_completed_emits_events(self, make_config):
+        """Pre-loop check emits k8s_init + init_container_progress/done for fast init."""
+        kube = MagicMock()
+        mgr = DeploymentManager(kube)
+        cfg = make_config(replicas=1)
+
+        mock_watch = MagicMock()
+        mock_watch.stream.return_value = iter([self._make_ready_event()])
+
+        with patch("kubernetes.watch.Watch", return_value=mock_watch), \
+             patch.object(mgr, "_get_completed_init_containers", return_value=["s3-restore"]), \
+             patch.object(mgr, "_get_init_container_log_progress", return_value={"transferred_pct": 100}):
+            events = list(mgr.wait_for_ready(cfg, timeout=30))
+
+        stages = [e["stage"] for e in events]
+        assert "k8s_init" in stages
+        done_events = [e for e in events if e.get("stage") == "init_container_progress" and e.get("status") == "done"]
+        assert len(done_events) >= 1
+        # k8s_init must come before the done event
+        k8s_init_idx = next(i for i, e in enumerate(events) if e["stage"] == "k8s_init")
+        done_idx = next(i for i, e in enumerate(events) if e.get("stage") == "init_container_progress" and e.get("status") == "done")
+        assert k8s_init_idx < done_idx
+
+    def test_no_duplicate_done_events_for_fast_init(self, make_config):
+        """Only one init_container_progress/done event is emitted even if phase transition also fires."""
+        kube = MagicMock()
+        mgr = DeploymentManager(kube)
+        cfg = make_config(replicas=1)
+
+        mock_watch = MagicMock()
+        mock_watch.stream.return_value = iter([self._make_ready_event()])
+
+        with patch("kubernetes.watch.Watch", return_value=mock_watch), \
+             patch.object(mgr, "_get_completed_init_containers", return_value=["s3-restore"]), \
+             patch.object(mgr, "_get_init_container_log_progress", return_value={}):
+            events = list(mgr.wait_for_ready(cfg, timeout=30))
+
+        done_events = [
+            e for e in events
+            if e.get("stage") == "init_container_progress" and e.get("status") == "done"
+        ]
+        assert len(done_events) == 1
+
+    def test_completed_init_detected_in_poll_fallback(self, make_config):
+        """Poll fallback else-branch emits done event for completed init container."""
+        kube = MagicMock()
+        mgr = DeploymentManager(kube)
+        cfg = make_config(replicas=1)
+
+        # Stream: first call times out (empty), second call returns ready event
+        ready_obj = MagicMock()
+        ready_obj.status.ready_replicas = 1
+
+        call_count = [0]
+
+        def stream_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return iter([])
+            return iter([{"object": ready_obj}])
+
+        mock_watch = MagicMock()
+        mock_watch.stream.side_effect = stream_side_effect
+
+        completed_calls = [0]
+
+        def completed_side_effect(cfg_arg):
+            completed_calls[0] += 1
+            if completed_calls[0] == 1:
+                return []  # pre-loop: not yet completed
+            return ["s3-restore"]  # poll fallback: now completed
+
+        with patch("kubernetes.watch.Watch", return_value=mock_watch), \
+             patch.object(mgr, "_get_completed_init_containers", side_effect=completed_side_effect), \
+             patch.object(mgr, "_get_running_init_container", return_value=None), \
+             patch.object(mgr, "_get_init_container_log_progress", return_value={"transferred_pct": 100}), \
+             patch.object(mgr, "_check_and_yield_pod_warning", return_value=iter([])):
+            events = list(mgr.wait_for_ready(cfg, timeout=30))
+
+        done_events = [
+            e for e in events
+            if e.get("stage") == "init_container_progress" and e.get("status") == "done"
+        ]
+        assert len(done_events) >= 1
+        assert done_events[0]["container"] == "s3-restore"
