@@ -14,6 +14,7 @@ _DEPLOYMENT_DEFAULTS: dict = {
     "status": False,
     "auth": False,
     "random_url_suffix": False,
+    "url": "",
 }
 
 _SERVICE_DEFAULTS: dict = {
