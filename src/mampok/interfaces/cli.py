@@ -25,7 +25,7 @@ app = typer.Typer(
     name="mampok",
     help="Kubernetes deployment manager for bioinformatics pipelines.",
     no_args_is_help=True,
-    context_settings={"help_option_names": ["--help", "--h"]},
+    context_settings={"help_option_names": ["--help", "-h"]},
 )
 
 
@@ -1112,7 +1112,7 @@ def _mamplan_expiry_info(mamplan: Mamplan, within: timedelta) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-@app.command(context_settings={"help_option_names": ["--help", "--h"]})
+@app.command(context_settings={"help_option_names": ["--help", "-h"]})
 def deploy(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
     config: Annotated[Path, _OPT_CONFIG],
@@ -1142,7 +1142,7 @@ def deploy(
     )
 
 
-@app.command(context_settings={"help_option_names": ["--help", "--h"]})
+@app.command(context_settings={"help_option_names": ["--help", "-h"]})
 def stop(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
     config: Annotated[Path, _OPT_CONFIG],
@@ -1173,7 +1173,7 @@ def stop(
     )
 
 
-@app.command(context_settings={"help_option_names": ["--help", "--h"]})
+@app.command(context_settings={"help_option_names": ["--help", "-h"]})
 def download(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
     config: Annotated[Path, _OPT_CONFIG],
@@ -1199,7 +1199,7 @@ def download(
     )
 
 
-@app.command(name="stop-expired", context_settings={"help_option_names": ["--help", "--h"]})
+@app.command(name="stop-expired", context_settings={"help_option_names": ["--help", "-h"]})
 def stop_expired(
     repository: Annotated[Path, typer.Argument(help="Path to mamplan repository directory.")],
     config: Annotated[Path, _OPT_CONFIG],
@@ -1212,7 +1212,7 @@ def stop_expired(
     CLI(cfg).stop_expired(repository, yes=yes, throw_error=throw_error)
 
 
-@app.command(name="list-expiring", context_settings={"help_option_names": ["--help", "--h"]})
+@app.command(name="list-expiring", context_settings={"help_option_names": ["--help", "-h"]})
 def list_expiring(
     repository: Annotated[Path, typer.Argument(help="Path to mamplan repository directory.")],
     config: Annotated[Path, _OPT_CONFIG],
@@ -1224,7 +1224,7 @@ def list_expiring(
     CLI(cfg).list_expiring(repository, within=_parse_within(within))
 
 
-@app.command(context_settings={"help_option_names": ["--help", "--h"]})
+@app.command(context_settings={"help_option_names": ["--help", "-h"]})
 def redeploy(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
     config: Annotated[Path, _OPT_CONFIG],
@@ -1252,7 +1252,7 @@ def redeploy(
     )
 
 
-@app.command(name="edit-mamplan", context_settings={"help_option_names": ["--help", "--h"]})
+@app.command(name="edit-mamplan", context_settings={"help_option_names": ["--help", "-h"]})
 def edit_mamplan(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file.")],
     config: Annotated[Path, _OPT_CONFIG],
@@ -1284,7 +1284,7 @@ def edit_mamplan(
     )
 
 
-@app.command(name="create-mamplan", context_settings={"help_option_names": ["--help", "--h"]})
+@app.command(name="create-mamplan", context_settings={"help_option_names": ["--help", "-h"]})
 def create_mamplan(
     project_id: Annotated[str, typer.Option(help="Unique project ID.")],
     tool: Annotated[str, typer.Option(help="Tool name (must match a mamplate).")],
@@ -1369,7 +1369,7 @@ def create_mamplan(
     )
 
 
-@app.command(name="check-status", context_settings={"help_option_names": ["--help", "--h"]})
+@app.command(name="check-status", context_settings={"help_option_names": ["--help", "-h"]})
 def check_status(
     repository: Annotated[Path, typer.Argument(help="Path to mamplan repository directory.")],
     config: Annotated[Path, _OPT_CONFIG],
@@ -1391,7 +1391,7 @@ def check_status(
     )
 
 
-@app.command(name="update-auth", context_settings={"help_option_names": ["--help", "--h"]})
+@app.command(name="update-auth", context_settings={"help_option_names": ["--help", "-h"]})
 def update_auth(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
     config: Annotated[Path, _OPT_CONFIG],
