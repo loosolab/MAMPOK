@@ -88,7 +88,7 @@ class TestS3Upload:
         local_file.write_bytes(b"content")
         s3.upload(local_file, "data.h5ad")
         mock_client.upload_file.assert_called_once_with(
-            str(local_file), "test-bucket", "data.h5ad"
+            str(local_file), "test-bucket", "data.h5ad", Callback=None
         )
 
     def test_upload_propagates_client_error(

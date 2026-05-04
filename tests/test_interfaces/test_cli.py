@@ -155,7 +155,7 @@ class TestCLIRedeployStopFirst:
             yield {"stage": "k8s_delete", "resource": "Deployment/test-proj"}
             call_log.append("stop_end")
 
-        def deploy_gen(_config, timeout=300):
+        def deploy_gen(_config, timeout=300, reupload=False):
             call_log.append("deploy_start")
             yield {"stage": "done"}
             call_log.append("deploy_end")
@@ -182,7 +182,7 @@ class TestCLIRedeployStopFirst:
         def stop_gen(_config):
             yield {"stage": "k8s_delete", "resource": "Deployment/test-proj"}
 
-        def deploy_gen(_config, timeout=300):
+        def deploy_gen(_config, timeout=300, reupload=False):
             yield {"stage": "done"}
 
         mock_mampok = MagicMock()

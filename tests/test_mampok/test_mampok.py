@@ -1,7 +1,7 @@
 """Tests for the Mampok orchestrator."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import ANY, MagicMock, call, patch
 
 import pytest
 
@@ -236,7 +236,7 @@ class TestDeploy:
         mock_s3.compare_size.return_value = False
         with patch("os.path.getsize", return_value=1024):
             list(mampok.deploy(mock_config))
-        mock_s3.upload.assert_called_once_with(Path("/data/file.h5"), "analysis_data/file.h5")
+        mock_s3.upload.assert_called_once_with(Path("/data/file.h5"), "analysis_data/file.h5", callback=ANY)
 
     def test_uploads_multiple_files(self, mampok, mock_config, mock_s3):
         mampok.mamplan.data["project"]["files"] = ["/data/a.h5", "/data/b.csv"]
@@ -302,7 +302,7 @@ class TestDeploy:
         mock_s3.compare_size.return_value = False
         with patch("os.path.getsize", return_value=1024):
             events = list(mampok.deploy(mock_config))
-        upload_events = [e for e in events if e.get("stage") == "s3_upload" and "file" in e]
+        upload_events = [e for e in events if e.get("stage") == "s3_upload" and e.get("status") == "starting"]
         assert len(upload_events) == 2
 
     def test_deploy_resets_lifetime_from_config(self, mampok, mock_config):

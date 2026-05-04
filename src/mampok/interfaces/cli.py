@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 import textwrap
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Callable, Optional
+from typing import Annotated, Callable, Iterator, Optional
 
 import typer
 
@@ -253,6 +254,136 @@ def run_with_error_tolerance(
         for project_id, exc in errors:
             typer.echo(f"  {project_id}: {exc}", err=True)
         raise typer.Exit(code=1)
+
+
+def _fmt_bytes(n: int) -> str:
+    """Convert a byte count to a human-readable string (e.g. 250.0 MB)."""
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return f"{n} B" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n} B"  # unreachable, satisfies type checker
+
+
+class _Printer:
+    """Manages in-place progress lines (\\r) and normal echo lines."""
+
+    def __init__(self) -> None:
+        self._active = False
+
+    def echo(self, text: str) -> None:
+        if self._active:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            self._active = False
+        typer.echo(text)
+
+    def progress(self, text: str) -> None:
+        sys.stdout.write(f"\r{text}")
+        sys.stdout.flush()
+        self._active = True
+
+    def end(self) -> None:
+        if self._active:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+            self._active = False
+
+
+def _handle_deploy_events(events: Iterator[dict], p: _Printer) -> None:
+    """Consume a mampok.deploy() event stream and print progress to the terminal."""
+    k8s_init_shown = False
+    for event in events:
+        stage = event.get("stage")
+        status = event.get("status")
+
+        if stage == "s3_upload":
+            file_ = event.get("file", "")
+            size_human = _fmt_bytes(event.get("size_bytes", 0))
+            if status == "starting":
+                p.progress(f"  Uploading {file_} ({size_human}): 0%")
+            elif status == "progress":
+                pct = event.get("transferred_pct", 0)
+                p.progress(f"  Uploading {file_} ({size_human}): {pct}%")
+            elif status == "done":
+                p.echo(f"  Uploaded {file_} ({size_human})")
+            elif status == "complete":
+                n = event.get("total_files", 0)
+                if n > 0:
+                    total_human = _fmt_bytes(event.get("total_bytes", 0))
+                    p.echo(f"  Total uploaded: {n} file(s), {total_human}")
+
+        elif stage == "k8s_apply":
+            p.echo(f"  Applied: {event.get('resource')}")
+
+        elif stage == "k8s_init":
+            if not k8s_init_shown:
+                k8s_init_shown = True
+                p.echo("  Waiting for init containers...")
+
+        elif stage == "init_container_progress":
+            container = event.get("container", "")
+            if status == "progress":
+                pct = event.get("transferred_pct", "?")
+                tbytes = event.get("transferred_bytes_human", "")
+                total = event.get("total_bytes_human", "")
+                speed = event.get("speed", "")
+                detail = f"{pct}%"
+                if tbytes and total:
+                    detail += f"  ({tbytes} / {total}"
+                    if speed:
+                        detail += f"  at {speed}"
+                    detail += ")"
+                p.progress(f"  Init container {container}: {detail}")
+            elif status == "done":
+                p.echo(f"  Init container {container} complete")
+
+        elif stage == "k8s_ready":
+            ready = event.get("ready_replicas", 0)
+            p.progress(f"  Waiting for pod... ({ready} ready)")
+
+        elif stage == "k8s_pod_warning":
+            reason = event.get("reason", "")
+            container = event.get("container", "")
+            restarts = event.get("restart_count", 0)
+            message = event.get("message", "")
+            p.echo(f"  WARNING: {reason} (container={container}, restarts={restarts}): {message}")
+
+        elif stage == "k8s_cleanup":
+            p.echo("  Cleaned up K8s resources after deploy error")
+
+
+def _handle_stop_events(events: Iterator[dict], p: _Printer) -> None:
+    """Consume a mampok.stop() event stream and print progress to the terminal."""
+    for event in events:
+        stage = event.get("stage")
+        status = event.get("status")
+        if stage == "s3_final_sync":
+            pod = event.get("pod", "")
+            if status == "starting":
+                p.echo(f"  syncing S3 data ({pod}) ...")
+            elif status == "progress":
+                pct = event.get("transferred_pct", "?")
+                tbytes = event.get("transferred_bytes_human", "")
+                total = event.get("total_bytes_human", "")
+                speed = event.get("speed", "")
+                detail = f"{pct}%"
+                if tbytes and total:
+                    detail += f"  ({tbytes} / {total}"
+                    if speed:
+                        detail += f"  at {speed}"
+                    detail += ")"
+                p.progress(f"  Syncing S3 ({pod}): {detail}")
+            elif status == "done":
+                p.echo("  S3 sync complete")
+            elif status == "timeout":
+                tf = event.get("transferred_files", "?")
+                tot = event.get("total_files", "?")
+                p.echo(f"  S3 sync timeout: {tf}/{tot} files transferred")
+            elif status in ("skipped", "failed"):
+                p.echo(f"  S3 sync {status}: {event.get('reason', '')}")
+        elif stage == "k8s_delete":
+            p.echo(f"  deleted: {event.get('resource')}")
 
 
 # ---------------------------------------------------------------------------
@@ -611,8 +742,9 @@ class CLI:
 
         def _deploy(mamplan: Mamplan) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
-            for _ in mampok.deploy(config, timeout=timeout, cleanup=not no_cleanup):
-                pass
+            p = _Printer()
+            _handle_deploy_events(mampok.deploy(config, timeout=timeout, cleanup=not no_cleanup), p)
+            p.end()
             mamplan.write(mamplan.source_path)
             typer.echo(f"Deployed: {mamplan.data['project']['project_id']}")
             url = mamplan.data["deployment"].get("url", "")
@@ -653,27 +785,18 @@ class CLI:
 
         def _stop(mamplan: Mamplan) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
+            p = _Printer()
             if download_before_stop:
                 for event in mampok.download(download_output_dir):
                     status = event.get("status")
                     if status == "starting":
-                        typer.echo(f"  downloading {event['total']} objects from s3 ...")
+                        p.echo(f"  downloading {event['total']} objects from s3 ...")
                     elif status == "done":
-                        typer.echo(f"  downloaded: {event['key']}")
+                        p.echo(f"  downloaded: {event['key']}")
                     elif status == "complete":
-                        typer.echo(f"  Download complete -> {event['dest']}")
-            for event in mampok.stop(config):
-                stage = event.get("stage")
-                status = event.get("status")
-                if stage == "s3_final_sync":
-                    if status == "starting":
-                        typer.echo(f"  syncing S3 data ({event.get('pod')}) ...")
-                    elif status == "done":
-                        typer.echo("  S3 sync complete")
-                    elif status in ("skipped", "failed"):
-                        typer.echo(f"  S3 sync {status}: {event.get('reason', '')}")
-                elif stage == "k8s_delete":
-                    typer.echo(f"  deleted: {event.get('resource')}")
+                        p.echo(f"  Download complete -> {event['dest']}")
+            _handle_stop_events(mampok.stop(config), p)
+            p.end()
             mamplan.write(mamplan.source_path)
             typer.echo(f"Stopped: {mamplan.data['project']['project_id']}")
 
@@ -750,18 +873,9 @@ class CLI:
 
         def _stop(mamplan: Mamplan) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
-            for event in mampok.stop(config):
-                stage = event.get("stage")
-                status = event.get("status")
-                if stage == "s3_final_sync":
-                    if status == "starting":
-                        typer.echo(f"  syncing S3 data ({event.get('pod')}) ...")
-                    elif status == "done":
-                        typer.echo("  S3 sync complete")
-                    elif status in ("skipped", "failed"):
-                        typer.echo(f"  S3 sync {status}: {event.get('reason', '')}")
-                elif stage == "k8s_delete":
-                    typer.echo(f"  deleted: {event.get('resource')}")
+            p = _Printer()
+            _handle_stop_events(mampok.stop(config), p)
+            p.end()
             mamplan.write(mamplan.source_path)
             typer.echo(f"Stopped: {mamplan.data['project']['project_id']}")
 
@@ -826,22 +940,13 @@ class CLI:
         def _redeploy(mamplan: Mamplan) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             project_id = mamplan.data["project"]["project_id"]
-            for event in mampok.stop(config):
-                stage = event.get("stage")
-                status = event.get("status")
-                if stage == "s3_final_sync":
-                    if status == "starting":
-                        typer.echo(f"  syncing S3 data ({event.get('pod')}) ...")
-                    elif status == "done":
-                        typer.echo("  S3 sync complete")
-                    elif status in ("skipped", "failed"):
-                        typer.echo(f"  S3 sync {status}: {event.get('reason', '')}")
-                elif stage == "k8s_delete":
-                    typer.echo(f"  deleted: {event.get('resource')}")
+            p = _Printer()
+            _handle_stop_events(mampok.stop(config), p)
+            p.end()
             mamplan.write(mamplan.source_path)
             typer.echo(f"Stopped: {project_id}")
-            for _ in mampok.deploy(config, timeout=timeout, reupload=reupload):
-                pass
+            _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
+            p.end()
             mamplan.write(mamplan.source_path)
             typer.echo(f"Redeployed: {project_id}")
 
@@ -898,9 +1003,12 @@ class CLI:
 
             def _redeploy(m: Mamplan) -> None:
                 mampok = create_mampok_instance(config, m, mamplates)
-                mampok.stop(config)
-                for _ in mampok.deploy(config, timeout=timeout):
-                    pass
+                p = _Printer()
+                _handle_stop_events(mampok.stop(config), p)
+                p.end()
+                typer.echo(f"Stopped: {m.data['project']['project_id']}")
+                _handle_deploy_events(mampok.deploy(config, timeout=timeout), p)
+                p.end()
                 m.write(mamplan_path)
                 typer.echo(f"Redeployed: {m.data['project']['project_id']}")
 
