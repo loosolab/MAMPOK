@@ -238,7 +238,8 @@ class API:
         deployment = kwargs.get("deployment", {})
         if "lifetime" not in deployment:
             deployment["lifetime"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            kwargs["deployment"] = deployment
+        deployment.setdefault("auth", True)
+        kwargs["deployment"] = deployment
 
         mamplan = Mamplan.create(**kwargs)
         mamplan.write(Path(output))
