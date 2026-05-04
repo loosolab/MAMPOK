@@ -603,6 +603,17 @@ class TestMamplanIsExpired:
         mamplan_data["deployment"]["lifetime"] = "2099-01-01T00:00:00+02:00"
         assert Mamplan(mamplan_data).is_expired is False
 
+    def test_non_utc_offset_expired_preserves_date(self, mamplan_data):
+        # +02:00 offset must not cause the date to shift — Jan 1 stays Jan 1 (UTC)
+        mamplan_data["deployment"]["status"] = True
+        mamplan_data["deployment"]["lifetime"] = "2020-01-01T00:00:00+02:00"
+        assert Mamplan(mamplan_data).is_expired is True
+
+    def test_non_utc_offset_future_preserves_date(self, mamplan_data):
+        mamplan_data["deployment"]["status"] = True
+        mamplan_data["deployment"]["lifetime"] = "2099-12-31T23:59:59+02:00"
+        assert Mamplan(mamplan_data).is_expired is False
+
 
 # ---------------------------------------------------------------------------
 # TestTemplateSubstitution
