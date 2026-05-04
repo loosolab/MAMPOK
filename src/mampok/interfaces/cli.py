@@ -850,6 +850,8 @@ class CLI:
         repository: Path,
         yes: bool = False,
         throw_error: bool = False,
+        selection: list[str] | None = None,
+        regex_selection: list[str] | None = None,
     ) -> None:
         """Stop all expired active deployments in a repository.
 
@@ -857,8 +859,11 @@ class CLI:
             repository: Path to Mamplan repository directory.
             yes: If True, skip confirmation prompt.
             throw_error: If True, disable error tolerance.
+            selection: Key-value filters (AND-combined).
+            regex_selection: Regex filters (AND-combined).
         """
         all_mamplans = load_mamplans(repository)
+        all_mamplans = apply_selection(all_mamplans, selection or [], regex_selection or [])
         expired = [m for m in all_mamplans if m.is_expired]
 
         if not expired:
@@ -1087,6 +1092,8 @@ class CLI:
         mamplan_path: Path,
         throw_error: bool = False,
         yes: bool = False,
+        selection: list[str] | None = None,
+        regex_selection: list[str] | None = None,
     ) -> None:
         """Update the auth secret for one or more projects.
 
@@ -1097,8 +1104,11 @@ class CLI:
             mamplan_path: Path to Mamplan file or directory.
             throw_error: If True, disable error tolerance.
             yes: If True, skip confirmation prompt.
+            selection: Key-value filters (AND-combined).
+            regex_selection: Regex filters (AND-combined).
         """
         mamplans, mamplates = self._load(mamplan_path)
+        mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
 
         if not _confirm_mamplans(mamplans, "auth-updated", yes):
             return
@@ -1308,13 +1318,18 @@ def download(
 def stop_expired(
     repository: Annotated[Path, typer.Argument(help="Path to mamplan repository directory.")],
     config: Annotated[Path, _OPT_CONFIG],
+    selection: Annotated[list[str], _OPT_SELECTION] = [],
+    regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
     yes: Annotated[bool, _OPT_YES] = False,
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
 ) -> None:
     """Stop all expired active deployments in a repository."""
-    logger.info("stop-expired: repository=%s, config=%s, yes=%s, throw_error=%s", repository, config, yes, throw_error)
+    logger.info(
+        "stop-expired: repository=%s, config=%s, selection=%s, regex_selection=%s, yes=%s, throw_error=%s",
+        repository, config, selection, regex_selection, yes, throw_error,
+    )
     cfg = MampokConfig.from_file(config.expanduser())
-    CLI(cfg).stop_expired(repository, yes=yes, throw_error=throw_error)
+    CLI(cfg).stop_expired(repository, yes=yes, throw_error=throw_error, selection=selection, regex_selection=regex_selection)
 
 
 @app.command(name="list-expiring", context_settings={"help_option_names": ["--help", "-h"]})
@@ -1500,12 +1515,17 @@ def check_status(
 def update_auth(
     mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
     config: Annotated[Path, _OPT_CONFIG],
+    selection: Annotated[list[str], _OPT_SELECTION] = [],
+    regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
     yes: Annotated[bool, _OPT_YES] = False,
 ) -> None:
     """Update the auth secret for a project."""
-    logger.info("update-auth: mamplan=%s, config=%s, throw_error=%s, yes=%s", mamplan, config, throw_error, yes)
+    logger.info(
+        "update-auth: mamplan=%s, config=%s, selection=%s, regex_selection=%s, throw_error=%s, yes=%s",
+        mamplan, config, selection, regex_selection, throw_error, yes,
+    )
     cfg = MampokConfig.from_file(config.expanduser())
-    CLI(cfg).update_auth(mamplan, throw_error=throw_error, yes=yes)
+    CLI(cfg).update_auth(mamplan, throw_error=throw_error, yes=yes, selection=selection, regex_selection=regex_selection)
 
 
