@@ -12,7 +12,7 @@ from typing import Annotated, Callable, Optional
 import typer
 
 from mampok.config.config import MampokConfig
-from mampok.mamplan.base import MamplanBase
+from mampok.mamplan.base import MamplanBase, parse_lifetime
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
 from mampok.mamplan.shmamplan import SHMamplan
@@ -1039,8 +1039,7 @@ def _parse_lifetime(value: str) -> str:
             delta = timedelta(days=amount * 30)
         return (datetime.now(timezone.utc) + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
-        datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return value
+        return parse_lifetime(value).strftime("%Y-%m-%dT%H:%M:%SZ")
     except ValueError:
         raise typer.BadParameter(
             f"Invalid lifetime '{value}'. Use relative (30d, 4w, 3m) or ISO 8601 (2026-12-31T00:00:00Z)."
@@ -1093,9 +1092,7 @@ def _mamplan_expiry_info(mamplan: Mamplan, within: timedelta) -> dict | None:
     if not deployment.get("status", False):
         return None
     lifetime_str = deployment["lifetime"]
-    lifetime = datetime.fromisoformat(lifetime_str)
-    if lifetime.tzinfo is None:
-        lifetime = lifetime.replace(tzinfo=timezone.utc)
+    lifetime = parse_lifetime(lifetime_str)
     delta = lifetime - datetime.now(timezone.utc)
     if timedelta(0) < delta <= within:
         return {

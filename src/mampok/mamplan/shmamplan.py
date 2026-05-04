@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-from datetime import datetime, timezone
 from typing import ClassVar
 
 from mampok.mamplan.base import MamplanBase
@@ -42,21 +41,6 @@ class SHMamplan(MamplanBase):
             True
         """
         return True
-
-    @property
-    def is_expired(self) -> bool:
-        """True if deployment.status=True and deployment.lifetime has passed.
-
-        Returns:
-            True if the deployment is active and expired.
-        """
-        deployment = self.data["deployment"]
-        if not deployment.get("status", False):
-            return False
-        lifetime = datetime.fromisoformat(deployment["lifetime"])
-        if lifetime.tzinfo is None:
-            lifetime = lifetime.replace(tzinfo=timezone.utc)
-        return lifetime < datetime.now(timezone.utc)
 
     def _get_auto_filename(self) -> str:
         """Return the auto-generated filename.

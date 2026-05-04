@@ -23,6 +23,23 @@ _DICT_FIELDS = {"resources", "volume", "downloadpaths", "annotation", "readiness
 # List fields: fully replace in merge_container_config
 _LIST_FIELDS = {"args", "command", "env"}
 
+
+def parse_lifetime(value: str) -> datetime:
+    """Parse an ISO 8601 lifetime string to a timezone-aware UTC datetime.
+
+    Any timezone offset (e.g. +02:00) is replaced with UTC while keeping the
+    date and time numbers unchanged — so the calendar date the user intended
+    is preserved.  Naive strings (no tz info) are treated as UTC.
+
+    Examples::
+
+        "2024-12-31T00:00:00+02:00" → datetime(2024, 12, 31, 0, 0, tzinfo=utc)
+        "2024-12-31T00:00:00Z"      → datetime(2024, 12, 31, 0, 0, tzinfo=utc)
+        "2024-12-31T00:00:00"       → datetime(2024, 12, 31, 0, 0, tzinfo=utc)
+    """
+    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return dt.replace(tzinfo=timezone.utc)
+
 _TEMPLATE_PATTERN = re.compile(r"__([a-zA-Z0-9_.]+)__")
 
 
@@ -221,10 +238,7 @@ class MamplanBase(ABC):
         deployment = self.data["deployment"]
         if not deployment.get("status", False):
             return False
-        lifetime = datetime.fromisoformat(deployment["lifetime"])
-        if lifetime.tzinfo is None:
-            lifetime = lifetime.replace(tzinfo=timezone.utc)
-        return lifetime < datetime.now(timezone.utc)
+        return parse_lifetime(deployment["lifetime"]) < datetime.now(timezone.utc)
 
     def merge_container_config(
         self,

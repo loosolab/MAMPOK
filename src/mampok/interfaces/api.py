@@ -10,7 +10,7 @@ from typing import Iterator
 from mampok.config.config import MampokConfig
 from mampok.interfaces.cli import create_mampok_instance
 from mampok.kubernetes.builder import _sync_sidecar_subpath
-from mampok.mamplan.base import MamplanBase
+from mampok.mamplan.base import MamplanBase, parse_lifetime
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
 from mampok.mamplan.metadata import _merge_unique, parse_metadata_files
@@ -296,7 +296,8 @@ class API:
         """
         mamplan_path = Path(mamplan_path)
         mamplan = self._load_mamplan(mamplan_path)
-        mamplan.edit(deployment__lifetime=lifetime)
+        normalized = parse_lifetime(lifetime).strftime("%Y-%m-%dT%H:%M:%SZ")
+        mamplan.edit(deployment__lifetime=normalized)
         mamplan.write(mamplan_path)
 
     def edit_sharing(
