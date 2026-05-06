@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import importlib.resources
 import json
 import logging
 import re
@@ -25,6 +26,25 @@ _S3DOWNLOAD_RESOURCES = {
 }
 _FILEDIR_VOLUME_NAME = "filedir"
 _FILEDIR_MOUNT_PATH = "/analysis_data"
+
+
+def _load_probe_defaults() -> dict:
+    schema_ref = (
+        importlib.resources.files("mampok.mamplan")
+        .joinpath("schemas")
+        .joinpath("mamplate_schema.json")
+    )
+    with schema_ref.open("r", encoding="utf-8") as f:
+        schema = json.load(f)
+    probe_props = schema["definitions"]["MamplateProperties"]["properties"]["readinessProbe"]["properties"]
+    return {
+        key: props["default"]
+        for key, props in probe_props.items()
+        if "default" in props and key not in ("httpGet", "tcpSocket")
+    }
+
+
+_PROBE_DEFAULTS = _load_probe_defaults()
 _MAMPOK_FIELDS = {"tool", "containertype", "container_data", "bucket_overwrite", "volume"}
 _S3SYNC_IMAGE = _RCLONE_IMAGE
 _S3SYNC_SIDECAR_NAME = "mampok-s3-sync"
@@ -151,7 +171,8 @@ class ManifestBuilder:
             container["volumeMounts"] = cfg.volume_mounts
         if cfg.readiness_probe:
             base_path = urlparse(cfg.url).path
-            probe_str = json.dumps(cfg.readiness_probe).replace(
+            probe = {**_PROBE_DEFAULTS, **cfg.readiness_probe}
+            probe_str = json.dumps(probe).replace(
                 "__url_base_path__", base_path
             )
             container["readinessProbe"] = json.loads(probe_str)

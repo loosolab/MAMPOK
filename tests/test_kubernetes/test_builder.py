@@ -180,7 +180,13 @@ class TestBuildDeployment:
         assert container["args"] == ["--port", "8080"]
         assert container["command"] == ["/bin/sh", "-c"]
         assert container["volumeMounts"] == [{"name": "vol", "mountPath": "/mnt"}]
-        assert container["readinessProbe"] == {"tcpSocket": {"port": 8080}}
+        assert container["readinessProbe"] == {
+            "tcpSocket": {"port": 8080},
+            "initialDelaySeconds": 5,
+            "periodSeconds": 10,
+            "failureThreshold": 3,
+            "timeoutSeconds": 10,
+        }
         assert dep["spec"]["template"]["spec"]["volumes"] == [
             {"name": "vol", "emptyDir": {}}
         ]
@@ -194,8 +200,30 @@ class TestBuildDeployment:
         dep = builder.build_deployment(cfg)
         container = dep["spec"]["template"]["spec"]["containers"][0]
         assert container["readinessProbe"] == {
-            "httpGet": {"path": "/ns/myproject/tool/", "port": 8888}
+            "httpGet": {"path": "/ns/myproject/tool/", "port": 8888},
+            "initialDelaySeconds": 5,
+            "periodSeconds": 10,
+            "failureThreshold": 3,
+            "timeoutSeconds": 10,
         }
+
+    def test_readiness_probe_default_timeout_applied(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            readiness_probe={"httpGet": {"path": "/", "port": 3838}},
+        )
+        dep = builder.build_deployment(cfg)
+        container = dep["spec"]["template"]["spec"]["containers"][0]
+        assert container["readinessProbe"]["timeoutSeconds"] == 10
+
+    def test_readiness_probe_explicit_timeout_preserved(self, make_config):
+        builder = ManifestBuilder()
+        cfg = make_config(
+            readiness_probe={"httpGet": {"path": "/", "port": 3838}, "timeoutSeconds": 5},
+        )
+        dep = builder.build_deployment(cfg)
+        container = dep["spec"]["template"]["spec"]["containers"][0]
+        assert container["readinessProbe"]["timeoutSeconds"] == 5
 
     def test_init_container(self, make_config):
         builder = ManifestBuilder()
