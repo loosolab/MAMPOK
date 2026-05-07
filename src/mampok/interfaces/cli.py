@@ -1118,12 +1118,11 @@ class CLI:
         config = self.config
 
         def _update(mamplan: MamplanBase) -> None:
-            users = _derive_users(mamplan)
             mampok = create_mampok_instance(config, mamplan, mamplates)
-            token_url = mampok.update_auth_secret(users, config)
+            token_url = mampok.update_auth_secret(config)
             typer.echo(
                 f"Updated auth: {mamplan.data['project']['project_id']} "
-                f"({len(users)} user(s))\nToken URL: {token_url}"
+                f"\nToken URL: {token_url}"
             )
 
         run_with_error_tolerance(mamplans, _update, throw_error=throw_error)

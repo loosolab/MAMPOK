@@ -136,11 +136,7 @@ class Mampok:
         # Create auth secret BEFORE kube.deploy() — pod start fails without it
         token_url: str | None = None
         if cfg.auth:
-            service = self.mamplan.data["service"]
-            orgs: list[str] = service.get("organization", [])
-            users_raw: list[str] = service.get("user", [])
-            users = ["public"] if "public" in orgs else list(dict.fromkeys(orgs + users_raw))
-            token_url = self.update_auth_secret(users, config)
+            token_url = self.update_auth_secret(config)
 
         step: dict = {"stage": "init", "status": "done", "project_id": project_id}
         logger.debug("step: %s", step)
@@ -342,7 +338,7 @@ class Mampok:
         logger.debug("check_status: %s", result)
         return result
 
-    def update_auth_secret(self, users: list[str], config: MampokConfig) -> str:
+    def update_auth_secret(self, config: MampokConfig) -> str:
         """Generate a new JWT auth secret and update it on the cluster.
 
         Creates a random secret_key, builds the K8s secret in the format of the
@@ -360,6 +356,10 @@ class Mampok:
         service = self.mamplan.data["service"]
         owner = service["owner"]
         groups = service.get("organization", [])
+        users = service.get("users", [])
+
+        if owner == '_public':
+            groups = ['public']
 
         secret_key = _generate_secret_key()
         auth_data = {
