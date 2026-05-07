@@ -184,14 +184,25 @@ def convert(old: dict, source_path: Path) -> tuple[dict, list[str], list[str]]:
     if not metadata:
         hints.append("no metadata")
 
+    # legacy 'public' organization: owner → '_public', organization and user → []
+    organization_raw = tags_old.get("organization")
+    if organization_raw == "public":
+        owner = "_public"
+        organization = []
+        user_list = []
+        warnings.append("organization 'public' → owner '_public', organization [], user []")
+    else:
+        organization = to_list(organization_raw)
+        user_list = to_list(tags_old.get("user", []))
+
     service: dict = {
         "owner": owner,
         "analyst": analyst,
         "datatype": to_list(tags_old.get("datatype", [])),
         "download_allowed": tags_old.get("download_allowed", False),
         "metadata": metadata,
-        "organization": to_list(tags_old.get("organization", [])),
-        "user": to_list(tags_old.get("user", [])),
+        "organization": organization,
+        "user": user_list,
     }
 
     # -------------------------------------------- tags (pass-through remainder)
