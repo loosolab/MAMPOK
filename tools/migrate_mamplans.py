@@ -186,7 +186,7 @@ def convert(old: dict, source_path: Path) -> tuple[dict, list[str], list[str]]:
 
     # legacy 'public' organization: owner → '_public', organization and user → []
     organization_raw = tags_old.get("organization")
-    if organization_raw == "public":
+    if "public" in organization_raw or owner=='public':
         owner = "_public"
         organization = []
         user_list = []
