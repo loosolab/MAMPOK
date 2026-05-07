@@ -166,7 +166,7 @@ def load_mamplates(mamplates_path: Path) -> dict[str, Mamplate]:
 
 def create_mampok_instance(
     config: MampokConfig,
-    mamplan: Mamplan,
+    mamplan: MamplanBase,
     mamplates: dict[str, Mamplate],
 ) -> Mampok:
     """Create a fully configured Mampok instance from config + mamplan.
@@ -221,8 +221,8 @@ def create_mampok_instance(
 
 
 def run_with_error_tolerance(
-    mamplans: list[Mamplan],
-    action: Callable[[Mamplan], None],
+    mamplans: list[MamplanBase],
+    action: Callable[[MamplanBase], None],
     throw_error: bool = False,
 ) -> None:
     """Iterate over Mamplans and collect errors instead of aborting.
@@ -433,10 +433,10 @@ def _parse_selection_token(token: str) -> tuple[list[str], str]:
 
 
 def apply_selection(
-    mamplans: list[Mamplan],
+    mamplans: list[MamplanBase],
     selections: list[str],
     regex_selections: list[str],
-) -> list[Mamplan]:
+) -> list[MamplanBase]:
     """Filter Mamplans by key-value and/or regex criteria (AND-combined).
 
     Empty selection lists leave the Mamplan list unchanged.
@@ -452,7 +452,7 @@ def apply_selection(
     if not selections and not regex_selections:
         return mamplans
 
-    result: list[Mamplan] = []
+    result: list[MamplanBase] = []
     for mamplan in mamplans:
         if _mamplan_matches(mamplan, selections, regex_selections):
             result.append(mamplan)
@@ -460,7 +460,7 @@ def apply_selection(
 
 
 def _mamplan_matches(
-    mamplan: Mamplan,
+    mamplan: MamplanBase,
     selections: list[str],
     regex_selections: list[str],
 ) -> bool:
@@ -530,7 +530,7 @@ def _parse_edit_args(fields: list[str]) -> dict:
 _RELATIVE_OFFSET_RE = re.compile(r"^\+(\d+)([dwm])$", re.IGNORECASE)
 
 
-def _expand_relative_lifetime(fields: list[str], mamplan: Mamplan) -> list[str]:
+def _expand_relative_lifetime(fields: list[str], mamplan: MamplanBase) -> list[str]:
     """Expand '+Nd/w/m' offset tokens in deployment:lifetime to absolute ISO 8601.
 
     The offset is added to the mamplan's **existing** lifetime, not to now().
@@ -573,7 +573,7 @@ def _expand_relative_lifetime(fields: list[str], mamplan: Mamplan) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _derive_users(mamplan: Mamplan) -> list[str]:
+def _derive_users(mamplan: MamplanBase) -> list[str]:
     """Derive the user list for auth secret from service.organization + service.user.
 
     If 'public' is in organization, returns ``['public']``.
@@ -601,7 +601,7 @@ def _derive_users(mamplan: Mamplan) -> list[str]:
 
 
 def _confirm_mamplans(
-    mamplans: list[Mamplan],
+    mamplans: list[MamplanBase],
     action: str,
     yes: bool = False,
 ) -> bool:
@@ -664,6 +664,27 @@ def _confirm_mamplans(
     return confirmed
 
 
+def _do_redeploy(
+    mamplan: MamplanBase,
+    config,
+    mamplates: dict,
+    write_path: Path,
+    timeout: int,
+    reupload: bool = False,
+) -> None:
+    mampok = create_mampok_instance(config, mamplan, mamplates)
+    project_id = mamplan.data["project"]["project_id"]
+    p = _Printer()
+    _handle_stop_events(mampok.stop(config), p)
+    p.end()
+    mamplan.write(write_path)
+    typer.echo(f"Stopped: {project_id}")
+    _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
+    p.end()
+    mamplan.write(write_path)
+    typer.echo(f"Redeployed: {project_id}")
+
+
 # ---------------------------------------------------------------------------
 # CLI class (I6–I14)
 # ---------------------------------------------------------------------------
@@ -688,7 +709,7 @@ class CLI:
         """
         self.config = config
 
-    def _load(self, path: Path) -> tuple[list[Mamplan], dict[str, Mamplate]]:
+    def _load(self, path: Path) -> tuple[list[MamplanBase], dict[str, Mamplate]]:
         """Load Mamplans from path and all Mamplates from config.
 
         Args:
@@ -740,7 +761,7 @@ class CLI:
 
         config = self.config
 
-        def _deploy(mamplan: Mamplan) -> None:
+        def _deploy(mamplan: MamplanBase) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             p = _Printer()
             _handle_deploy_events(mampok.deploy(config, timeout=timeout, cleanup=not no_cleanup), p)
@@ -783,7 +804,7 @@ class CLI:
 
         config = self.config
 
-        def _stop(mamplan: Mamplan) -> None:
+        def _stop(mamplan: MamplanBase) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             p = _Printer()
             if download_before_stop:
@@ -830,7 +851,7 @@ class CLI:
 
         config = self.config
 
-        def _download(mamplan: Mamplan) -> None:
+        def _download(mamplan: MamplanBase) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             project_id = mamplan.data["project"]["project_id"]
             for event in mampok.download(output_dir):
@@ -876,7 +897,7 @@ class CLI:
         mamplates = load_mamplates(self.config.mamplates_path)
         config = self.config
 
-        def _stop(mamplan: Mamplan) -> None:
+        def _stop(mamplan: MamplanBase) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             p = _Printer()
             _handle_stop_events(mampok.stop(config), p)
@@ -942,20 +963,11 @@ class CLI:
 
         config = self.config
 
-        def _redeploy(mamplan: Mamplan) -> None:
-            mampok = create_mampok_instance(config, mamplan, mamplates)
-            project_id = mamplan.data["project"]["project_id"]
-            p = _Printer()
-            _handle_stop_events(mampok.stop(config), p)
-            p.end()
-            mamplan.write(mamplan.source_path)
-            typer.echo(f"Stopped: {project_id}")
-            _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
-            p.end()
-            mamplan.write(mamplan.source_path)
-            typer.echo(f"Redeployed: {project_id}")
-
-        run_with_error_tolerance(mamplans, _redeploy, throw_error=throw_error)
+        run_with_error_tolerance(
+            mamplans,
+            lambda m: _do_redeploy(m, config, mamplates, m.source_path, timeout, reupload),
+            throw_error=throw_error,
+        )
 
     # I10
     def edit_mamplan(
@@ -964,7 +976,6 @@ class CLI:
         fields: list[str] | None = None,
         redeploy: bool = False,
         timeout: int = 300,
-        throw_error: bool = False,
         yes: bool = False,
     ) -> None:
         """Edit Mamplan fields and optionally redeploy.
@@ -977,7 +988,7 @@ class CLI:
             throw_error: If True, disable error tolerance.
             yes: If True, skip confirmation prompt.
         """
-        mamplan = Mamplan.read_in(mamplan_path)
+        mamplan = _load_single_mamplan(mamplan_path)
         expanded_fields = _expand_relative_lifetime(fields or [], mamplan)
 
         typer.echo(f"Mamplan: {mamplan.data['project']['project_id']}")
@@ -1005,19 +1016,10 @@ class CLI:
         if redeploy:
             mamplates = load_mamplates(self.config.mamplates_path)
             config = self.config
-
-            def _redeploy(m: Mamplan) -> None:
-                mampok = create_mampok_instance(config, m, mamplates)
-                p = _Printer()
-                _handle_stop_events(mampok.stop(config), p)
-                p.end()
-                typer.echo(f"Stopped: {m.data['project']['project_id']}")
-                _handle_deploy_events(mampok.deploy(config, timeout=timeout), p)
-                p.end()
-                m.write(mamplan_path)
-                typer.echo(f"Redeployed: {m.data['project']['project_id']}")
-
-            run_with_error_tolerance([mamplan], _redeploy, throw_error=throw_error)
+            run_with_error_tolerance(
+                [mamplan],
+                lambda m: _do_redeploy(m, config, mamplates, mamplan_path, timeout),
+            )
 
     # I11
     def create_mamplan(self, **kwargs) -> None:
@@ -1054,7 +1056,7 @@ class CLI:
 
         rows: list[dict] = []
 
-        def _check(mamplan: Mamplan) -> None:
+        def _check(mamplan: MamplanBase) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             status = mampok.check_status(config)
             rows.append(status)
@@ -1115,7 +1117,7 @@ class CLI:
 
         config = self.config
 
-        def _update(mamplan: Mamplan) -> None:
+        def _update(mamplan: MamplanBase) -> None:
             users = _derive_users(mamplan)
             mampok = create_mampok_instance(config, mamplan, mamplates)
             token_url = mampok.update_auth_secret(users, config)
@@ -1197,7 +1199,7 @@ def _parse_within(value: str) -> timedelta:
         return timedelta(days=amount * 30)
 
 
-def _mamplan_expiry_info(mamplan: Mamplan, within: timedelta) -> dict | None:
+def _mamplan_expiry_info(mamplan: MamplanBase, within: timedelta) -> dict | None:
     """Return expiry info if mamplan is active and expiring within ``within``, else None.
 
     Args:
@@ -1384,22 +1386,27 @@ def edit_mamplan(
         bool,
         typer.Option("--redeploy", help="Redeploy after editing."),
     ] = False,
-    timeout: Annotated[int, _OPT_TIMEOUT] = 300,
-    throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
+    timeout: Annotated[int | None, _OPT_TIMEOUT] = None,
     yes: Annotated[bool, _OPT_YES] = False,
 ) -> None:
     """Edit mamplan fields and optionally redeploy."""
+    
+    if timeout is not None and not redeploy_after:
+        raise typer.BadParameter(
+            "--timeout requires --redeploy.",
+            param_hint="'--timeout'",
+        )
+
     logger.info(
-        "edit-mamplan: mamplan=%s, config=%s, fields=%s, redeploy=%s, timeout=%s, throw_error=%s, yes=%s",
-        mamplan, config, fields, redeploy_after, timeout, throw_error, yes,
+        "edit-mamplan: mamplan=%s, config=%s, fields=%s, redeploy=%s, timeout=%s, yes=%s",
+        mamplan, config, fields, redeploy_after, timeout, yes,
     )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).edit_mamplan(
         mamplan,
         fields=fields,
         redeploy=redeploy_after,
-        timeout=timeout,
-        throw_error=throw_error,
+        timeout=timeout if timeout is not None else 900,
         yes=yes,
     )
 

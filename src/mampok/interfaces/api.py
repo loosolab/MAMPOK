@@ -259,7 +259,7 @@ class API:
             jsonschema.ValidationError: If the result violates the schema (atomic rollback).
         """
         mamplan_path = Path(mamplan_path)
-        mamplan = Mamplan.read_in(mamplan_path)
+        mamplan = self._load_mamplan(mamplan_path)
         mamplan.edit(**kwargs)
         mamplan.write(mamplan_path)
 
