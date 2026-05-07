@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.resources
 import json
 import logging
 import os
@@ -24,6 +25,21 @@ from mampok.mamplan.mamplate import Mamplate
 from mampok.s3.s3 import S3
 
 logger = logging.getLogger(__name__)
+
+
+def _load_container_data_defaults() -> dict:
+    schema_ref = (
+        importlib.resources.files("mampok.mamplan")
+        .joinpath("schemas")
+        .joinpath("mamplate_schema.json")
+    )
+    with schema_ref.open("r", encoding="utf-8") as f:
+        schema = json.load(f)
+    cd_props = schema["definitions"]["MamplateProperties"]["properties"]["container_data"]["properties"]
+    return {k: v["default"] for k, v in cd_props.items() if "default" in v}
+
+
+_CONTAINER_DATA_DEFAULTS = _load_container_data_defaults()
 
 
 class Mampok:
@@ -437,11 +453,10 @@ class Mampok:
 
         container_data = main.get("container_data", {})
         container_data_paths = container_data.get("paths", [])
-        container_data_restore = bool(container_data.get("restore_on_deploy", False))
-        container_data_sync_interval = int(container_data.get("sync_interval_seconds", 60))
-        container_data_sync_timeout = int(
-            container_data.get("sync_timeout_seconds", 3600)
-        )
+        merged_cd = {**_CONTAINER_DATA_DEFAULTS, **container_data}
+        container_data_restore = bool(merged_cd["restore_on_deploy"])
+        container_data_sync_interval = int(merged_cd["sync_interval_seconds"])
+        container_data_sync_timeout = int(merged_cd["sync_timeout_seconds"])
         is_bucket_overwrite = False
         container_data_s3_subpath = ""
 

@@ -19,7 +19,7 @@
     "deployment": {
       "type": "object",
       "description": "Deployment configuration.",
-      "required": ["cluster", "bucket", "lifetime", "url"],
+      "required": ["cluster", "bucket", "lifetime", "status", "url"],
       "additionalProperties": false,
       "properties": {
         "cluster": { "$ref": "mamplan_schema.json#/definitions/cluster" },

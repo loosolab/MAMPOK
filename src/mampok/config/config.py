@@ -21,6 +21,27 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _load_config_defaults() -> tuple[dict, dict, dict]:
+    schema_ref = (
+        importlib.resources.files("mampok.config")
+        .joinpath("schemas")
+        .joinpath("config_schema.json")
+    )
+    with schema_ref.open("r", encoding="utf-8") as f:
+        schema = json.load(f)
+    cluster_props = schema["definitions"]["ClusterConfig"]["properties"]
+    ap_props = schema["properties"]["auth_proxy"]["properties"]
+    s3_props = schema["properties"]["s3"]["properties"]
+    return (
+        {k: v["default"] for k, v in cluster_props.items() if "default" in v},
+        {k: v["default"] for k, v in ap_props.items() if "default" in v},
+        {k: v["default"] for k, v in s3_props.items() if "default" in v},
+    )
+
+
+_CLUSTER_DEFAULTS, _AUTH_PROXY_DEFAULTS, _S3_DEFAULTS = _load_config_defaults()
+
+
 @dataclass
 class AuthProxyConfig:
     """Auth proxy configuration for the Gatekeeper sidecar.
@@ -206,36 +227,15 @@ class MampokConfig:
             )
 
         clusters = {
-            name: ClusterConfig(
-                host=cluster_data["host"],
-                namespace=cluster_data["namespace"],
-                kubeconfig_path=cluster_data["kubeconfig_path"],
-                annotations=cluster_data.get("annotations", {}),
-                ingress_class=cluster_data.get("ingress_class", ""),
-                dnsissuer=cluster_data.get("dnsissuer", ""),
-                dnssecret=cluster_data.get("dnssecret", ""),
-            )
+            name: ClusterConfig(**{**_CLUSTER_DEFAULTS, **cluster_data})
             for name, cluster_data in data["cluster"].items()
         }
 
-        s3_data = data["s3"]
-        s3 = S3Config(
-            endpoint=s3_data["endpoint"],
-            access_key=s3_data["access_key"],
-            secret_key=s3_data["secret_key"],
-            secretname=s3_data["secretname"],
-            prefix=s3_data.get("prefix", ""),
-        )
+        s3 = S3Config(**{**_S3_DEFAULTS, **data["s3"]})
 
         auth_proxy = None
         if _ap := data.get("auth_proxy"):
-            auth_proxy = AuthProxyConfig(
-                auth_proxy_image=_ap["auth_proxy_image"],
-                proxy_port=_ap.get("proxy_port", 8080),
-                auth_annotations=_ap.get("auth_annotations", {}),
-                image_pull_secrets=_ap.get("image_pull_secrets", []),
-                project_auth_path=_ap.get("project_auth_path", ""),
-            )
+            auth_proxy = AuthProxyConfig(**{**_AUTH_PROXY_DEFAULTS, **_ap})
 
         return cls(
             clusters=clusters,

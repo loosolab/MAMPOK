@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 from typing import ClassVar
+from pathlib import Path
 
 from mampok.mamplan.base import MamplanBase
 
@@ -86,7 +87,7 @@ class SHMamplan(MamplanBase):
         return cls(data)
 
     @classmethod
-    def read_in(cls, path: "Path") -> "SHMamplan":
+    def read_in(cls, path: Path) -> "SHMamplan":
         """Load a SHMamplan from a JSON file.
 
         Args:
@@ -100,7 +101,4 @@ class SHMamplan(MamplanBase):
             json.JSONDecodeError: If the JSON syntax is invalid.
             jsonschema.ValidationError: If the content violates the schema.
         """
-        instance = super().read_in(path)
-        # ensure pipeline defaults after loading
-        instance.data["deployment"].setdefault("status", False)
-        return instance  # type: ignore[return-value]
+        return super().read_in(path)
