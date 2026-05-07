@@ -176,12 +176,13 @@
             "httpGet": {
               "type": "object",
               "description": "HTTP GET probe configuration.",
-              "required": ["path", "port"],
+              "required": ["port"],
               "additionalProperties": false,
               "properties": {
                 "path": {
                   "type": "string",
-                  "description": "Path to probe (e.g. '/', '/health', '/api/status')."
+                  "description": "Path to probe (e.g. '/', '/health', '/api/status').",
+                  "default": "/"
                 },
                 "port": {
                   "type": "integer",
@@ -204,7 +205,7 @@
             "initialDelaySeconds": {
               "type": "integer",
               "description": "Seconds to wait after container start before probing.",
-              "default": 5,
+              "default": 15,
               "minimum": 0
             },
             "periodSeconds": {
@@ -216,7 +217,7 @@
             "failureThreshold": {
               "type": "integer",
               "description": "Number of consecutive failures before marking as not ready.",
-              "default": 3,
+              "default": 6,
               "minimum": 1
             },
             "timeoutSeconds": {
