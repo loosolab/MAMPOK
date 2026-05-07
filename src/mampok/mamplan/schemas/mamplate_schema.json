@@ -222,7 +222,7 @@
             "timeoutSeconds": {
               "type": "integer",
               "description": "Seconds after which the probe times out.",
-              "default": 10,
+              "default": 15,
               "minimum": 1
             }
           }
