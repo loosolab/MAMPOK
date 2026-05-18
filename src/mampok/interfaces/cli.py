@@ -685,6 +685,23 @@ def _do_redeploy(
     typer.echo(f"Redeployed: {project_id}")
 
 
+def _do_restore(
+    mamplan: MamplanBase,
+    config,
+    mamplates: dict,
+    write_path: Path,
+    timeout: int,
+    reupload: bool = False,
+) -> None:
+    mampok = create_mampok_instance(config, mamplan, mamplates)
+    project_id = mamplan.data["project"]["project_id"]
+    p = _Printer()
+    _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
+    p.end()
+    mamplan.write(write_path)
+    typer.echo(f"Restored: {project_id}")
+
+
 # ---------------------------------------------------------------------------
 # CLI class (I6–I14)
 # ---------------------------------------------------------------------------
@@ -1088,6 +1105,60 @@ class CLI:
                 f"{healthy}"
             )
 
+    # I14
+    def restore(
+        self,
+        repository: Path,
+        selection: list[str] | None = None,
+        regex_selection: list[str] | None = None,
+        timeout: int = 900,
+        throw_error: bool = False,
+        yes: bool = False,
+        reupload: bool = False,
+    ) -> None:
+        """Deploy all projects that should be active but are missing from the cluster.
+
+        Args:
+            repository: Path to Mamplan repository directory.
+            selection: Key-value selection filters.
+            regex_selection: Regex selection filters.
+            timeout: Wait-for-ready timeout in seconds.
+            throw_error: If True, disable error tolerance.
+            yes: If True, skip confirmation prompt.
+            reupload: If True, force re-upload of all files to S3.
+        """
+        mamplans, mamplates = self._load(repository)
+        mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
+        config = self.config
+
+        status_map: dict[str, dict] = {}
+
+        def _check(mamplan: MamplanBase) -> None:
+            mampok = create_mampok_instance(config, mamplan, mamplates)
+            status = mampok.check_status(config)
+            status_map[status["project_id"]] = status
+
+        run_with_error_tolerance(mamplans, _check, throw_error=throw_error)
+
+        to_restore = [
+            m for m in mamplans
+            if status_map.get(m.data["project"]["project_id"], {}).get("expected_active")
+            and not status_map.get(m.data["project"]["project_id"], {}).get("actually_deployed")
+        ]
+
+        if not to_restore:
+            typer.echo("No projects need restoring.")
+            return
+
+        if not _confirm_mamplans(to_restore, "restored (deployed)", yes):
+            return
+
+        run_with_error_tolerance(
+            to_restore,
+            lambda m: _do_restore(m, config, mamplates, m.source_path, timeout, reupload),
+            throw_error=throw_error,
+        )
+
     # I13
     def update_auth(
         self,
@@ -1364,6 +1435,35 @@ def redeploy(
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).redeploy(
         mamplan,
+        selection=selection,
+        regex_selection=regex_selection,
+        timeout=timeout,
+        throw_error=throw_error,
+        yes=yes,
+        reupload=reupload,
+    )
+
+
+@app.command(context_settings={"help_option_names": ["--help", "-h"]})
+def restore(
+    repository: Annotated[Path, typer.Argument(help="Path to mamplan repository directory.")],
+    config: Annotated[Path, _OPT_CONFIG],
+    selection: Annotated[list[str], _OPT_SELECTION] = [],
+    regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
+    timeout: Annotated[int, _OPT_TIMEOUT] = 900,
+    throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
+    yes: Annotated[bool, _OPT_YES] = False,
+    reupload: Annotated[bool, _OPT_REUPLOAD] = False,
+) -> None:
+    """Deploy all projects that should be active but are missing from the cluster."""
+    logger.info(
+        "restore: repository=%s, config=%s, selection=%s, regex_selection=%s, "
+        "timeout=%s, throw_error=%s, yes=%s, reupload=%s",
+        repository, config, selection, regex_selection, timeout, throw_error, yes, reupload,
+    )
+    cfg = MampokConfig.from_file(config.expanduser())
+    CLI(cfg).restore(
+        repository,
         selection=selection,
         regex_selection=regex_selection,
         timeout=timeout,
