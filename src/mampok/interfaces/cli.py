@@ -17,7 +17,7 @@ from mampok.mamplan.base import MamplanBase, parse_lifetime
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
 from mampok.mamplan.shmamplan import SHMamplan
-from mampok.mamplan.metadata import _merge_unique, parse_metadata_files
+from mampok.mamplan.metadata import parse_metadata_files
 from mampok.mampok.mampok import Mampok
 
 logger = logging.getLogger(__name__)
@@ -1539,7 +1539,7 @@ def create_mamplan(
             param_hint="'--owner'",
         )
 
-    resolved_datatype = _merge_unique(datatype, yaml_svc.get("datatype", []))
+    resolved_datatype = datatype or yaml_svc.get("datatype", [])
     if not resolved_datatype:
         raise typer.BadParameter(
             "Provide either --datatype or a --metadata-file with a datatype field.",
@@ -1585,12 +1585,12 @@ def create_mamplan(
             **({"custom_url_id": custom_url_id} if custom_url_id else {}),
         },
         service={
-            "analyst": _merge_unique(analyst, yaml_svc.get("analyst", [])) or [resolved_owner],
+            "analyst": analyst or yaml_svc.get("analyst", []) or [resolved_owner],
             "owner": resolved_owner,
-            "organization": _merge_unique(organization, yaml_svc.get("organization", [])),
+            "organization": organization or yaml_svc.get("organization", []),
             "user": user,
             "datatype": resolved_datatype,
-            "metadata": _merge_unique(metadata, yaml_svc.get("metadata", [])),
+            "metadata": metadata or yaml_svc.get("metadata", []),
         },
     )
 
