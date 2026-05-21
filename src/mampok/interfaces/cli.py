@@ -17,7 +17,7 @@ from mampok.mamplan.base import MamplanBase, parse_lifetime
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
 from mampok.mamplan.shmamplan import SHMamplan
-from mampok.mamplan.metadata import parse_metadata_files
+from mampok.mamplan.metadata import _merge_unique, parse_metadata_files
 from mampok.mampok.mampok import Mampok
 
 logger = logging.getLogger(__name__)
@@ -1525,6 +1525,7 @@ def create_mamplan(
     user: Annotated[list[str], typer.Option(help="User access list (repeatable).")] = [],
     metadata: Annotated[list[str], typer.Option(help="Metadata IDs (repeatable).")] = [],
     metadata_file: Annotated[list[Path], typer.Option(help="YAML metadata file(s) to populate the service section (repeatable).")] = [],
+    merge: Annotated[bool, typer.Option("--merge", help="Merge explicitly passed list values with values from --metadata-file instead of replacing them.")] = False,
     bucket: Annotated[str, typer.Option(help="S3 bucket name (auto-generated if empty).")] = "",
     auth: Annotated[bool, typer.Option(help="Enable login protection.")] = False,
     custom_url_id: Annotated[Optional[str], typer.Option(help="Custom URL path segment replacing project-id in the deployment URL. If omitted, project-id is used.")] = None,
@@ -1539,7 +1540,10 @@ def create_mamplan(
             param_hint="'--owner'",
         )
 
-    resolved_datatype = datatype or yaml_svc.get("datatype", [])
+    resolved_datatype = (
+        _merge_unique(datatype, yaml_svc.get("datatype", [])) if merge
+        else datatype or yaml_svc.get("datatype", [])
+    )
     if not resolved_datatype:
         raise typer.BadParameter(
             "Provide either --datatype or a --metadata-file with a datatype field.",
@@ -1585,12 +1589,21 @@ def create_mamplan(
             **({"custom_url_id": custom_url_id} if custom_url_id else {}),
         },
         service={
-            "analyst": analyst or yaml_svc.get("analyst", []) or [resolved_owner],
+            "analyst": (
+                _merge_unique(analyst, yaml_svc.get("analyst", [])) if merge
+                else analyst or yaml_svc.get("analyst", [])
+            ) or [resolved_owner],
             "owner": resolved_owner,
-            "organization": organization or yaml_svc.get("organization", []),
+            "organization": (
+                _merge_unique(organization, yaml_svc.get("organization", [])) if merge
+                else organization or yaml_svc.get("organization", [])
+            ),
             "user": user,
             "datatype": resolved_datatype,
-            "metadata": metadata or yaml_svc.get("metadata", []),
+            "metadata": (
+                _merge_unique(metadata, yaml_svc.get("metadata", [])) if merge
+                else metadata or yaml_svc.get("metadata", [])
+            ),
         },
     )
 
