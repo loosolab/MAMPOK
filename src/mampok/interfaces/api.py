@@ -220,11 +220,10 @@ class API:
             kwargs["service"] = {
                 **svc,
                 "owner": svc.get("owner") or yaml_svc.get("owner", ""),
-                "analyst": svc.get("analyst") or yaml_svc.get("analyst", []),
-                "organization": svc.get("organization")
-                or yaml_svc.get("organization", []),
-                "datatype": svc.get("datatype") or yaml_svc.get("datatype", []),
-                "metadata": svc.get("metadata") or yaml_svc.get("metadata", []),
+                "analyst": svc["analyst"] if "analyst" in svc else yaml_svc.get("analyst", []),
+                "organization": svc["organization"] if "organization" in svc else yaml_svc.get("organization", []),
+                "datatype": svc["datatype"] if "datatype" in svc else yaml_svc.get("datatype", []),
+                "metadata": svc["metadata"] if "metadata" in svc else yaml_svc.get("metadata", []),
             }
 
         tool = kwargs.get("project", {}).get("tool")
