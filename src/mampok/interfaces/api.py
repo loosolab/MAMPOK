@@ -13,7 +13,7 @@ from mampok.kubernetes.builder import _sync_sidecar_subpath
 from mampok.mamplan.base import MamplanBase, parse_lifetime
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
-from mampok.mamplan.metadata import _merge_unique, parse_metadata_files
+from mampok.mamplan.metadata import parse_metadata_files
 from mampok.mamplan.shmamplan import SHMamplan
 
 
@@ -97,7 +97,9 @@ class API:
             result[m.data["tool"]] = m
         return result
 
-    def _load(self, path: Path) -> tuple[MamplanBase, dict[str, Mamplate], MampokConfig]:
+    def _load(
+        self, path: Path
+    ) -> tuple[MamplanBase, dict[str, Mamplate], MampokConfig]:
         """Load a Mamplan or SHMamplan, Mamplates and MampokConfig in one call.
 
         Args:
@@ -115,7 +117,9 @@ class API:
     # core operations
     # ---------------------------------------------------------------------------
 
-    def deploy(self, mamplan_path: Path, timeout: int = 900, cleanup: bool = True) -> Iterator[dict]:
+    def deploy(
+        self, mamplan_path: Path, timeout: int = 900, cleanup: bool = True
+    ) -> Iterator[dict]:
         """Deploy a project to Kubernetes.
 
         Yields progress dicts for each stage of the deployment:
@@ -192,7 +196,9 @@ class API:
         yield from mampok.deploy(config)
         mamplan.write(mamplan.source_path)
 
-    def create_mamplan(self, output: Path, metadata_files: list[Path] | None = None, **kwargs) -> None:
+    def create_mamplan(
+        self, output: Path, metadata_files: list[Path] | None = None, **kwargs
+    ) -> None:
         """Create a new Mamplan from keyword arguments and write it to disk.
 
         Args:
@@ -214,10 +220,11 @@ class API:
             kwargs["service"] = {
                 **svc,
                 "owner": svc.get("owner") or yaml_svc.get("owner", ""),
-                "analyst": _merge_unique(svc.get("analyst", []), yaml_svc.get("analyst", [])),
-                "organization": _merge_unique(svc.get("organization", []), yaml_svc.get("organization", [])),
-                "datatype": _merge_unique(svc.get("datatype", []), yaml_svc.get("datatype", [])),
-                "metadata": _merge_unique(svc.get("metadata", []), yaml_svc.get("metadata", [])),
+                "analyst": svc.get("analyst") or yaml_svc.get("analyst", []),
+                "organization": svc.get("organization")
+                or yaml_svc.get("organization", []),
+                "datatype": svc.get("datatype") or yaml_svc.get("datatype", []),
+                "metadata": svc.get("metadata") or yaml_svc.get("metadata", []),
             }
 
         tool = kwargs.get("project", {}).get("tool")
@@ -235,9 +242,12 @@ class API:
 
         # Default lifetime to now() as placeholder — deploy will overwrite with now + lifetime_days
         from datetime import datetime, timezone
+
         deployment = kwargs.get("deployment", {})
         if "lifetime" not in deployment:
-            deployment["lifetime"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            deployment["lifetime"] = datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
         deployment.setdefault("auth", True)
         kwargs["deployment"] = deployment
 
@@ -277,7 +287,11 @@ class API:
         from mampok.interfaces.cli import _mamplan_expiry_info, load_mamplans
 
         within = timedelta(days=within_days)
-        return [r for m in load_mamplans(Path(repository)) if (r := _mamplan_expiry_info(m, within))]
+        return [
+            r
+            for m in load_mamplans(Path(repository))
+            if (r := _mamplan_expiry_info(m, within))
+        ]
 
     # ---------------------------------------------------------------------------
     # API-specific edit methods
@@ -353,9 +367,13 @@ class API:
                 config = self._load_config()
                 mamplates = self._load_mamplates(config)
                 mampok = create_mampok_instance(config, mamplan, mamplates)
-                #auth_users = (users or []) + (organizations or [])
+                # auth_users = (users or []) + (organizations or [])
                 token_url = mampok.update_auth_secret(config)
-                yield {"stage": "auth_secret", "status": "updated", "token_url": token_url}
+                yield {
+                    "stage": "auth_secret",
+                    "status": "updated",
+                    "token_url": token_url,
+                }
             except Exception as exc:
                 yield {"stage": "auth_secret", "status": "failed", "reason": str(exc)}
                 # Rollback: restore Mamplan to original state
@@ -397,34 +415,40 @@ class API:
         tags = mamplan.data.get("tags", {})
         tool = p["tool"]
         mamplate = mamplates.get(tool)
-        tool_displayname = mamplate.data.get("toolDisplayname", tool) if mamplate else tool
-        cd_raw_paths = mamplate.data.get("container_data", {}).get("paths", []) if mamplate else []
+        tool_displayname = (
+            mamplate.data.get("toolDisplayname", tool) if mamplate else tool
+        )
+        cd_raw_paths = (
+            mamplate.data.get("container_data", {}).get("paths", []) if mamplate else []
+        )
         projects: dict = {
             project_id: {
                 # project section
-                "project_id":    p["project_id"],
-                "tool":          tool,
+                "project_id": p["project_id"],
+                "tool": tool,
                 "toolDisplayname": tool_displayname,
-                "files":         p.get("files", []),
+                "files": p.get("files", []),
                 "creation_date": _parse_iso_to_datetime(p.get("creation_date", "")),
-                "project_size":  p.get("project_size"),
+                "project_size": p.get("project_size"),
                 # deployment section
-                "cluster":          d["cluster"],
-                "status":           k8s_status["actually_deployed"],
-                "auth":             d.get("auth", False),
-                "bucket":           d.get("bucket", ""),
-                "url":              d.get("url", ""),
-                "lifetime":         _parse_iso_to_datetime(d.get("lifetime", "")),
+                "cluster": d["cluster"],
+                "status": k8s_status["actually_deployed"],
+                "auth": d.get("auth", False),
+                "bucket": d.get("bucket", ""),
+                "url": d.get("url", ""),
+                "lifetime": _parse_iso_to_datetime(d.get("lifetime", "")),
                 # service section
-                "owner":            s["owner"],
-                "analyst":          s.get("analyst", []),
-                "organization":     s.get("organization", []),
-                "datatype":         s.get("datatype", []),
-                "metadata":         s.get("metadata", []),
+                "owner": s["owner"],
+                "analyst": s.get("analyst", []),
+                "organization": s.get("organization", []),
+                "datatype": s.get("datatype", []),
+                "metadata": s.get("metadata", []),
                 "download_allowed": s.get("download_allowed", False),
-                "user":             s.get("user", []),
+                "user": s.get("user", []),
                 # S3 subpaths under container_data/ derived from mamplate container_data.paths
-                "container_data_paths": [_sync_sidecar_subpath(cp) for cp in cd_raw_paths],
+                "container_data_paths": [
+                    _sync_sidecar_subpath(cp) for cp in cd_raw_paths
+                ],
                 # free tags (gse, pubmedid, etc.) – user/organization not duplicated
                 **{k: v for k, v in tags.items() if k not in ("user", "organization")},
             }
@@ -500,5 +524,3 @@ class API:
         )
         sh.write(Path(output))
         return project_id
-
-
