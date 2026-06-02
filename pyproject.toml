@@ -9,7 +9,7 @@ description = "Kubernetes deployment manager for bioinformatics pipelines"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "kubernetes",
+    "kubernetes<36.0.0",
     "boto3",
     "jsonschema",
     "referencing",
