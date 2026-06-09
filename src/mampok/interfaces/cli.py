@@ -1115,6 +1115,7 @@ class CLI:
         throw_error: bool = False,
         yes: bool = False,
         reupload: bool = False,
+        dry_run: bool = False,
     ) -> None:
         """Deploy all projects that should be active but are missing from the cluster.
 
@@ -1126,6 +1127,7 @@ class CLI:
             throw_error: If True, disable error tolerance.
             yes: If True, skip confirmation prompt.
             reupload: If True, force re-upload of all files to S3.
+            dry_run: If True, show what would be restored without deploying.
         """
         mamplans, mamplates = self._load(repository)
         mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
@@ -1145,6 +1147,29 @@ class CLI:
             if status_map.get(m.data["project"]["project_id"], {}).get("expected_active")
             and not status_map.get(m.data["project"]["project_id"], {}).get("actually_deployed")
         ]
+
+        if dry_run:
+            if not to_restore:
+                typer.echo("No projects need restoring.")
+                return
+            col_id = max(len(m.data["project"]["project_id"]) for m in to_restore)
+            col_id = max(col_id, len("Project ID"))
+            header = (
+                f"{'Project ID':<{col_id}}  "
+                f"{'Expected':<8}  "
+                f"{'Actual':<8}  "
+                f"Healthy"
+            )
+            typer.echo(f"\n[dry-run] {len(to_restore)} project(s) would be restored:")
+            typer.echo(header)
+            typer.echo("-" * len(header))
+            for m in to_restore:
+                pid = m.data["project"]["project_id"]
+                row = status_map.get(pid, {})
+                expected = "active" if row.get("expected_active") else "inactive"
+                actual = "active" if row.get("actually_deployed") else "missing"
+                typer.echo(f"{pid:<{col_id}}  {expected:<8}  {actual:<8}  ✗")
+            return
 
         if not to_restore:
             typer.echo("No projects need restoring.")
@@ -1454,12 +1479,13 @@ def restore(
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
     yes: Annotated[bool, _OPT_YES] = False,
     reupload: Annotated[bool, _OPT_REUPLOAD] = False,
+    dry_run: Annotated[bool, _OPT_DRY_RUN] = False,
 ) -> None:
     """Deploy all projects that should be active but are missing from the cluster."""
     logger.info(
         "restore: repository=%s, config=%s, selection=%s, regex_selection=%s, "
-        "timeout=%s, throw_error=%s, yes=%s, reupload=%s",
-        repository, config, selection, regex_selection, timeout, throw_error, yes, reupload,
+        "timeout=%s, throw_error=%s, yes=%s, reupload=%s, dry_run=%s",
+        repository, config, selection, regex_selection, timeout, throw_error, yes, reupload, dry_run,
     )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).restore(
@@ -1470,6 +1496,7 @@ def restore(
         throw_error=throw_error,
         yes=yes,
         reupload=reupload,
+        dry_run=dry_run,
     )
 
 
