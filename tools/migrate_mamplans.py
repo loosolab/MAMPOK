@@ -50,7 +50,7 @@ def find_mamplan_files(input_dir: Path) -> list[Path]:
     results = []
     for path in sorted(input_dir.rglob("*")):
         name_lower = path.name.lower()
-        if name_lower.endswith((".yaml", ".yml")) and "mamplan" in name_lower:
+        if name_lower.endswith(("_mamplan.yaml", "_mamplan.yml")):
             results.append(path)
     return results
 
@@ -97,7 +97,7 @@ def to_list(value: object) -> list:
 # Conversion
 # ---------------------------------------------------------------------------
 
-def convert(old: dict, source_path: Path) -> tuple[dict, list[str], list[str]]:
+def convert(old: dict, source_path: Path, reset_bucket: bool = False) -> tuple[dict, list[str], list[str]]:
     """Convert an old YAML mamplan dict to the new mampok v2 JSON structure.
 
     Returns:
@@ -151,9 +151,16 @@ def convert(old: dict, source_path: Path) -> tuple[dict, list[str], list[str]]:
     deployment["cluster"] = deployment_old["cluster"]
     deployment["status"] = deployment_old.get("active", False)
     deployment["auth"] = deployment_old.get("auth", False)
-    deployment["bucket"] = deployment_old.get("bucket", "")
+    if reset_bucket:
+        deployment["bucket"] = ""
+        warnings.append("bucket: reset to '' (--reset-bucket flag)")
+    else:
+        deployment["bucket"] = deployment_old.get("bucket") or ""
     deployment["random_url_suffix"] = deployment_old.get("random", False)
-    deployment["url"] = deployment_old.get("url", "")
+    old_url = deployment_old.get("url") or ""
+    deployment["url"] = ""
+    if old_url:
+        warnings.append("url: old value cleared (mampok v2 auto-generates at deploy time)")
 
     lifetime_raw = deployment_old.get("lifetime", "")
     if lifetime_raw:
@@ -283,7 +290,7 @@ def validate(new: dict, schema: dict, registry: Registry) -> list[str]:
 # Per-file processing
 # ---------------------------------------------------------------------------
 
-def process_file(path: Path, schema: dict, registry: Registry) -> dict:
+def process_file(path: Path, schema: dict, registry: Registry, reset_bucket: bool = False) -> dict:
     """Parse, convert and validate one YAML mamplan file.
 
     Returns a result dict with keys:
@@ -292,7 +299,7 @@ def process_file(path: Path, schema: dict, registry: Registry) -> dict:
     try:
         with open(path, encoding="utf-8") as f:
             old = yaml.safe_load(f)
-        new, warnings, hints = convert(old, path)
+        new, warnings, hints = convert(old, path, reset_bucket=reset_bucket)
         errors = validate(new, schema, registry)
         status = "ERROR" if errors else ("WARNING" if warnings else "OK")
         return {
@@ -469,6 +476,12 @@ def main() -> None:
         help="Delete old YAML source files after successful migration (requires --migrate).",
     )
     parser.add_argument(
+        "--reset-bucket",
+        action="store_true",
+        help="Set deployment.bucket='' in all migrated JSONs so mampok v2 computes "
+             "a new bucket name from config prefix at deploy time.",
+    )
+    parser.add_argument(
         "--show",
         metavar="LEVEL",
         nargs="+",
@@ -504,7 +517,7 @@ def main() -> None:
         sys.exit(0)
 
     # Process all files
-    results = [process_file(p, schema, registry) for p in files]
+    results = [process_file(p, schema, registry, reset_bucket=args.reset_bucket) for p in files]
 
     # Print / save report
     show_levels = {s.upper() for s in args.show}

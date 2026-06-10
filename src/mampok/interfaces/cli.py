@@ -702,6 +702,27 @@ def _do_restore(
     typer.echo(f"Restored: {project_id}")
 
 
+def _do_s3_upload(
+    mamplan: MamplanBase,
+    config,
+    mamplates: dict,
+    write_path: Path,
+    reupload: bool = False,
+) -> None:
+    """Upload project files to S3 without a Kubernetes deploy.
+
+    Updates deployment.bucket in the mamplan file after upload so that
+    download endpoints (Flask API) can resolve the correct bucket.
+    """
+    mampok = create_mampok_instance(config, mamplan, mamplates)
+    project_id = mamplan.data["project"]["project_id"]
+    p = _Printer()
+    _handle_deploy_events(mampok.upload(reupload=reupload), p)
+    p.end()
+    mamplan.write(write_path)
+    typer.echo(f"Uploaded: {project_id}")
+
+
 # ---------------------------------------------------------------------------
 # CLI class (I6–I14)
 # ---------------------------------------------------------------------------
@@ -1116,6 +1137,8 @@ class CLI:
         yes: bool = False,
         reupload: bool = False,
         dry_run: bool = False,
+        full_s3_restore: bool = False,
+        include_downloadables: bool = False,
     ) -> None:
         """Deploy all projects that should be active but are missing from the cluster.
 
@@ -1128,61 +1151,94 @@ class CLI:
             yes: If True, skip confirmation prompt.
             reupload: If True, force re-upload of all files to S3.
             dry_run: If True, show what would be restored without deploying.
+            full_s3_restore: If True, upload all projects' files to S3 (no K8s deploy).
+            include_downloadables: If True, also upload files for stopped projects
+                                   that have download_allowed=True (no K8s deploy).
         """
         mamplans, mamplates = self._load(repository)
         mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
         config = self.config
 
-        status_map: dict[str, dict] = {}
+        # Build S3-upload list (no K8s)
+        to_upload: list[MamplanBase] = []
+        if full_s3_restore:
+            to_upload = list(mamplans)
+        elif include_downloadables:
+            to_upload = [
+                m for m in mamplans
+                if m.data["service"].get("download_allowed")
+                and not m.data["deployment"]["status"]
+            ]
 
-        def _check(mamplan: MamplanBase) -> None:
-            mampok = create_mampok_instance(config, mamplan, mamplates)
-            status = mampok.check_status(config)
-            status_map[status["project_id"]] = status
+        # Build K8s restore list (only when not doing a pure S3 restore)
+        to_restore: list[MamplanBase] = []
+        if not full_s3_restore:
+            status_map: dict[str, dict] = {}
 
-        run_with_error_tolerance(mamplans, _check, throw_error=throw_error)
+            def _check(mamplan: MamplanBase) -> None:
+                mampok = create_mampok_instance(config, mamplan, mamplates)
+                status = mampok.check_status(config)
+                status_map[status["project_id"]] = status
 
-        to_restore = [
-            m for m in mamplans
-            if status_map.get(m.data["project"]["project_id"], {}).get("expected_active")
-            and not status_map.get(m.data["project"]["project_id"], {}).get("actually_deployed")
-        ]
+            run_with_error_tolerance(mamplans, _check, throw_error=throw_error)
+
+            to_restore = [
+                m for m in mamplans
+                if status_map.get(m.data["project"]["project_id"], {}).get("expected_active")
+                and not status_map.get(m.data["project"]["project_id"], {}).get("actually_deployed")
+            ]
 
         if dry_run:
-            if not to_restore:
-                typer.echo("No projects need restoring.")
+            if not to_restore and not to_upload:
+                typer.echo("Nothing to restore or upload.")
                 return
-            col_id = max(len(m.data["project"]["project_id"]) for m in to_restore)
-            col_id = max(col_id, len("Project ID"))
-            header = (
-                f"{'Project ID':<{col_id}}  "
-                f"{'Expected':<8}  "
-                f"{'Actual':<8}  "
-                f"Healthy"
-            )
-            typer.echo(f"\n[dry-run] {len(to_restore)} project(s) would be restored:")
-            typer.echo(header)
-            typer.echo("-" * len(header))
-            for m in to_restore:
-                pid = m.data["project"]["project_id"]
-                row = status_map.get(pid, {})
-                expected = "active" if row.get("expected_active") else "inactive"
-                actual = "active" if row.get("actually_deployed") else "missing"
-                typer.echo(f"{pid:<{col_id}}  {expected:<8}  {actual:<8}  ✗")
+            if to_restore:
+                col_id = max(len(m.data["project"]["project_id"]) for m in to_restore)
+                col_id = max(col_id, len("Project ID"))
+                header = (
+                    f"{'Project ID':<{col_id}}  "
+                    f"{'Expected':<8}  "
+                    f"{'Actual':<8}  "
+                    f"Healthy"
+                )
+                typer.echo(f"\n[dry-run] {len(to_restore)} project(s) would be restored (K8s deploy):")
+                typer.echo(header)
+                typer.echo("-" * len(header))
+                for m in to_restore:
+                    pid = m.data["project"]["project_id"]
+                    row = status_map.get(pid, {})
+                    expected = "active" if row.get("expected_active") else "inactive"
+                    actual = "active" if row.get("actually_deployed") else "missing"
+                    typer.echo(f"{pid:<{col_id}}  {expected:<8}  {actual:<8}  ✗")
+            if to_upload:
+                typer.echo(f"\n[dry-run] {len(to_upload)} project(s) would have files uploaded to S3:")
+                for m in to_upload:
+                    typer.echo(f"  {m.data['project']['project_id']}")
             return
 
-        if not to_restore:
+        if not to_restore and not to_upload:
             typer.echo("No projects need restoring.")
             return
 
-        if not _confirm_mamplans(to_restore, "restored (deployed)", yes):
+        all_targets = to_upload + [m for m in to_restore if m not in to_upload]
+        if not _confirm_mamplans(all_targets, "processed", yes):
             return
 
-        run_with_error_tolerance(
-            to_restore,
-            lambda m: _do_restore(m, config, mamplates, m.source_path, timeout, reupload),
-            throw_error=throw_error,
-        )
+        # S3 uploads first (ensures data is available before K8s deploy)
+        if to_upload:
+            run_with_error_tolerance(
+                to_upload,
+                lambda m: _do_s3_upload(m, config, mamplates, m.source_path, reupload),
+                throw_error=throw_error,
+            )
+
+        # K8s restores
+        if to_restore:
+            run_with_error_tolerance(
+                to_restore,
+                lambda m: _do_restore(m, config, mamplates, m.source_path, timeout, reupload),
+                throw_error=throw_error,
+            )
 
     # I13
     def update_auth(
@@ -1480,12 +1536,22 @@ def restore(
     yes: Annotated[bool, _OPT_YES] = False,
     reupload: Annotated[bool, _OPT_REUPLOAD] = False,
     dry_run: Annotated[bool, _OPT_DRY_RUN] = False,
+    full_s3_restore: Annotated[bool, typer.Option(
+        "--full-s3-restore",
+        help="Upload all projects' files to S3 (analysis_data/). No K8s deploy.",
+    )] = False,
+    include_downloadables: Annotated[bool, typer.Option(
+        "--include-downloadables",
+        help="Also upload files for stopped projects with download_allowed=true. No K8s deploy.",
+    )] = False,
 ) -> None:
     """Deploy all projects that should be active but are missing from the cluster."""
     logger.info(
         "restore: repository=%s, config=%s, selection=%s, regex_selection=%s, "
-        "timeout=%s, throw_error=%s, yes=%s, reupload=%s, dry_run=%s",
+        "timeout=%s, throw_error=%s, yes=%s, reupload=%s, dry_run=%s, "
+        "full_s3_restore=%s, include_downloadables=%s",
         repository, config, selection, regex_selection, timeout, throw_error, yes, reupload, dry_run,
+        full_s3_restore, include_downloadables,
     )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).restore(
@@ -1497,6 +1563,8 @@ def restore(
         yes=yes,
         reupload=reupload,
         dry_run=dry_run,
+        full_s3_restore=full_s3_restore,
+        include_downloadables=include_downloadables,
     )
 
 

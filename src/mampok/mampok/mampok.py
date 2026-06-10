@@ -221,6 +221,77 @@ class Mampok:
         logger.debug("step: %s", step)
         yield step
 
+    def upload(self, reupload: bool = False) -> Iterator[dict]:
+        """Upload project files to S3 without starting a Kubernetes deployment.
+
+        Creates the bucket if it does not exist, uploads all files listed in
+        project.files[] to analysis_data/, and updates deployment.bucket in the
+        mamplan file so download endpoints can locate the data.
+
+        This is used during migration (--full-s3-restore / --include-downloadables)
+        and whenever S3 data needs to be (re-)populated without a full deploy.
+
+        Args:
+            reupload: If True, re-upload all files even if they already exist in S3
+                      with the correct size.
+
+        Yields:
+            Progress dicts — same schema as the S3 stages in deploy():
+            - {"stage": "init", "status": "done", "project_id": str}
+            - {"stage": "s3_bucket", "status": "created"|"exists"}
+            - {"stage": "s3_upload", "status": "starting"|"progress"|"done", ...}
+            - {"stage": "s3_upload", "status": "complete", "total_files": int, "total_bytes": int}
+            - {"stage": "done", "project_id": str, "bucket": str}
+        """
+        project_id = self.mamplan.data["project"]["project_id"]
+        logger.debug("upload: project_id=%s, bucket=%s", project_id, self.s3.bucket)
+
+        step: dict = {"stage": "init", "status": "done", "project_id": project_id}
+        logger.debug("step: %s", step)
+        yield step
+
+        # Create bucket if needed
+        bucket_existed = self.s3.bucket_exists()
+        self.s3.create_bucket()
+        self.s3.set_lifecycle_policy()
+        step = {"stage": "s3_bucket", "status": "exists" if bucket_existed else "created"}
+        logger.debug("step: %s", step)
+        yield step
+
+        # Upload files to analysis_data/
+        mamplan_dir = self.mamplan.source_path.parent if self.mamplan.source_path else Path.cwd()
+        files = self.mamplan.data["project"].get("files", [])
+        total_size_bytes = 0
+        for file_path in files:
+            local = Path(file_path)
+            if not local.is_absolute():
+                local = mamplan_dir / local
+            key = f"analysis_data/{local.name}"
+            file_size = os.path.getsize(local)
+            total_size_bytes += file_size
+            step = {"stage": "s3_upload", "status": "starting", "file": key, "size_bytes": file_size}
+            logger.debug("step: %s", step)
+            yield step
+            if reupload or not self.s3.compare_size(key, local):
+                yield from self._upload_with_progress(local, key, file_size)
+            step = {"stage": "s3_upload", "status": "done", "file": key, "size_bytes": file_size}
+            logger.debug("step: %s", step)
+            yield step
+        step = {"stage": "s3_upload", "status": "complete", "total_files": len(files), "total_bytes": total_size_bytes}
+        logger.debug("step: %s", step)
+        yield step
+
+        # Update deployment.bucket so download endpoints can locate the data
+        if isinstance(self.mamplan, Mamplan):
+            self.mamplan.edit(
+                deployment__bucket=self.s3.bucket,
+                project__project_size=total_size_bytes // 1024,
+            )
+
+        step = {"stage": "done", "project_id": project_id, "bucket": self.s3.bucket}
+        logger.debug("step: %s", step)
+        yield step
+
     def _upload_with_progress(self, local: Path, key: str, file_size: int) -> Iterator[dict]:
         """Run S3 upload in a daemon thread and yield progress events per percent step.
 
