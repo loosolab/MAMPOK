@@ -213,6 +213,7 @@ class Mampok:
             "deployment__status": True,
             "deployment__url": cfg.url,
             "deployment__lifetime": new_lifetime.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "deployment__bucket": self.s3.bucket,
         }
         if isinstance(self.mamplan, Mamplan):
             edit_kwargs["project__project_size"] = total_size_bytes // 1024
