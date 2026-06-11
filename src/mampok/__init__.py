@@ -1,3 +1,8 @@
 """Mampok — Kubernetes deployment manager for bioinformatics pipelines."""
 
-__version__ = "2.0.0.dev0"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("mampok")
+except PackageNotFoundError:
+    __version__ = "unknown"
