@@ -430,9 +430,6 @@ class Mampok:
         groups = service.get("organization", [])
         users = service.get("users", [])
 
-        if owner == '_public':
-            groups = ['public']
-
         secret_key = _generate_secret_key()
         auth_data = {
             "secret_key": secret_key,
