@@ -389,7 +389,7 @@ class API:
         self,
         mamplan_path: Path,
     ) -> dict:
-        """Return project metadata and K8s status for a Mamplan.
+        """Return project metadata for a Mamplan.
 
         Args:
             mamplan_path: Path to the Mamplan file.
@@ -405,8 +405,6 @@ class API:
             IsADirectoryError: If mamplan_path is a directory.
         """
         mamplan, mamplates, config = self._load(mamplan_path)
-        mampok = create_mampok_instance(config, mamplan, mamplates)
-        k8s_status = mampok.check_status(config)
         project_id = mamplan.data["project"]["project_id"]
         p = mamplan.data["project"]
         d = mamplan.data["deployment"]
@@ -431,7 +429,7 @@ class API:
                 "project_size": p.get("project_size"),
                 # deployment section
                 "cluster": d["cluster"],
-                "status": k8s_status["actually_deployed"],
+                "status": d.get("status", False),
                 "auth": d.get("auth", False),
                 "bucket": d.get("bucket", ""),
                 "url": d.get("url", ""),
