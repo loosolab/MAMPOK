@@ -16,7 +16,6 @@ from queue import Queue
 from typing import Iterator
 
 import jwt
-
 from mampok.config.config import MampokConfig
 from mampok.kubernetes.builder import ManifestBuilder
 from mampok.kubernetes.config import DeploymentConfig
@@ -36,7 +35,9 @@ def _load_container_data_defaults() -> dict:
     )
     with schema_ref.open("r", encoding="utf-8") as f:
         schema = json.load(f)
-    cd_props = schema["definitions"]["MamplateProperties"]["properties"]["container_data"]["properties"]
+    cd_props = schema["definitions"]["MamplateProperties"]["properties"][
+        "container_data"
+    ]["properties"]
     return {k: v["default"] for k, v in cd_props.items() if "default" in v}
 
 
@@ -89,7 +90,13 @@ class Mampok:
         """
         return self.mamplan.is_expired
 
-    def deploy(self, config: MampokConfig, timeout: int = 900, cleanup: bool = True, reupload: bool = False) -> Iterator[dict]:
+    def deploy(
+        self,
+        config: MampokConfig,
+        timeout: int = 900,
+        cleanup: bool = True,
+        reupload: bool = False,
+    ) -> Iterator[dict]:
         """Deploy the project to Kubernetes.
 
         Steps:
@@ -131,8 +138,15 @@ class Mampok:
         """
         cfg = self._build_deployment_config(config)
         project_id = cfg.project_id
-        logger.debug("deploy: project_id=%s, namespace=%s, image=%s, replicas=%s, auth=%s, url=%s",
-                     cfg.project_id, cfg.namespace, cfg.image, cfg.replicas, cfg.auth, cfg.url)
+        logger.debug(
+            "deploy: project_id=%s, namespace=%s, image=%s, replicas=%s, auth=%s, url=%s",
+            cfg.project_id,
+            cfg.namespace,
+            cfg.image,
+            cfg.replicas,
+            cfg.auth,
+            cfg.url,
+        )
 
         # Create auth secret BEFORE kube.deploy() — pod start fails without it
         token_url: str | None = None
@@ -147,12 +161,17 @@ class Mampok:
         bucket_existed = self.s3.bucket_exists()
         self.s3.create_bucket()
         self.s3.set_lifecycle_policy()
-        step = {"stage": "s3_bucket", "status": "exists" if bucket_existed else "created"}
+        step = {
+            "stage": "s3_bucket",
+            "status": "exists" if bucket_existed else "created",
+        }
         logger.debug("step: %s", step)
         yield step
 
         # S3 upload per file — stored under analysis_data/ prefix
-        mamplan_dir = self.mamplan.source_path.parent if self.mamplan.source_path else Path.cwd()
+        mamplan_dir = (
+            self.mamplan.source_path.parent if self.mamplan.source_path else Path.cwd()
+        )
         files = self.mamplan.data["project"].get("files", [])
         total_size_bytes = 0
         for file_path in files:
@@ -162,15 +181,30 @@ class Mampok:
             key = f"analysis_data/{local.name}"
             file_size = os.path.getsize(local)
             total_size_bytes += file_size
-            step = {"stage": "s3_upload", "status": "starting", "file": key, "size_bytes": file_size}
+            step = {
+                "stage": "s3_upload",
+                "status": "starting",
+                "file": key,
+                "size_bytes": file_size,
+            }
             logger.debug("step: %s", step)
             yield step
             if reupload or not self.s3.compare_size(key, local):
                 yield from self._upload_with_progress(local, key, file_size)
-            step = {"stage": "s3_upload", "status": "done", "file": key, "size_bytes": file_size}
+            step = {
+                "stage": "s3_upload",
+                "status": "done",
+                "file": key,
+                "size_bytes": file_size,
+            }
             logger.debug("step: %s", step)
             yield step
-        step = {"stage": "s3_upload", "status": "complete", "total_files": len(files), "total_bytes": total_size_bytes}
+        step = {
+            "stage": "s3_upload",
+            "status": "complete",
+            "total_files": len(files),
+            "total_bytes": total_size_bytes,
+        }
         logger.debug("step: %s", step)
         yield step
 
@@ -200,10 +234,16 @@ class Mampok:
                 yield step
         except Exception:
             if cleanup and k8s_started:
-                logger.warning("deploy failed, cleaning up K8s resources: %s", cfg.project_id)
+                logger.warning(
+                    "deploy failed, cleaning up K8s resources: %s", cfg.project_id
+                )
                 for _ in self.kube.delete(cfg):
                     pass
-                step = {"stage": "k8s_cleanup", "status": "done", "project_id": cfg.project_id}
+                step = {
+                    "stage": "k8s_cleanup",
+                    "status": "done",
+                    "project_id": cfg.project_id,
+                }
                 logger.debug("step: %s", step)
                 yield step
             raise
@@ -221,7 +261,15 @@ class Mampok:
         if isinstance(self.mamplan, Mamplan):
             edit_kwargs["project__project_size"] = total_size_bytes // 1024
         self.mamplan.edit(**edit_kwargs)
-        step = {"stage": "done", "selfservice": {"url": cfg.url, "token_url": token_url, "project_id": project_id, "auth": cfg.auth}}
+        step = {
+            "stage": "done",
+            "selfservice": {
+                "url": cfg.url,
+                "token_url": token_url,
+                "project_id": project_id,
+                "auth": cfg.auth,
+            },
+        }
         logger.debug("step: %s", step)
         yield step
 
@@ -258,12 +306,17 @@ class Mampok:
         bucket_existed = self.s3.bucket_exists()
         self.s3.create_bucket()
         self.s3.set_lifecycle_policy()
-        step = {"stage": "s3_bucket", "status": "exists" if bucket_existed else "created"}
+        step = {
+            "stage": "s3_bucket",
+            "status": "exists" if bucket_existed else "created",
+        }
         logger.debug("step: %s", step)
         yield step
 
         # Upload files to analysis_data/
-        mamplan_dir = self.mamplan.source_path.parent if self.mamplan.source_path else Path.cwd()
+        mamplan_dir = (
+            self.mamplan.source_path.parent if self.mamplan.source_path else Path.cwd()
+        )
         files = self.mamplan.data["project"].get("files", [])
         total_size_bytes = 0
         for file_path in files:
@@ -273,15 +326,30 @@ class Mampok:
             key = f"analysis_data/{local.name}"
             file_size = os.path.getsize(local)
             total_size_bytes += file_size
-            step = {"stage": "s3_upload", "status": "starting", "file": key, "size_bytes": file_size}
+            step = {
+                "stage": "s3_upload",
+                "status": "starting",
+                "file": key,
+                "size_bytes": file_size,
+            }
             logger.debug("step: %s", step)
             yield step
             if reupload or not self.s3.compare_size(key, local):
                 yield from self._upload_with_progress(local, key, file_size)
-            step = {"stage": "s3_upload", "status": "done", "file": key, "size_bytes": file_size}
+            step = {
+                "stage": "s3_upload",
+                "status": "done",
+                "file": key,
+                "size_bytes": file_size,
+            }
             logger.debug("step: %s", step)
             yield step
-        step = {"stage": "s3_upload", "status": "complete", "total_files": len(files), "total_bytes": total_size_bytes}
+        step = {
+            "stage": "s3_upload",
+            "status": "complete",
+            "total_files": len(files),
+            "total_bytes": total_size_bytes,
+        }
         logger.debug("step: %s", step)
         yield step
 
@@ -296,7 +364,9 @@ class Mampok:
         logger.debug("step: %s", step)
         yield step
 
-    def _upload_with_progress(self, local: Path, key: str, file_size: int) -> Iterator[dict]:
+    def _upload_with_progress(
+        self, local: Path, key: str, file_size: int
+    ) -> Iterator[dict]:
         """Run S3 upload in a daemon thread and yield progress events per percent step.
 
         Because boto3's callback runs synchronously in the upload thread, yield cannot
@@ -320,7 +390,11 @@ class Mampok:
 
         def callback(bytes_amount: int) -> None:
             transferred[0] += bytes_amount
-            pct = min(100, int(transferred[0] / file_size * 100)) if file_size > 0 else 100
+            pct = (
+                min(100, int(transferred[0] / file_size * 100))
+                if file_size > 0
+                else 100
+            )
             if pct != last_pct[0]:
                 last_pct[0] = pct
                 q.put(pct)
@@ -337,8 +411,13 @@ class Mampok:
         for item in iter(q.get, None):
             if isinstance(item, Exception):
                 raise item
-            yield {"stage": "s3_upload", "status": "progress", "file": key,
-                   "transferred_pct": item, "size_bytes": file_size}
+            yield {
+                "stage": "s3_upload",
+                "status": "progress",
+                "file": key,
+                "transferred_pct": item,
+                "size_bytes": file_size,
+            }
         t.join()
 
     def stop(self, config: MampokConfig) -> Iterator[dict]:
@@ -362,7 +441,9 @@ class Mampok:
         try:
             yield from self.kube.delete(cfg)
         except Exception:
-            logger.error("stop failed for '%s' — mamplan status NOT updated", cfg.project_id)
+            logger.error(
+                "stop failed for '%s' — mamplan status NOT updated", cfg.project_id
+            )
             raise
         self.mamplan.edit(deployment__status=False)
 
@@ -384,13 +465,28 @@ class Mampok:
         dest = output_dir / project_id
         logger.debug("download: project_id=%s, dest=%s", project_id, dest)
         keys = self.s3.list_objects(prefix="container_data/")
-        yield {"stage": "s3_download", "status": "starting", "project_id": project_id, "total": len(keys)}
+        yield {
+            "stage": "s3_download",
+            "status": "starting",
+            "project_id": project_id,
+            "total": len(keys),
+        }
         for key in keys:
             local_path = dest / key
             local_path.parent.mkdir(parents=True, exist_ok=True)
             self.s3.download_to_local(key, local_path)
-            yield {"stage": "s3_download", "status": "done", "key": key, "local_path": str(local_path)}
-        yield {"stage": "s3_download", "status": "complete", "total": len(keys), "dest": str(dest)}
+            yield {
+                "stage": "s3_download",
+                "status": "done",
+                "key": key,
+                "local_path": str(local_path),
+            }
+        yield {
+            "stage": "s3_download",
+            "status": "complete",
+            "total": len(keys),
+            "dest": str(dest),
+        }
 
     def check_status(self, config: MampokConfig) -> dict:
         """Compare the local Mamplan status with the actual K8s state.
@@ -431,7 +527,7 @@ class Mampok:
         service = self.mamplan.data["service"]
         owner = service["owner"]
         groups = service.get("organization", [])
-        users = service.get("users", [])
+        users = service.get("user", [])
 
         secret_key = _generate_secret_key()
         auth_data = {
@@ -514,14 +610,22 @@ class Mampok:
         include_s3download = bool(files)
 
         custom_url_id = self.mamplan.data["deployment"].get("custom_url_id")
-        random_url_suffix = self.mamplan.data["deployment"].get("random_url_suffix", False)
+        random_url_suffix = self.mamplan.data["deployment"].get(
+            "random_url_suffix", False
+        )
         base = custom_url_id if custom_url_id else project_id
         if random_url_suffix:
-            suffix = "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(5))
+            suffix = "".join(
+                secrets.choice(string.ascii_lowercase + string.digits) for _ in range(5)
+            )
             path_segment = f"{base}-{suffix}"
         else:
             path_segment = base
-        url = f"https://{cluster_cfg.host}/{cluster_cfg.namespace}/{path_segment}/{tool}/" if cluster_cfg.host else ""
+        url = (
+            f"https://{cluster_cfg.host}/{cluster_cfg.namespace}/{path_segment}/{tool}/"
+            if cluster_cfg.host
+            else ""
+        )
 
         container_data = main.get("container_data", {})
         container_data_paths = container_data.get("paths", [])
@@ -559,7 +663,10 @@ class Mampok:
             volume_mounts=volume_mounts,
             volumes=volumes,
             readiness_probe=main.get("readinessProbe"),
-            ingress_annotations={**cluster_cfg.annotations, **main.get("annotation", {})},
+            ingress_annotations={
+                **cluster_cfg.annotations,
+                **main.get("annotation", {}),
+            },
             ingress_class=cluster_cfg.ingress_class,
             tls_issuer=cluster_cfg.dnsissuer,
             tls_secret=cluster_cfg.dnssecret,
@@ -579,7 +686,6 @@ class Mampok:
             container_data_sync_interval=container_data_sync_interval,
             container_data_sync_timeout=container_data_sync_timeout,
         )
-
 
 
 def _generate_secret_key(length: int = 32) -> str:
