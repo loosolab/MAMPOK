@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import secrets
+import time
 import string
 import threading
 from datetime import datetime, timedelta, timezone
@@ -206,6 +207,8 @@ class Mampok:
                 logger.debug("step: %s", step)
                 yield step
             raise
+
+        time.sleep(1)
 
         # Update mamplan — reset lifetime to now + config.lifetime_days (lease renewal)
         new_lifetime = datetime.now(timezone.utc) + timedelta(days=config.lifetime_days)
