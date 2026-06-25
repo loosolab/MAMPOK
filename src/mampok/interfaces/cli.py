@@ -1012,52 +1012,53 @@ class CLI:
         self,
         mamplan_path: Path,
         fields: list[str] | None = None,
+        selection: list[str] | None = None,
+        regex_selection: list[str] | None = None,
         redeploy: bool = False,
-        timeout: int = 300,
+        timeout: int = 900,
+        throw_error: bool = False,
         yes: bool = False,
     ) -> None:
         """Edit Mamplan fields and optionally redeploy.
 
         Args:
-            mamplan_path: Path to a single Mamplan file.
+            mamplan_path: Path to a Mamplan file or directory.
             fields: Edit tokens as ``section:key:value`` strings.
+            selection: Key-value selection filters (AND-combined).
+            regex_selection: Regex selection filters (AND-combined).
             redeploy: If True, redeploy after editing.
             timeout: Wait-for-ready timeout (used when redeploy=True).
             throw_error: If True, disable error tolerance.
             yes: If True, skip confirmation prompt.
         """
-        mamplan = _load_single_mamplan(mamplan_path)
-        expanded_fields = _expand_relative_lifetime(fields or [], mamplan)
+        mamplans, mamplates = self._load(mamplan_path)
+        mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
 
-        typer.echo(f"Mamplan: {mamplan.data['project']['project_id']}")
-        typer.echo("Planned changes:")
-        for token in expanded_fields:
-            parts = token.split(":", 2)
-            if len(parts) == 3:
-                section, key, new_value = parts
-                old_value = mamplan.data.get(section, {}).get(key, "(not set)")
-                typer.echo(f"  {section}.{key}: {old_value!r} → {new_value!r}")
-        if redeploy:
-            typer.echo("  (will be redeployed after the change)")
+        if fields:
+            typer.echo("Planned changes:")
+            for token in fields:
+                parts = token.split(":", 2)
+                if len(parts) == 3:
+                    section, key, new_value = parts
+                    typer.echo(f"  {section}.{key} → {new_value!r}")
+            if redeploy:
+                typer.echo("  (will be redeployed after the change)")
 
-        if not yes:
-            confirmed = typer.confirm("Continue?")
-            if not confirmed:
-                typer.echo("Aborted.")
-                return
+        if not _confirm_mamplans(mamplans, "edited", yes):
+            return
 
-        kwargs = _parse_edit_args(expanded_fields)
-        mamplan.edit(**kwargs)
-        mamplan.write(mamplan_path)
-        typer.echo(f"Saved: {mamplan_path}")
+        config = self.config
 
-        if redeploy:
-            mamplates = load_mamplates(self.config.mamplates_path)
-            config = self.config
-            run_with_error_tolerance(
-                [mamplan],
-                lambda m: _do_redeploy(m, config, mamplates, mamplan_path, timeout),
-            )
+        def _edit(mamplan: MamplanBase) -> None:
+            expanded = _expand_relative_lifetime(fields or [], mamplan)
+            kwargs = _parse_edit_args(expanded)
+            mamplan.edit(**kwargs)
+            mamplan.write(mamplan.source_path)
+            typer.echo(f"Saved: {mamplan.source_path}")
+            if redeploy:
+                _do_redeploy(mamplan, config, mamplates, mamplan.source_path, timeout)
+
+        run_with_error_tolerance(mamplans, _edit, throw_error=throw_error)
 
     # I11
     def create_mamplan(self, **kwargs) -> None:
@@ -1570,21 +1571,23 @@ def restore(
 
 @app.command(name="edit-mamplan", context_settings={"help_option_names": ["--help", "-h"]})
 def edit_mamplan(
-    mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file.")],
+    mamplan: Annotated[Path, typer.Argument(help="Path to mamplan file or directory.")],
     config: Annotated[Path, _OPT_CONFIG],
     fields: Annotated[
         list[str],
         typer.Option("--edit", "-e", help="Fields to edit: section:key:value."),
     ] = [],
+    selection: Annotated[list[str], _OPT_SELECTION] = [],
+    regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
     redeploy_after: Annotated[
         bool,
         typer.Option("--redeploy", help="Redeploy after editing."),
     ] = False,
     timeout: Annotated[int | None, _OPT_TIMEOUT] = None,
+    throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
     yes: Annotated[bool, _OPT_YES] = False,
 ) -> None:
     """Edit mamplan fields and optionally redeploy."""
-    
     if timeout is not None and not redeploy_after:
         raise typer.BadParameter(
             "--timeout requires --redeploy.",
@@ -1592,15 +1595,18 @@ def edit_mamplan(
         )
 
     logger.info(
-        "edit-mamplan: mamplan=%s, config=%s, fields=%s, redeploy=%s, timeout=%s, yes=%s",
-        mamplan, config, fields, redeploy_after, timeout, yes,
+        "edit-mamplan: mamplan=%s, config=%s, fields=%s, selection=%s, regex_selection=%s, redeploy=%s, timeout=%s, throw_error=%s, yes=%s",
+        mamplan, config, fields, selection, regex_selection, redeploy_after, timeout, throw_error, yes,
     )
     cfg = MampokConfig.from_file(config.expanduser())
     CLI(cfg).edit_mamplan(
         mamplan,
         fields=fields,
+        selection=selection,
+        regex_selection=regex_selection,
         redeploy=redeploy_after,
         timeout=timeout if timeout is not None else 900,
+        throw_error=throw_error,
         yes=yes,
     )
 
