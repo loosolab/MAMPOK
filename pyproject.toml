@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mampok"
-version = "3.0.2"
+version = "3.0.3"
 description = "Kubernetes deployment manager for bioinformatics pipelines"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -24,6 +24,28 @@ _DICT_FIELDS = {"resources", "volume", "downloadpaths", "annotation", "readiness
 _LIST_FIELDS = {"args", "command", "env"}
 
 
+class ListAdd:
+    """Sentinel for edit(): append item to a list field."""
+
+    def __init__(self, item: str) -> None:
+        self.item = item
+
+
+class ListRemove:
+    """Sentinel for edit(): remove item from a list field (raises ValueError if absent)."""
+
+    def __init__(self, item: str) -> None:
+        self.item = item
+
+
+class ListReplace:
+    """Sentinel for edit(): replace old with new in a list field (raises ValueError if absent)."""
+
+    def __init__(self, old: str, new: str) -> None:
+        self.old = old
+        self.new = new
+
+
 def parse_lifetime(value: str) -> datetime:
     """Parse an ISO 8601 lifetime string to a timezone-aware UTC datetime.
 
@@ -188,14 +210,20 @@ class MamplanBase(ABC):
         """Update fields in the configuration dict and re-validate atomically.
 
         Nested keys via ``__`` notation (e.g. ``deployment__status=True``).
-        On schema violation, the dict is rolled back to its previous state.
+        List fields accept :class:`ListAdd`, :class:`ListRemove`, or
+        :class:`ListReplace` as values to add, remove, or replace individual
+        elements instead of overwriting the whole list.
+        On any error the dict is rolled back to its previous state.
 
         Args:
             **kwargs: Fields and new values. Nested keys as ``a__b__c``.
+                Values may be plain scalars or ListAdd/ListRemove/ListReplace.
 
         Raises:
             jsonschema.ValidationError: If the result violates the schema.
-                The dict remains unchanged in this case (rollback).
+            TypeError: If a list sentinel is used on a non-list field or a
+                plain scalar is assigned to a list field.
+            ValueError: If ListRemove/ListReplace target an item not in the list.
         """
         logger.debug("edit: %s", kwargs)
         backup = copy.deepcopy(self.data)
@@ -205,9 +233,49 @@ class MamplanBase(ABC):
                 target = self.data
                 for part in parts[:-1]:
                     target = target[part]
-                target[parts[-1]] = value
+                last_key = parts[-1]
+                if last_key not in target:
+                    valid = ", ".join(sorted(target.keys()))
+                    raise KeyError(
+                        f"Unknown field '{last_key}'. Valid fields in this section: {valid}"
+                    )
+                if isinstance(value, ListAdd):
+                    if not isinstance(target[last_key], list):
+                        raise TypeError(
+                            f"Field '{last_key}' is not a list — cannot add elements."
+                        )
+                    target[last_key].append(value.item)
+                elif isinstance(value, ListRemove):
+                    if not isinstance(target[last_key], list):
+                        raise TypeError(
+                            f"Field '{last_key}' is not a list — cannot remove elements."
+                        )
+                    target[last_key].remove(value.item)
+                elif isinstance(value, ListReplace):
+                    if not isinstance(target[last_key], list):
+                        raise TypeError(
+                            f"Field '{last_key}' is not a list — cannot replace elements."
+                        )
+                    lst = target[last_key]
+                    lst[lst.index(value.old)] = value.new
+                else:
+                    if isinstance(target.get(last_key), list):
+                        raise TypeError(
+                            f"Field '{last_key}' is a list — use ListAdd, ListRemove,"
+                            " or ListReplace for element-level operations."
+                        )
+                    target[last_key] = value
             self.check_schema()
-        except jsonschema.ValidationError:
+        except jsonschema.ValidationError as exc:
+            self.data = backup
+            if exc.validator == "minItems":
+                path = ".".join(str(p) for p in exc.absolute_path)
+                raise jsonschema.ValidationError(
+                    f"Cannot remove last element from '{path}':"
+                    f" field requires at least {exc.validator_value} item(s)."
+                ) from exc
+            raise
+        except (ValueError, TypeError, KeyError):
             self.data = backup
             raise
 

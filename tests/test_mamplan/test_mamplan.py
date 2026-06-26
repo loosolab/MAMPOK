@@ -8,6 +8,7 @@ import pytest
 import jsonschema
 
 from mampok.mamplan import Mamplan, Mamplate
+from mampok.mamplan.base import ListAdd, ListRemove, ListReplace
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +230,75 @@ class TestMamplan:
         with pytest.raises(jsonschema.ValidationError):
             mamplan.edit(deployment__status="invalid", deployment__auth="also-invalid")
         assert mamplan.data == original
+
+    # --- edit list ops ---
+
+    def test_edit_list_add(self, mamplan):
+        mamplan.edit(service__analyst=ListAdd("alice"))
+        assert "alice" in mamplan.data["service"]["analyst"]
+        assert "jdoe" in mamplan.data["service"]["analyst"]
+
+    def test_edit_list_remove(self, mamplan):
+        mamplan.data["service"]["analyst"].append("alice")
+        mamplan.edit(service__analyst=ListRemove("jdoe"))
+        assert mamplan.data["service"]["analyst"] == ["alice"]
+
+    def test_edit_list_remove_missing(self, mamplan):
+        original = copy.deepcopy(mamplan.data)
+        with pytest.raises(ValueError):
+            mamplan.edit(service__analyst=ListRemove("ghost"))
+        assert mamplan.data == original
+
+    def test_edit_list_remove_last_element(self, mamplan):
+        original = copy.deepcopy(mamplan.data)
+        exc = pytest.raises(jsonschema.ValidationError,
+                            mamplan.edit, service__analyst=ListRemove("jdoe"))
+        assert "Cannot remove last element" in str(exc.value)
+        assert mamplan.data == original
+
+    def test_edit_list_replace(self, mamplan):
+        mamplan.edit(service__analyst=ListReplace("jdoe", "bob"))
+        assert "bob" in mamplan.data["service"]["analyst"]
+        assert "jdoe" not in mamplan.data["service"]["analyst"]
+
+    def test_edit_list_replace_missing(self, mamplan):
+        original = copy.deepcopy(mamplan.data)
+        with pytest.raises(ValueError):
+            mamplan.edit(service__analyst=ListReplace("ghost", "bob"))
+        assert mamplan.data == original
+
+    def test_edit_list_op_on_scalar(self, mamplan):
+        original = copy.deepcopy(mamplan.data)
+        with pytest.raises(TypeError, match="is not a list"):
+            mamplan.edit(deployment__auth=ListAdd("anything"))
+        assert mamplan.data == original
+
+    def test_edit_list_remove_on_scalar(self, mamplan):
+        original = copy.deepcopy(mamplan.data)
+        with pytest.raises(TypeError, match="is not a list"):
+            mamplan.edit(service__owner=ListRemove("jdoe"))
+        assert mamplan.data == original
+
+    def test_edit_scalar_on_list(self, mamplan):
+        original = copy.deepcopy(mamplan.data)
+        with pytest.raises(TypeError, match="is a list"):
+            mamplan.edit(service__analyst="plain_string")
+        assert mamplan.data == original
+
+    def test_edit_list_add_second_field(self, mamplan):
+        mamplan.edit(project__files=ListAdd("extra.h5ad"))
+        assert "extra.h5ad" in mamplan.data["project"]["files"]
+        assert "data.h5ad" in mamplan.data["project"]["files"]
+
+    def test_edit_unknown_key_raises(self, mamplan):
+        original = copy.deepcopy(mamplan.data)
+        with pytest.raises(KeyError, match="Unknown field 'analzst'"):
+            mamplan.edit(service__analzst="x")
+        assert mamplan.data == original
+
+    def test_edit_unknown_key_shows_valid_fields(self, mamplan):
+        with pytest.raises(KeyError, match="Valid fields in this section"):
+            mamplan.edit(service__analzst="x")
 
     # --- create ---
 

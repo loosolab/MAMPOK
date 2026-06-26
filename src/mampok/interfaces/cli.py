@@ -13,7 +13,7 @@ from typing import Annotated, Callable, Iterator, Optional
 import typer
 
 from mampok.config.config import MampokConfig
-from mampok.mamplan.base import MamplanBase, parse_lifetime
+from mampok.mamplan.base import ListAdd, ListRemove, ListReplace, MamplanBase, parse_lifetime
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
 from mampok.mamplan.shmamplan import SHMamplan
@@ -432,6 +432,34 @@ def _parse_selection_token(token: str) -> tuple[list[str], str]:
     return [section, key], value
 
 
+def _warn_unknown_selection_keys(mamplan: MamplanBase, tokens: list[str]) -> bool:
+    """Check selection tokens for unknown key paths and print an error for each.
+
+    Returns:
+        True if any unknown key was found, False otherwise.
+    """
+    found_unknown = False
+    for token in tokens:
+        try:
+            keys, _ = _parse_selection_token(token)
+        except ValueError:
+            continue
+        current: object = mamplan.data
+        for i, key in enumerate(keys):
+            if not isinstance(current, dict) or key not in current:
+                valid = ", ".join(sorted(current.keys())) if isinstance(current, dict) else ""
+                path = ".".join(keys[: i + 1])
+                hint = f" Valid fields: {valid}" if valid else ""
+                typer.echo(
+                    f"[ERROR] Unknown field '{path}' in selection '{token}'.{hint}",
+                    err=True,
+                )
+                found_unknown = True
+                break
+            current = current[key]
+    return found_unknown
+
+
 def apply_selection(
     mamplans: list[MamplanBase],
     selections: list[str],
@@ -448,9 +476,15 @@ def apply_selection(
 
     Returns:
         Filtered list of Mamplans. May be empty if nothing matches.
+
+    Raises:
+        typer.Exit: If any selection token references an unknown field.
     """
     if not selections and not regex_selections:
         return mamplans
+
+    if mamplans and _warn_unknown_selection_keys(mamplans[0], selections + regex_selections):
+        raise typer.Exit(code=1)
 
     result: list[MamplanBase] = []
     for mamplan in mamplans:
@@ -481,7 +515,10 @@ def _mamplan_matches(
             typer.echo(f"[WARNING] {exc}", err=True)
             continue
         actual = _get_nested(mamplan.data, keys)
-        if str(actual) != expected:
+        if isinstance(actual, list):
+            if expected not in actual:
+                return False
+        elif str(actual) != expected:
             return False
 
     for token in regex_selections:
@@ -505,8 +542,19 @@ def _mamplan_matches(
 def _parse_edit_args(fields: list[str]) -> dict:
     """Parse ``-e section:key:value`` strings into edit() kwargs.
 
+    Supports list-element operations:
+
+    - ``section:key:+:item``       → :class:`ListAdd` (append item to list)
+    - ``section:key:-:item``       → :class:`ListRemove` (remove item from list)
+    - ``section:key:old%new``      → :class:`ListReplace` (replace old with new in list)
+    - ``section:key:value``        → plain scalar set (existing behaviour)
+
+    The ``%`` separator distinguishes a replace from a plain scalar and requires
+    no shell quoting. Values that contain colons (e.g. URLs) are safe as long as
+    they do not contain ``%``.
+
     Args:
-        fields: List of ``section:key:value`` strings.
+        fields: List of edit token strings.
 
     Returns:
         Dict with ``__``-joined keys suitable for ``mamplan.edit(**kwargs)``.
@@ -516,13 +564,24 @@ def _parse_edit_args(fields: list[str]) -> dict:
     """
     kwargs: dict = {}
     for token in fields:
-        parts = token.split(":", 2)
+        parts = token.split(":", 3)
         if len(parts) < 3:
             raise ValueError(
                 f"Invalid edit token '{token}'. "
                 "Expected format: section:key:value"
             )
-        section, key, value = parts
+        section, key = parts[0], parts[1]
+        if len(parts) == 4 and parts[2] == "+":
+            value: object = ListAdd(parts[3])
+        elif len(parts) == 4 and parts[2] == "-":
+            value = ListRemove(parts[3])
+        else:
+            raw_value = ":".join(parts[2:])
+            if "%" in raw_value:
+                old, new = raw_value.split("%", 1)
+                value = ListReplace(old, new)
+            else:
+                value = raw_value
         kwargs[f"{section}__{key}"] = value
     return kwargs
 
@@ -616,7 +675,8 @@ def _confirm_mamplans(
         True if confirmed or yes=True, otherwise False.
     """
     if not mamplans:
-        return True
+        typer.echo("No Mamplans match the selection.")
+        return False
 
     _W_ID, _W_CLUSTER, _W_OWNER, _W_URL, _W_PATH = 20, 12, 12, 48, 40
 
@@ -1037,10 +1097,19 @@ class CLI:
         if fields:
             typer.echo("Planned changes:")
             for token in fields:
-                parts = token.split(":", 2)
-                if len(parts) == 3:
-                    section, key, new_value = parts
-                    typer.echo(f"  {section}.{key} → {new_value!r}")
+                parts = token.split(":", 3)
+                section, key = parts[0], parts[1]
+                if len(parts) == 4 and parts[2] == "+":
+                    typer.echo(f"  {section}.{key}: add {parts[3]!r}")
+                elif len(parts) == 4 and parts[2] == "-":
+                    typer.echo(f"  {section}.{key}: remove {parts[3]!r}")
+                else:
+                    raw_value = ":".join(parts[2:])
+                    if "%" in raw_value:
+                        old, new = raw_value.split("%", 1)
+                        typer.echo(f"  {section}.{key}: replace {old!r} → {new!r}")
+                    else:
+                        typer.echo(f"  {section}.{key} → {raw_value!r}")
             if redeploy:
                 typer.echo("  (will be redeployed after the change)")
 

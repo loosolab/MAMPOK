@@ -8,7 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mampok.interfaces.cli import CLI, _expand_relative_lifetime, _mamplan_expiry_info
+from mampok.interfaces.cli import CLI, _confirm_mamplans, _expand_relative_lifetime, _mamplan_expiry_info, _parse_edit_args, _warn_unknown_selection_keys, apply_selection
+from mampok.mamplan.base import ListAdd, ListRemove, ListReplace
 
 
 # ---------------------------------------------------------------------------
@@ -202,3 +203,137 @@ class TestCLIRedeployStopFirst:
         assert "Stopped: test-proj" in out
         assert "Redeployed: test-proj" in out
         assert out.index("Stopped: test-proj") < out.index("Redeployed: test-proj")
+
+
+class TestParseEditArgs:
+    def test_scalar_token(self):
+        result = _parse_edit_args(["service:owner:alice"])
+        assert result == {"service__owner": "alice"}
+
+    def test_list_add_token(self):
+        result = _parse_edit_args(["service:analyst:+:alice"])
+        assert isinstance(result["service__analyst"], ListAdd)
+        assert result["service__analyst"].item == "alice"
+
+    def test_list_remove_token(self):
+        result = _parse_edit_args(["service:analyst:-:jdoe"])
+        assert isinstance(result["service__analyst"], ListRemove)
+        assert result["service__analyst"].item == "jdoe"
+
+    def test_list_replace_token(self):
+        result = _parse_edit_args(["service:analyst:old_name%new_name"])
+        assert isinstance(result["service__analyst"], ListReplace)
+        assert result["service__analyst"].old == "old_name"
+        assert result["service__analyst"].new == "new_name"
+
+    def test_mixed_tokens(self):
+        result = _parse_edit_args([
+            "service:owner:alice",
+            "service:analyst:+:bob",
+        ])
+        assert result["service__owner"] == "alice"
+        assert isinstance(result["service__analyst"], ListAdd)
+
+    def test_invalid_token_raises(self):
+        with pytest.raises(ValueError, match="Invalid edit token"):
+            _parse_edit_args(["badtoken"])
+
+    def test_value_with_colon_in_scalar(self):
+        result = _parse_edit_args(["deployment:url:https://example.com"])
+        assert result == {"deployment__url": "https://example.com"}
+
+    def test_new_value_with_colon_in_replace(self):
+        result = _parse_edit_args(["service:analyst:old%new:with:colons"])
+        op = result["service__analyst"]
+        assert isinstance(op, ListReplace)
+        assert op.old == "old"
+        assert op.new == "new:with:colons"
+
+
+class TestApplySelection:
+    def _make_mamplan(self, data: dict) -> MagicMock:
+        mp = MagicMock()
+        mp.data = data
+        return mp
+
+    def test_scalar_exact_match(self):
+        mp = self._make_mamplan({"service": {"owner": "alice"}})
+        assert apply_selection([mp], ["service:owner:alice"], []) == [mp]
+
+    def test_scalar_no_match(self):
+        mp = self._make_mamplan({"service": {"owner": "alice"}})
+        assert apply_selection([mp], ["service:owner:bob"], []) == []
+
+    def test_list_field_matches_element(self):
+        mp = self._make_mamplan({"service": {"analyst": ["alice", "bob"]}})
+        assert apply_selection([mp], ["service:analyst:alice"], []) == [mp]
+
+    def test_list_field_no_match(self):
+        mp = self._make_mamplan({"service": {"analyst": ["alice", "bob"]}})
+        assert apply_selection([mp], ["service:analyst:carol"], []) == []
+
+    def test_list_field_does_not_match_full_repr(self):
+        """Exact match on a list field must NOT match the str() representation."""
+        mp = self._make_mamplan({"service": {"analyst": ["alice"]}})
+        assert apply_selection([mp], ["service:analyst:['alice']"], []) == []
+
+    def test_regex_matches_list_element(self):
+        mp = self._make_mamplan({"service": {"analyst": ["alice", "bob"]}})
+        assert apply_selection([mp], [], ["service:analyst:ali"]) == [mp]
+
+
+class TestWarnUnknownSelectionKeys:
+    def _make_mamplan(self, data: dict) -> MagicMock:
+        mp = MagicMock()
+        mp.data = data
+        return mp
+
+    def test_errors_on_unknown_key(self, capsys):
+        mp = self._make_mamplan({"service": {"owner": "alice", "analyst": ["bob"]}})
+        result = _warn_unknown_selection_keys(mp, ["service:analzst:bob"])
+        err = capsys.readouterr().err
+        assert result is True
+        assert "Unknown field" in err
+        assert "analzst" in err
+
+    def test_shows_valid_fields(self, capsys):
+        mp = self._make_mamplan({"service": {"owner": "alice", "analyst": ["bob"]}})
+        _warn_unknown_selection_keys(mp, ["service:analzst:bob"])
+        err = capsys.readouterr().err
+        assert "analyst" in err
+        assert "owner" in err
+
+    def test_no_error_for_valid_key(self, capsys):
+        mp = self._make_mamplan({"service": {"analyst": ["bob"]}})
+        result = _warn_unknown_selection_keys(mp, ["service:analyst:bob"])
+        err = capsys.readouterr().err
+        assert result is False
+        assert err == ""
+
+    def test_errors_on_unknown_section(self, capsys):
+        mp = self._make_mamplan({"service": {"owner": "alice"}})
+        result = _warn_unknown_selection_keys(mp, ["typo:owner:alice"])
+        err = capsys.readouterr().err
+        assert result is True
+        assert "Unknown field" in err
+        assert "typo" in err
+
+    def test_apply_selection_exits_on_bad_key(self, capsys):
+        import typer
+        mp = self._make_mamplan({"service": {"owner": "alice", "analyst": ["bob"]}})
+        with pytest.raises(typer.Exit) as exc_info:
+            apply_selection([mp], ["service:analzst:bob"], [])
+        assert exc_info.value.exit_code == 1
+        err = capsys.readouterr().err
+        assert "Unknown field" in err
+
+
+class TestConfirmMamplans:
+    def test_empty_list_returns_false(self, capsys):
+        result = _confirm_mamplans([], "edited")
+        assert result is False
+
+    def test_empty_list_prints_message(self, capsys):
+        _confirm_mamplans([], "edited")
+        out = capsys.readouterr().out
+        assert "No Mamplans match" in out
