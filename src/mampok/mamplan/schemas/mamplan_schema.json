@@ -111,7 +111,7 @@
         "organization": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Organization or department names. Use 'public' for publicly accessible projects."
+          "description": "Organization or department names."
         },
         "owner": { "$ref": "#/definitions/owner" },
         "user": {

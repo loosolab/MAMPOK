@@ -632,28 +632,6 @@ def _expand_relative_lifetime(fields: list[str], mamplan: MamplanBase) -> list[s
 # ---------------------------------------------------------------------------
 
 
-def _derive_users(mamplan: MamplanBase) -> list[str]:
-    """Derive the user list for auth secret from service.organization + service.user.
-
-    If 'public' is in organization, returns ``['public']``.
-
-    Args:
-        mamplan: Mamplan to inspect.
-
-    Returns:
-        Deduplicated list of usernames.
-    """
-    service = mamplan.data.get("service", {})
-    organization: list[str] = service.get("organization", [])
-    users: list[str] = service.get("user", [])
-
-    if "public" in organization:
-        return ["public"]
-
-    combined = list(dict.fromkeys(organization + users))
-    return combined
-
-
 # ---------------------------------------------------------------------------
 # I5b — Interactive Confirmation
 # ---------------------------------------------------------------------------
@@ -1320,9 +1298,6 @@ class CLI:
         regex_selection: list[str] | None = None,
     ) -> None:
         """Update the auth secret for one or more projects.
-
-        Derives the user list from service.organization + service.user.
-        If 'public' is in organization, uses ['public'].
 
         Args:
             mamplan_path: Path to Mamplan file or directory.
