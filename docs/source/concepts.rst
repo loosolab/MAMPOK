@@ -24,15 +24,15 @@ The Three Building Blocks
    * - **Mamplan**
      - Analyst / end user
      - One project: which tool, which data files, which cluster, who owns it, when it expires
-     - ``mamplan_repo/`` (from config)
+     - User-specified path (passed as argument to each command)
    * - **Mamplate**
      - Admin
      - Reusable container blueprint: image, resources, port, startup command, S3 sync behavior
      - ``mamplates_path/`` (from config)
    * - **config.json**
-     - Admin / DevOps
+     - Admin
      - Cluster profiles, S3 credentials, default lifetime
-     - ``~/.mampok/config.json`` (default)
+     - User-specified path (passed via ``--config``)
 
 Mamplan
 -------
@@ -45,7 +45,7 @@ Key characteristics:
 
 * Named ``{project_id}-mamplan.json`` (all lowercase, hyphens only — no
   underscores, no uppercase)
-* Stored in the ``mamplan_repo`` directory defined in your config
+* Stored in any directory — the path is passed as an argument to each command
 * **Mutable** — Mampok writes ``deployment.status``, ``deployment.url``,
   ``deployment.lifetime``, and ``project.project_size`` back into the file
   after each operation
@@ -105,8 +105,9 @@ See :doc:`mamplates` for the complete field reference.
 config.json
 -----------
 
-The **config file** (``~/.mampok/config.json``) is the shared configuration
-for all of a user's Mampok operations. It is not project-specific.
+The **config file** is the shared configuration for all of a user's Mampok
+operations. It is not project-specific. Its path has no default and must be
+passed explicitly to every command via ``--config``.
 
 It contains:
 
@@ -114,7 +115,7 @@ It contains:
 * **S3 credentials** (endpoint URL, access key, secret key, bucket prefix)
 * Optional **auth proxy configuration** (needed for auth-protected deployments)
 * Default **lifetime in days** applied to new deployments
-* Paths to the **Mamplan repository** and **Mamplates directory**
+* Path to the **Mamplates directory**
 
 See :doc:`configuration` for the complete field reference.
 
@@ -132,8 +133,15 @@ When you run ``mampok deploy my-project-mamplan.json``:
 1. Mampok reads the Mamplan and looks up the cluster name in the config.
 2. It finds the matching Mamplate file using ``project.tool``.
 3. The optional ``container`` section in the Mamplan is **deep-merged** on top
-   of the Mamplate's container definition. List fields are replaced; dict
-   fields are merged recursively.
+   of the Mamplate's container definition. Dict fields are merged recursively;
+   list fields are replaced entirely by the Mamplan value.
+
+   Example: if the Mamplate defines ``resources.requests.cpu: "500m"`` and the
+   Mamplan overrides only ``resources.requests.memory: "4Gi"``, the result keeps
+   both — ``cpu`` from the Mamplate, ``memory`` from the Mamplan. If the Mamplate
+   defines ``args: ["--host=0.0.0.0"]`` and the Mamplan sets
+   ``args: ["--host=0.0.0.0", "--dark-mode"]``, the Mamplate's list is discarded
+   entirely and the Mamplan's list is used.
 4. **Template tokens** of the form ``__section.key__`` in the Mamplate's
    ``command``, ``args``, and ``env`` fields are expanded using values from
    the Mamplan. For example, ``__project.files__`` becomes the comma-joined
@@ -158,13 +166,16 @@ A project follows this state machine:
           │  mampok deploy
           ▼
     [Running: status=true, K8s resources exist, S3 data exists]
+          │         │
+          │         │  mampok redeploy  (stop + deploy on a running project)
+          │         ▼
+          │    [Running again]
           │
           │  mampok stop
           ▼
     [Stopped: status=false, K8s resources deleted, S3 data preserved]
           │
-          │  mampok redeploy  (stop + deploy in one step)
-          │  or mampok deploy again
+          │  mampok deploy
           ▼
     [Running again]
 
@@ -177,7 +188,8 @@ SHMamplan (Software Hub Mode)
 
 A **SHMamplan** (Software Hub Mamplan) is a lightweight variant of the
 Mamplan format. It uses a simplified schema without the analyst, datatype,
-organization, and user metadata fields, and authentication is always enabled.
+organization, and user metadata fields. Authentication is always enabled and
+cannot be changed by the user.
 
 SHMamplan files are named ``{project_id}-shmamplan.json`` and are loaded
 automatically alongside regular Mamplans when scanning a repository directory.

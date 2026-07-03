@@ -25,9 +25,9 @@ Rules for ``project_id``:
 * ``mampok create-mamplan`` auto-normalizes the ID (converts underscores to
   hyphens, lowercases everything)
 
-Mamplan files live in the ``mamplan_repo`` directory defined in your
-:doc:`configuration`. Subdirectories are scanned recursively, so you can
-organize projects into folders.
+Mamplan files can live in any directory; the path is passed as an argument
+to each command. Subdirectories are scanned recursively, so you can organize
+projects into folders.
 
 Creating a Mamplan
 ------------------
@@ -37,7 +37,7 @@ Creating a Mamplan
     mampok create-mamplan \
       --project-id my-cellxgene-project \
       --tool cellxgene \
-      --cluster BN \
+      --cluster MY_CLUSTER \
       --owner jdoe \
       --datatype scRNA-seq \
       --files data.h5ad \
@@ -68,7 +68,7 @@ This is the structure of a complete Mamplan (all optional sections included):
         "init_container": ["sleep-init"]
       },
       "deployment": {
-        "cluster": "BN",
+        "cluster": "MY_CLUSTER",
         "status": false,
         "auth": false,
         "bucket": "",
@@ -157,7 +157,7 @@ Section Reference
      - yes
      - —
      - Name of the target cluster profile in ``config.json``
-       (e.g. ``"BN"``).
+       (e.g. ``"MY_CLUSTER"``).
    * - ``status``
      - boolean
      - yes
@@ -312,6 +312,9 @@ You should not set them manually in a freshly created Mamplan:
      - Written after successful deploy
    * - ``deployment.lifetime``
      - Overwritten on deploy to ``now + config.lifetime_days``
+   * - ``deployment.bucket``
+     - Written after deploy or after ``restore --full-s3-restore`` /
+       ``--include-downloadables``; used by download endpoints to locate data
    * - ``project.project_size``
      - Written after files are uploaded to S3 (total KB)
 

@@ -107,7 +107,7 @@ The Python API provides a dedicated method (see :doc:`python_api`)::
         username="alice",
         tool="cellxgene",
         bucket="alice-cellxgene-bucket",
-        cluster="BN",
+        cluster="MY_CLUSTER",
     )
 
 This creates ``alice-cellxgene-mamplan.json`` with auth always set to

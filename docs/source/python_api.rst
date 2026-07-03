@@ -194,7 +194,7 @@ create_mamplan
             "creation_date": "2026-04-17T12:00:00Z",
         },
         deployment={
-            "cluster": "BN",
+            "cluster": "MY_CLUSTER",
             "auth": False,
             "bucket": "",
             "url": "",
@@ -227,7 +227,7 @@ create_sh_mamplan
         username="alice",
         tool="cellxgene",
         bucket="alice-cellxgene-bucket",
-        cluster="BN",
+        cluster="MY_CLUSTER",
         lifetime="2026-12-31T00:00:00Z",
     )
     print(project_id)  # "alice-cellxgene"
@@ -250,10 +250,13 @@ project_info
     info = api.project_info("my-project-mamplan.json")
     project = info["projects"]["my-cellxgene-project"]
     print(project["url"])
-    print(project["status"])     # live Kubernetes state (bool)
+    print(project["status"])     # deployment.status from Mamplan file (bool)
     print(project["lifetime"])   # timezone-aware datetime object
 
-Returns a dict with the full project metadata and live Kubernetes status.
+Returns a dict with the full project metadata.
+``status`` reflects ``deployment.status`` from the Mamplan file — it is
+**not** a live Kubernetes query. Use ``check_status()`` if you need the
+actual cluster state.
 Date fields (``creation_date``, ``lifetime``) are timezone-aware
 ``datetime`` objects.
 

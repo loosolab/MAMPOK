@@ -1,9 +1,9 @@
 Configuration
 =============
 
-Mampok reads its configuration from a JSON file. The default location is
-``~/.mampok/config.json``. You can override it for any command with the
-``--config PATH`` option.
+Mampok reads its configuration from a JSON file. The path must be passed
+explicitly to every command via the ``--config PATH`` option; there is no
+default location.
 
 .. figure:: images/config_structure.png
    :align: center
@@ -18,10 +18,10 @@ Minimal Example
 
     {
       "cluster": {
-        "BN": {
+        "MY_CLUSTER": {
           "host": "ingress.example.com",
           "namespace": "mampok",
-          "kubeconfig_path": "/home/user/.kube/bn-config"
+          "kubeconfig_path": "/home/user/.kube/my-cluster-config"
         }
       },
       "s3": {
@@ -31,7 +31,6 @@ Minimal Example
         "secretname": "s3-credentials",
         "prefix": "mampok"
       },
-      "mamplan_repo": "/home/user/mamplans",
       "mamplates_path": "/home/user/mamplates",
       "lifetime_days": 30,
       "mampok_version": ">=2.0.0,<3.0.0"
@@ -40,9 +39,9 @@ Minimal Example
 File Location
 -------------
 
-The default path is ``~/.mampok/config.json``. Override it for any command::
+The config path has no default and must be passed explicitly to every command::
 
-    mampok deploy ~/mamplans/ --config /path/to/other-config.json
+    mampok deploy ~/mamplans/ --config /path/to/config.json
 
 Field Reference
 ---------------
@@ -58,11 +57,6 @@ Top-level fields
      - Type
      - Required
      - Description
-   * - ``mamplan_repo``
-     - string
-     - yes
-     - Path to the Mamplan repository directory. Used by ``stop-expired``,
-       ``check-status``, and ``list-expiring``.
    * - ``mamplates_path``
      - string
      - yes
@@ -90,22 +84,22 @@ Top-level fields
 ~~~~~~~~~~~~~~~~~~~
 
 The ``cluster`` key contains a dictionary of named cluster profiles. You can
-have as many as you need. The key (e.g. ``"BN"``) must match the
+have as many as you need. The key (e.g. ``"MY_CLUSTER"``) must match the
 ``deployment.cluster`` field in your Mamplans.
 
 .. code-block:: json
 
     "cluster": {
-      "BN": {
-        "host": "ingress.bn.example.com",
+      "MY_CLUSTER": {
+        "host": "ingress.example.com",
         "namespace": "mampok",
-        "kubeconfig_path": "/home/user/.kube/bn-config",
+        "kubeconfig_path": "/home/user/.kube/my-cluster-config",
         "ingress_class": "nginx"
       },
-      "BN_public": {
-        "host": "ingress.public.example.com",
+      "MY_CLUSTER_2": {
+        "host": "ingress2.example.com",
         "namespace": "mampok-public",
-        "kubeconfig_path": "/home/user/.kube/bn-public-config",
+        "kubeconfig_path": "/home/user/.kube/my-cluster-2-config",
         "ingress_class": "nginx"
       }
     }
@@ -185,10 +179,17 @@ have as many as you need. The key (e.g. ``"BN"``) must match the
 
 .. warning::
 
-   ``secret_key`` is stored in plain text in the config file. Protect it
-   with restrictive file permissions::
+   ``secret_key`` is stored in plain text in the config file. Restrict access
+   with appropriate file permissions:
 
-       chmod 600 ~/.mampok/config.json
+   * **Personal config** (only you should read it)::
+
+       chmod 600 /path/to/config.json
+
+   * **Shared config** (a group of users should read it, but not modify it)::
+
+       chmod 640 /path/to/config.json
+       chgrp <your-group> /path/to/config.json
 
 ``auth_proxy`` section (optional)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -246,16 +247,16 @@ Multiple Clusters
 You can define any number of cluster profiles in the ``cluster`` dict. Each
 Mamplan's ``deployment.cluster`` field must match one of these keys::
 
-    # Mamplan references "BN_public":
+    # Mamplan references "MY_CLUSTER_2":
     "deployment": {
-      "cluster": "BN_public",
+      "cluster": "MY_CLUSTER_2",
       ...
     }
 
-    # config.json defines "BN_public":
+    # config.json defines "MY_CLUSTER_2":
     "cluster": {
-      "BN": { ... },
-      "BN_public": { ... }
+      "MY_CLUSTER": { ... },
+      "MY_CLUSTER_2": { ... }
     }
 
 .. _version-pinning:
