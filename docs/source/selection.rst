@@ -47,7 +47,7 @@ Examples:
      - Effect
    * - ``-s project:tool:cellxgene``
      - Only Cellxgene projects
-   * - ``-s deployment:cluster:BN``
+   * - ``-s deployment:cluster:MY_CLUSTER``
      - Only projects on cluster MY_CLUSTER
    * - ``-s deployment:status:True``
      - Only currently deployed projects
@@ -95,7 +95,7 @@ Multiple ``-s`` and ``-rs`` flags can be combined freely — all must match::
     # Only cellxgene projects on cluster MY_CLUSTER
     mampok deploy ~/mamplans/ \
       -s project:tool:cellxgene \
-      -s deployment:cluster:BN
+      -s deployment:cluster:MY_CLUSTER
 
     # Deployed projects owned by anyone except jdoe
     mampok check-status ~/mamplans/ \
@@ -122,7 +122,7 @@ Common selectable paths:
      - ``my-project``
    * - ``deployment:cluster``
      - string
-     - ``BN``
+     - ``MY_CLUSTER``
    * - ``deployment:status``
      - bool as string
      - ``True`` or ``False``

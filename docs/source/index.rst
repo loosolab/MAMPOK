@@ -64,4 +64,3 @@ Key features:
    :caption: Reference
 
    python_api
-   api_reference

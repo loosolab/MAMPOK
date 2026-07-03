@@ -290,14 +290,23 @@ class _Printer:
             self._active = False
 
 
-def _handle_deploy_events(events: Iterator[dict], p: _Printer) -> None:
-    """Consume a mampok.deploy() event stream and print progress to the terminal."""
+def _handle_deploy_events(events: Iterator[dict], p: _Printer) -> str | None:
+    """Consume a mampok.deploy() event stream and print progress to the terminal.
+
+    Returns:
+        Token URL from the done event if auth is enabled, otherwise None.
+    """
     k8s_init_shown = False
+    token_url: str | None = None
     for event in events:
         stage = event.get("stage")
         status = event.get("status")
 
-        if stage == "s3_upload":
+        if stage == "done":
+            selfservice = event.get("selfservice", {})
+            token_url = selfservice.get("token_url")
+
+        elif stage == "s3_upload":
             file_ = event.get("file", "")
             size_human = _fmt_bytes(event.get("size_bytes", 0))
             if status == "starting":
@@ -351,6 +360,8 @@ def _handle_deploy_events(events: Iterator[dict], p: _Printer) -> None:
 
         elif stage == "k8s_cleanup":
             p.echo("  Cleaned up K8s resources after deploy error")
+
+    return token_url
 
 
 def _handle_stop_events(events: Iterator[dict], p: _Printer) -> None:
@@ -717,10 +728,16 @@ def _do_redeploy(
     p.end()
     mamplan.write(write_path)
     typer.echo(f"Stopped: {project_id}")
-    _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
+    token_url = _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
     p.end()
     mamplan.write(write_path)
     typer.echo(f"Redeployed: {project_id}")
+    if token_url:
+        typer.echo(f"Token URL: {token_url}")
+    else:
+        url = mamplan.data["deployment"].get("url", "")
+        if url:
+            typer.echo(f"URL: {url}")
 
 
 def _do_restore(
@@ -734,10 +751,16 @@ def _do_restore(
     mampok = create_mampok_instance(config, mamplan, mamplates)
     project_id = mamplan.data["project"]["project_id"]
     p = _Printer()
-    _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
+    token_url = _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
     p.end()
     mamplan.write(write_path)
     typer.echo(f"Restored: {project_id}")
+    if token_url:
+        typer.echo(f"Token URL: {token_url}")
+    else:
+        url = mamplan.data["deployment"].get("url", "")
+        if url:
+            typer.echo(f"URL: {url}")
 
 
 def _do_s3_upload(
@@ -840,13 +863,16 @@ class CLI:
         def _deploy(mamplan: MamplanBase) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             p = _Printer()
-            _handle_deploy_events(mampok.deploy(config, timeout=timeout, cleanup=not no_cleanup), p)
+            token_url = _handle_deploy_events(mampok.deploy(config, timeout=timeout, cleanup=not no_cleanup), p)
             p.end()
             mamplan.write(mamplan.source_path)
             typer.echo(f"Deployed: {mamplan.data['project']['project_id']}")
-            url = mamplan.data["deployment"].get("url", "")
-            if url:
-                typer.echo(f"URL: {url}")
+            if token_url:
+                typer.echo(f"Token URL: {token_url}")
+            else:
+                url = mamplan.data["deployment"].get("url", "")
+                if url:
+                    typer.echo(f"URL: {url}")
 
         run_with_error_tolerance(mamplans, _deploy, throw_error=throw_error)
 

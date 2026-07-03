@@ -21,7 +21,7 @@ Setup
 
     from mampok.interfaces.api import API
 
-    api = API("~/.mampok/config.json")
+    api = API("/path/to/config.json")
 
 The ``API`` class takes the path to a Mampok config file. The config is
 loaded fresh on each API call, so you can reuse the same ``API`` instance
@@ -47,8 +47,8 @@ deploy
     {"stage": "s3_bucket", "status": "created", ...}
     {"stage": "s3_upload", "status": "progress", "file": "...", "transferred_pct": 45}
     {"stage": "k8s_apply", "status": "applied", "resource": "Deployment/my-project"}
-    {"stage": "k8s_ready", "status": "ready", "pod": "my-project-abc-123"}
-    {"stage": "done", "status": "done", "selfservice": {"url": "https://..."}}
+    {"stage": "k8s_ready", "status": "running", "ready_replicas": 1}
+    {"stage": "done", "selfservice": {"url": "https://...", "token_url": "https://...?token=...", "project_id": "my-project", "auth": False}}
 
 Parameters:
 
@@ -94,7 +94,11 @@ redeploy
     for event in api.redeploy("my-project-mamplan.json"):
         print(event)
 
-Stop and deploy in sequence. Yields stop events followed by deploy events.
+Stop and deploy in sequence. Yields all stop events, then a stop confirmation,
+then all deploy events::
+
+    {"stage": "stop", "status": "done", "project_id": "my-project"}
+    # followed by all deploy() events
 
 list_expiring
 ~~~~~~~~~~~~~
@@ -277,8 +281,10 @@ drive execution:
             pct = event.get("transferred_pct", 0)
             print(f"Uploading: {pct}%")
         elif stage == "done":
-            url = event.get("selfservice", {}).get("url")
-            print(f"Deployed: {url}")
+            selfservice = event.get("selfservice", {})
+            token_url = selfservice.get("token_url")
+            url = selfservice.get("url")
+            print(f"Deployed: {token_url or url}")
 
     # Wrong — generator is never executed
     api.deploy("my-project-mamplan.json")   # ← nothing happens
