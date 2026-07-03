@@ -1,8 +1,8 @@
 CLI Commands
 ============
 
-Mampok provides 11 CLI commands. All commands accept a ``--config`` option
-to specify a config file (default: ``~/.mampok/config.json``).
+Mampok provides 11 CLI commands. All commands require a ``--config`` option
+to specify the config file path.
 
 .. tip::
 
@@ -22,7 +22,7 @@ These options are available on all commands:
      - Default
      - Description
    * - ``--config PATH``
-     - ``~/.mampok/config.json``
+     - required
      - Path to the Mampok config file.
    * - ``--log-level LEVEL``
      - ``WARNING``
@@ -88,9 +88,6 @@ After a successful deployment the Mamplan file is updated in-place with
    * - Option
      - Default
      - Description
-   * - ``--config PATH``
-     - ``~/.mampok/config.json``
-     - Config file path.
    * - ``-s / --selection``
      - —
      - Filter Mamplans (see :doc:`selection`).
@@ -98,7 +95,7 @@ After a successful deployment the Mamplan file is updated in-place with
      - —
      - Regex filter (see :doc:`selection`).
    * - ``--timeout INT``
-     - ``300``
+     - ``900``
      - Seconds to wait for pods to become ready.
    * - ``--dry-run``
      - off
@@ -185,9 +182,6 @@ in the Mamplan file.
    * - Option
      - Default
      - Description
-   * - ``--config PATH``
-     - ``~/.mampok/config.json``
-     - Config file path.
    * - ``-s / --selection``
      - —
      - Filter Mamplans.
@@ -245,9 +239,6 @@ followed by ``mampok deploy``.
    * - Option
      - Default
      - Description
-   * - ``--config PATH``
-     - ``~/.mampok/config.json``
-     - Config file path.
    * - ``-s / --selection``
      - —
      - Filter Mamplans.
@@ -255,7 +246,7 @@ followed by ``mampok deploy``.
      - —
      - Regex filter.
    * - ``--timeout INT``
-     - ``300``
+     - ``900``
      - Pod readiness timeout in seconds.
    * - ``--reupload``
      - off
@@ -317,9 +308,6 @@ any project failed to stop (useful for cron monitoring).
    * - Option
      - Default
      - Description
-   * - ``--config PATH``
-     - ``~/.mampok/config.json``
-     - Config file path.
    * - ``--throw-error``
      - off
      - Abort on first failure.
@@ -329,7 +317,7 @@ any project failed to stop (useful for cron monitoring).
 
 **Example**::
 
-    mampok stop-expired ~/mamplans/ --config ~/.mampok/config.json -Y
+    mampok stop-expired ~/mamplans/ --config /path/to/config.json -Y
 
 ----
 
@@ -367,9 +355,6 @@ Useful for setting up monitoring or pre-expiry alerts.
    * - Option
      - Default
      - Description
-   * - ``--config PATH``
-     - ``~/.mampok/config.json``
-     - Config file path.
    * - ``--within VALUE``
      - ``7d``
      - Alert window. Relative format: ``7d`` (7 days), ``2w`` (2 weeks),
@@ -605,7 +590,7 @@ Edit all cellxgene projects in a directory::
 Add an organization to multiple projects::
 
     mampok edit-mamplan ~/mamplans/ \
-      -s deployment:cluster:BN \
+      -s deployment:cluster:MY_CLUSTER \
       -e service:organization:+:mpi-iem -Y
 
 ----
@@ -774,7 +759,7 @@ report.
 
 **Example**::
 
-    mampok check-status ~/mamplans/ -s deployment:cluster:BN
+    mampok check-status ~/mamplans/ -s deployment:cluster:MY_CLUSTER
 
 ----
 
@@ -791,8 +776,8 @@ update-auth
 
 Regenerate the Kubernetes auth secret for one or more projects. The new
 secret is derived from ``service.organization`` and ``service.user`` in the
-Mamplan. If ``"public"`` is in ``service.organization``, the secret is set
-for public (unauthenticated) access.
+Mamplan. Set ``service.owner`` to ``"_public"`` to make the project
+accessible to all authenticated users.
 
 Prints the new token URL after updating.
 
