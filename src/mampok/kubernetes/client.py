@@ -202,54 +202,6 @@ class KubeClient:
         )
         return [p.metadata.name for p in pods.items if p.status.phase == "Running"]
 
-    def exec_in_pod(
-        self,
-        pod_name: str,
-        container: str,
-        command: list[str],
-        timeout: int = 300,
-    ) -> str:
-        """Execute a command in a running container and return combined stdout+stderr.
-
-        Blocks until the command exits or the timeout is reached. The caller can treat
-        a normal return as confirmation that the command completed successfully.
-
-        Args:
-            pod_name: Name of the pod.
-            container: Container name within the pod.
-            command: Command as list (e.g. ["/bin/sh", "-c", "echo hi"]).
-            timeout: Maximum seconds to wait for the command to complete.
-
-        Returns:
-            Combined stdout+stderr output as a string.
-
-        Raises:
-            Exception: If exec setup fails (pod not found, container not running, etc.).
-        """
-        import kubernetes.client
-        import kubernetes.stream
-
-        v1 = kubernetes.client.CoreV1Api(api_client=self._api_client)
-        ws = kubernetes.stream.stream(
-            v1.connect_get_namespaced_pod_exec,
-            pod_name,
-            self._namespace,
-            container=container,
-            command=command,
-            stderr=True,
-            stdin=False,
-            stdout=True,
-            tty=False,
-            _preload_content=False,
-        )
-        ws.run_forever(timeout=timeout)
-        parts: list[str] = []
-        if ws.peek_stdout():
-            parts.append(ws.read_stdout())
-        if ws.peek_stderr():
-            parts.append(ws.read_stderr())
-        return "".join(parts)
-
     def exec_in_pod_stream(
         self,
         pod_name: str,
@@ -258,8 +210,8 @@ class KubeClient:
         timeout: int = 300,
         poll_interval: int = 10,
     ) -> Iterator[str]:
-        """Like exec_in_pod(), but yields the accumulated stdout+stderr every
-        poll_interval seconds while the command is running.
+        """Execute a command in a running container, yielding the accumulated
+        stdout+stderr every poll_interval seconds while the command is running.
 
         Each yielded value is the complete output collected so far (cumulative),
         so callers can parse the latest state without buffering themselves.

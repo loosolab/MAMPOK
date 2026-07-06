@@ -1,11 +1,10 @@
 """Tests for the Mampok orchestrator."""
 
 from pathlib import Path
-from unittest.mock import ANY, MagicMock, call, patch
+from unittest.mock import ANY, patch
 
 import pytest
 
-from mampok.kubernetes.config import DeploymentConfig
 from mampok.mampok.mampok import Mampok
 
 

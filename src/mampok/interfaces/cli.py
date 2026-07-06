@@ -1352,46 +1352,10 @@ class CLI:
 
 
 # ---------------------------------------------------------------------------
-# Lifetime parsing helper
+# Expiring-window helpers
 # ---------------------------------------------------------------------------
 
 _RELATIVE_LIFETIME_RE = re.compile(r"^(\d+)([dwm])$", re.IGNORECASE)
-
-
-def _parse_lifetime(value: str) -> str:
-    """Parse lifetime as relative shorthand or ISO 8601 string.
-
-    Args:
-        value: Relative string like '30d', '4w', '3m', or ISO 8601 datetime.
-
-    Returns:
-        ISO 8601 UTC datetime string.
-
-    Raises:
-        typer.BadParameter: If the value is neither a valid relative format nor ISO 8601.
-    """
-    match = _RELATIVE_LIFETIME_RE.match(value)
-    if match:
-        amount = int(match.group(1))
-        unit = match.group(2).lower()
-        if unit == "d":
-            delta = timedelta(days=amount)
-        elif unit == "w":
-            delta = timedelta(weeks=amount)
-        else:  # 'm'
-            delta = timedelta(days=amount * 30)
-        return (datetime.now(timezone.utc) + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
-    try:
-        return parse_lifetime(value).strftime("%Y-%m-%dT%H:%M:%SZ")
-    except ValueError:
-        raise typer.BadParameter(
-            f"Invalid lifetime '{value}'. Use relative (30d, 4w, 3m) or ISO 8601 (2026-12-31T00:00:00Z)."
-        )
-
-
-# ---------------------------------------------------------------------------
-# Expiring-window helpers
-# ---------------------------------------------------------------------------
 
 
 def _parse_within(value: str) -> timedelta:
