@@ -1,8 +1,8 @@
 CLI Commands
 ============
 
-Mampok provides 10 CLI commands. All commands accept a ``--config`` option
-to specify a config file (default: ``~/.mampok/config.json``).
+Mampok provides 11 CLI commands. All commands require a ``--config`` option
+to specify the config file path.
 
 .. tip::
 
@@ -22,7 +22,7 @@ These options are available on all commands:
      - Default
      - Description
    * - ``--config PATH``
-     - ``~/.mampok/config.json``
+     - required
      - Path to the Mampok config file.
    * - ``--log-level LEVEL``
      - ``WARNING``
@@ -89,7 +89,7 @@ After a successful deployment the Mamplan file is updated in-place with
      - Default
      - Description
    * - ``--config PATH``
-     - ``~/.mampok/config.json``
+     - required
      - Config file path.
    * - ``-s / --selection``
      - —
@@ -98,7 +98,7 @@ After a successful deployment the Mamplan file is updated in-place with
      - —
      - Regex filter (see :doc:`selection`).
    * - ``--timeout INT``
-     - ``300``
+     - ``900``
      - Seconds to wait for pods to become ready.
    * - ``--dry-run``
      - off
@@ -121,19 +121,19 @@ After a successful deployment the Mamplan file is updated in-place with
 
 Deploy a single project::
 
-    mampok deploy ~/mamplans/my-project-mamplan.json
+    mampok deploy ~/mamplans/my-project-mamplan.json --config /path/to/config.json
 
 Deploy all projects in a directory::
 
-    mampok deploy ~/mamplans/
+    mampok deploy ~/mamplans/ --config /path/to/config.json
 
 Deploy only cellxgene projects::
 
-    mampok deploy ~/mamplans/ -s project:tool:cellxgene
+    mampok deploy ~/mamplans/ -s project:tool:cellxgene --config /path/to/config.json
 
 Preview without deploying::
 
-    mampok deploy ~/mamplans/ --dry-run
+    mampok deploy ~/mamplans/ --dry-run --config /path/to/config.json
 
 **Notes**
 
@@ -186,7 +186,7 @@ in the Mamplan file.
      - Default
      - Description
    * - ``--config PATH``
-     - ``~/.mampok/config.json``
+     - required
      - Config file path.
    * - ``-s / --selection``
      - —
@@ -213,11 +213,11 @@ in the Mamplan file.
 
 Stop a single project::
 
-    mampok stop ~/mamplans/my-project-mamplan.json -Y
+    mampok stop ~/mamplans/my-project-mamplan.json --config /path/to/config.json -Y
 
 Download data and then stop::
 
-    mampok stop ~/mamplans/ --download --output-dir ~/downloads/ -Y
+    mampok stop ~/mamplans/ --download --output-dir ~/downloads/ --config /path/to/config.json -Y
 
 ----
 
@@ -246,7 +246,7 @@ followed by ``mampok deploy``.
      - Default
      - Description
    * - ``--config PATH``
-     - ``~/.mampok/config.json``
+     - required
      - Config file path.
    * - ``-s / --selection``
      - —
@@ -255,7 +255,7 @@ followed by ``mampok deploy``.
      - —
      - Regex filter.
    * - ``--timeout INT``
-     - ``300``
+     - ``900``
      - Pod readiness timeout in seconds.
    * - ``--reupload``
      - off
@@ -271,11 +271,11 @@ followed by ``mampok deploy``.
 
 Redeploy a project (e.g. after editing the Mamplan)::
 
-    mampok redeploy ~/mamplans/my-project-mamplan.json -Y
+    mampok redeploy ~/mamplans/my-project-mamplan.json --config /path/to/config.json -Y
 
 Redeploy with forced file re-upload::
 
-    mampok redeploy ~/mamplans/my-project-mamplan.json --reupload -Y
+    mampok redeploy ~/mamplans/my-project-mamplan.json --reupload --config /path/to/config.json -Y
 
 ----
 
@@ -318,7 +318,7 @@ any project failed to stop (useful for cron monitoring).
      - Default
      - Description
    * - ``--config PATH``
-     - ``~/.mampok/config.json``
+     - required
      - Config file path.
    * - ``--throw-error``
      - off
@@ -329,7 +329,7 @@ any project failed to stop (useful for cron monitoring).
 
 **Example**::
 
-    mampok stop-expired ~/mamplans/ --config ~/.mampok/config.json -Y
+    mampok stop-expired ~/mamplans/ --config /path/to/config.json -Y
 
 ----
 
@@ -368,7 +368,7 @@ Useful for setting up monitoring or pre-expiry alerts.
      - Default
      - Description
    * - ``--config PATH``
-     - ``~/.mampok/config.json``
+     - required
      - Config file path.
    * - ``--within VALUE``
      - ``7d``
@@ -385,7 +385,104 @@ Useful for setting up monitoring or pre-expiry alerts.
 
 **Example**::
 
-    mampok list-expiring ~/mamplans/ --within 14d
+    mampok list-expiring ~/mamplans/ --within 14d --config /path/to/config.json
+
+----
+
+.. _cmd-restore:
+
+restore
+-------
+
+**Synopsis**::
+
+    mampok restore <repository> [OPTIONS]
+
+**Description**
+
+Deploy all projects that should be active (``deployment.status = true``) but
+are not currently running in the cluster. Mampok compares the expected state
+stored in each Mamplan against the live Kubernetes state and redeploys only
+the missing ones.
+
+Two additional S3-only modes are available (no Kubernetes deployment):
+
+* ``--full-s3-restore`` — re-upload data files for **all** projects to S3.
+* ``--include-downloadables`` — upload data for stopped projects that have
+  ``service.download_allowed = true``.
+
+Use ``--dry-run`` to preview what would be restored or uploaded without
+making any changes.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 60
+
+   * - Argument
+     - Description
+   * - ``<repository>``
+     - Path to the Mamplan repository directory.
+
+**Options**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 12 45
+
+   * - Option
+     - Default
+     - Description
+   * - ``--config PATH``
+     - required
+     - Config file path.
+   * - ``-s / --selection``
+     - —
+     - Filter Mamplans (see :doc:`selection`).
+   * - ``-rs / --regex-select``
+     - —
+     - Regex filter (see :doc:`selection`).
+   * - ``--timeout INT``
+     - ``900``
+     - Pod readiness timeout in seconds.
+   * - ``--reupload``
+     - off
+     - Force re-upload of all S3 files even if sizes match.
+   * - ``--dry-run``
+     - off
+     - Show what would be restored or uploaded without making changes.
+   * - ``--full-s3-restore``
+     - off
+     - Upload data files of **all** projects to S3. No Kubernetes deploy.
+   * - ``--include-downloadables``
+     - off
+     - Also upload files for stopped projects with
+       ``download_allowed = true``. No Kubernetes deploy.
+   * - ``--throw-error``
+     - off
+     - Abort on first failure.
+   * - ``-Y / --yes``
+     - off
+     - Skip confirmation prompt (recommended for cron).
+
+**Examples**
+
+Restore all missing active projects::
+
+    mampok restore ~/mamplans/ --config /path/to/config.json -Y
+
+Preview what would be restored without applying::
+
+    mampok restore ~/mamplans/ --dry-run --config /path/to/config.json
+
+Re-upload S3 data for all projects (e.g. after storage migration)::
+
+    mampok restore ~/mamplans/ --full-s3-restore --config /path/to/config.json -Y
+
+Upload data for stopped downloadable projects::
+
+    mampok restore ~/mamplans/ --include-downloadables --config /path/to/config.json -Y
 
 ----
 
@@ -400,10 +497,13 @@ edit-mamplan
 
 **Description**
 
-Edit one or more fields of a Mamplan file and optionally redeploy. Changes
-are shown before applying; use ``-Y`` to skip confirmation.
+Edit one or more fields of a Mamplan file (or all Mamplans in a directory)
+and optionally redeploy. Planned changes are shown before applying; use
+``-Y`` to skip confirmation.
 
-Accepts a single Mamplan file (not a directory).
+Accepts a single Mamplan file or a directory (scanned recursively). Use
+``-s`` / ``-rs`` to filter which projects are edited when operating on a
+directory.
 
 **Arguments**
 
@@ -414,7 +514,7 @@ Accepts a single Mamplan file (not a directory).
    * - Argument
      - Description
    * - ``<path>``
-     - Path to a single Mamplan file.
+     - Path to a Mamplan file or directory.
 
 **Options**
 
@@ -425,18 +525,27 @@ Accepts a single Mamplan file (not a directory).
    * - Option
      - Default
      - Description
-   * - ``-e / --edit section:key:value``
+   * - ``--config PATH``
+     - required
+     - Config file path.
+   * - ``-e / --edit TOKEN``
      - —
-     - Field to edit (repeatable). Format: ``section:key:value``.
+     - Field to edit (repeatable). See token format below.
+   * - ``-s / --selection``
+     - —
+     - Filter Mamplans (see :doc:`selection`).
+   * - ``-rs / --regex-select``
+     - —
+     - Regex filter (see :doc:`selection`).
    * - ``--redeploy``
      - off
-     - Stop and redeploy the project after saving the changes.
+     - Stop and redeploy after saving the changes.
    * - ``--timeout INT``
-     - ``300``
+     - ``900``
      - Pod readiness timeout (used when ``--redeploy`` is set).
    * - ``--throw-error``
      - off
-     - Abort on first failure.
+     - Abort on first failure instead of collecting errors.
    * - ``-Y / --yes``
      - off
      - Skip confirmation prompt.
@@ -444,14 +553,18 @@ Accepts a single Mamplan file (not a directory).
 **Token format**
 
 Fields are specified as ``section:key:value``. The value may contain colons.
-Examples:
+
+In addition to plain scalar assignment, list fields support element-level
+operations:
 
 .. list-table::
    :header-rows: 1
-   :widths: 45 40
+   :widths: 48 38
 
    * - Token
      - Effect
+   * - ``section:key:value``
+     - Set a scalar field
    * - ``deployment:lifetime:+30d``
      - Extend current lifetime by 30 days
    * - ``deployment:lifetime:+4w``
@@ -460,6 +573,15 @@ Examples:
      - Enable authentication
    * - ``service:owner:alice``
      - Change the owner
+   * - ``service:organization:+:mpi-iem``
+     - Append ``mpi-iem`` to the organization list
+   * - ``service:organization:-:mpi-iem``
+     - Remove ``mpi-iem`` from the organization list
+   * - ``service:organization:old-org%new-org``
+     - Replace ``old-org`` with ``new-org`` in the list
+
+The ``%`` separator marks a list-replace operation and is safe for values
+containing colons (e.g. URLs), as long as they do not contain ``%``.
 
 .. important::
 
@@ -471,14 +593,27 @@ Examples:
 
 Renew a project's lifetime by 30 days::
 
-    mampok edit-mamplan my-project-mamplan.json -e deployment:lifetime:+30d -Y
+    mampok edit-mamplan my-project-mamplan.json \
+      -e deployment:lifetime:+30d --config /path/to/config.json -Y
 
 Change multiple fields and redeploy::
 
     mampok edit-mamplan my-project-mamplan.json \
       -e service:owner:alice \
       -e deployment:auth:true \
-      --redeploy -Y
+      --redeploy --config /path/to/config.json -Y
+
+Edit all cellxgene projects in a directory::
+
+    mampok edit-mamplan ~/mamplans/ \
+      -s project:tool:cellxgene \
+      -e deployment:lifetime:+30d --config /path/to/config.json -Y
+
+Add an organization to multiple projects::
+
+    mampok edit-mamplan ~/mamplans/ \
+      -s deployment:cluster:MY_CLUSTER \
+      -e service:organization:+:mpi-iem --config /path/to/config.json -Y
 
 ----
 
@@ -510,6 +645,9 @@ exists in config before writing the file.
    * - Option
      - Required
      - Description
+   * - ``--config PATH``
+     - yes
+     - Config file path.
    * - ``--project-id TEXT``
      - yes
      - Unique project ID. Auto-normalized (lowercase, underscores → hyphens).
@@ -566,21 +704,23 @@ Minimal creation::
     mampok create-mamplan \
       --project-id mouse-atlas \
       --tool cellxgene \
-      --cluster BN \
+      --cluster MY_CLUSTER \
       --owner jdoe \
       --datatype scRNA-seq \
-      --output ~/mamplans/
+      --output ~/mamplans/ \
+      --config /path/to/config.json
 
 With metadata file and multiple data files::
 
     mampok create-mamplan \
       --project-id mouse-atlas \
       --tool cellxgene \
-      --cluster BN \
+      --cluster MY_CLUSTER \
       --metadata-file project_metadata.yaml \
       --files atlas.h5ad \
       --files markers.csv \
-      --output ~/mamplans/mouse-atlas-mamplan.json
+      --output ~/mamplans/mouse-atlas-mamplan.json \
+      --config /path/to/config.json
 
 ----
 
@@ -634,6 +774,9 @@ report.
    * - Option
      - Default
      - Description
+   * - ``--config PATH``
+     - required
+     - Config file path.
    * - ``-s / --selection``
      - —
      - Filter Mamplans.
@@ -646,7 +789,7 @@ report.
 
 **Example**::
 
-    mampok check-status ~/mamplans/ -s deployment:cluster:BN
+    mampok check-status ~/mamplans/ -s deployment:cluster:MY_CLUSTER --config /path/to/config.json
 
 ----
 
@@ -663,8 +806,8 @@ update-auth
 
 Regenerate the Kubernetes auth secret for one or more projects. The new
 secret is derived from ``service.organization`` and ``service.user`` in the
-Mamplan. If ``"public"`` is in ``service.organization``, the secret is set
-for public (unauthenticated) access.
+Mamplan. Set ``service.owner`` to ``"_public"`` to make the project
+accessible to all authenticated users.
 
 Prints the new token URL after updating.
 
@@ -688,6 +831,9 @@ Prints the new token URL after updating.
    * - Option
      - Default
      - Description
+   * - ``--config PATH``
+     - required
+     - Config file path.
    * - ``--throw-error``
      - off
      - Abort on first failure.
@@ -697,7 +843,7 @@ Prints the new token URL after updating.
 
 **Example**::
 
-    mampok update-auth ~/mamplans/my-project-mamplan.json -Y
+    mampok update-auth ~/mamplans/my-project-mamplan.json --config /path/to/config.json -Y
 
 ----
 
@@ -740,6 +886,9 @@ does **not** stop the deployment.
    * - Option
      - Required
      - Description
+   * - ``--config PATH``
+     - yes
+     - Config file path.
    * - ``-o / --output-dir PATH``
      - yes
      - Local destination directory.
@@ -759,7 +908,7 @@ does **not** stop the deployment.
 **Example**::
 
     mampok download ~/mamplans/my-project-mamplan.json \
-      --output-dir ~/downloads/ -Y
+      --output-dir ~/downloads/ --config /path/to/config.json -Y
 
 Error Tolerance
 ---------------
@@ -769,6 +918,16 @@ collected and a summary is printed at the end. The exit code is ``1`` if any
 errors occurred.
 
 Use ``--throw-error`` to abort immediately on the first failure instead.
+
+For ``deploy`` and ``redeploy``, certain fatal Kubernetes conditions cause the
+waiting phase to abort early rather than waiting for the full timeout:
+
+* ``ImagePullBackOff`` / ``ErrImagePull``: aborts immediately.
+* ``OOMKilled`` / ``CrashLoopBackOff``: aborts after 3 restarts.
+
+These early aborts count as errors and are handled the same way as any other
+failure: collected and reported at the end (or re-raised immediately with
+``--throw-error``).
 
 This behavior applies to all commands that process multiple Mamplans:
 ``deploy``, ``stop``, ``redeploy``, ``stop-expired``, ``check-status``,

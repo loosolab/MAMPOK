@@ -17,17 +17,18 @@ Mamplan files must follow this naming convention::
 
     {project_id}-mamplan.json
 
-Rules for ``project_id``:
+The only hard requirement for the file to be discovered is the
+``-mamplan.json`` suffix. The ``{project_id}-`` prefix is a convention
+applied by ``create-mamplan``; the file loader does not enforce it.
 
-* All lowercase
-* Hyphens ``-`` allowed, underscores ``_`` not allowed
-* No uppercase letters
-* ``mampok create-mamplan`` auto-normalizes the ID (converts underscores to
-  hyphens, lowercases everything)
+The ``project_id`` field *inside* the JSON is schema-validated: lowercase
+letters and hyphens only — no uppercase, no underscores. ``create-mamplan``
+auto-normalizes the value (converts underscores to hyphens, lowercases
+everything) before writing the file.
 
-Mamplan files live in the ``mamplan_repo`` directory defined in your
-:doc:`configuration`. Subdirectories are scanned recursively, so you can
-organize projects into folders.
+Mamplan files can live in any directory; the path is passed as an argument
+to each command. Subdirectories are scanned recursively, so you can organize
+projects into folders.
 
 Creating a Mamplan
 ------------------
@@ -37,7 +38,7 @@ Creating a Mamplan
     mampok create-mamplan \
       --project-id my-cellxgene-project \
       --tool cellxgene \
-      --cluster BN \
+      --cluster MY_CLUSTER \
       --owner jdoe \
       --datatype scRNA-seq \
       --files data.h5ad \
@@ -45,12 +46,6 @@ Creating a Mamplan
 
 See :ref:`cmd-create-mamplan` for all available flags, including
 ``--metadata-file`` to populate the service section from a YAML file.
-
-**Option 2: Copy and edit manually**
-
-Copy the example below and edit the fields. Note the :ref:`mutable-fields`
-that Mampok manages automatically — do not set these by hand unless you know
-what you are doing.
 
 Annotated Example
 -----------------
@@ -68,7 +63,7 @@ This is the structure of a complete Mamplan (all optional sections included):
         "init_container": ["sleep-init"]
       },
       "deployment": {
-        "cluster": "BN",
+        "cluster": "MY_CLUSTER",
         "status": false,
         "auth": false,
         "bucket": "",
@@ -157,7 +152,7 @@ Section Reference
      - yes
      - —
      - Name of the target cluster profile in ``config.json``
-       (e.g. ``"BN"``).
+       (e.g. ``"MY_CLUSTER"``).
    * - ``status``
      - boolean
      - yes
@@ -215,7 +210,8 @@ Section Reference
    * - ``owner``
      - string
      - yes
-     - Username of the project owner. Used for auth secret derivation.
+     - Username of the project owner. Set to ``"_public"`` to make the project
+       accessible to all authenticated users.
    * - ``analyst``
      - array of strings
      - yes
@@ -235,8 +231,7 @@ Section Reference
    * - ``organization``
      - array of strings
      - yes
-     - Organizations with access. Use ``["public"]`` for unrestricted access
-       (bypasses auth even when ``auth: true``). Can be empty (``[]``).
+     - Organizations with access. Can be empty (``[]``).
    * - ``user``
      - array of strings
      - yes
@@ -268,9 +263,8 @@ startup arguments without modifying the shared Mamplate.
 
 Merge rules:
 
-* **Dict fields** (e.g. ``resources``, ``env`` as a dict) are deep-merged.
-* **List fields** (e.g. ``env`` as a list, ``args``, ``command``) are
-  **replaced**, not appended.
+* **Dict fields** (e.g. ``resources``) are deep-merged.
+* **List fields** (``env``, ``args``, ``command``) are **replaced**, not appended.
 * Template tokens (``__section.key__``) are expanded after the merge.
 
 ``tags`` section (optional)
@@ -312,6 +306,9 @@ You should not set them manually in a freshly created Mamplan:
      - Written after successful deploy
    * - ``deployment.lifetime``
      - Overwritten on deploy to ``now + config.lifetime_days``
+   * - ``deployment.bucket``
+     - Written after deploy or after ``restore --full-s3-restore`` /
+       ``--include-downloadables``; used by download endpoints to locate data
    * - ``project.project_size``
      - Written after files are uploaded to S3 (total KB)
 
