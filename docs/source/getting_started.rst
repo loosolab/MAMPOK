@@ -20,8 +20,9 @@ From PyPI::
 
 From source::
 
-    git clone <repository>
-    pip install ./mampok_v2
+    git clone https://github.com/loosolab/MAMPOK
+    cd MAMPOK
+    pip install .
 
 Verify the installation::
 
@@ -30,15 +31,16 @@ Verify the installation::
 Configuration
 -------------
 
-Before deploying anything, Mampok needs a configuration file at
-``~/.mampok/config.json`` that specifies your cluster profiles, S3
-credentials, and paths to your Mamplan and Mamplate repositories.
+Before deploying anything, Mampok needs a configuration file that specifies
+your cluster profiles, S3 credentials, and paths to your Mamplan and Mamplate
+repositories. The path must be passed explicitly to every command via
+``--config``; there is no default location.
 
 See :doc:`configuration` for the full reference. A minimal example::
 
     {
       "cluster": {
-        "BN": {
+        "MY_CLUSTER": {
           "host": "ingress.example.com",
           "namespace": "mampok",
           "kubeconfig_path": "/home/user/.kube/config",
@@ -52,7 +54,6 @@ See :doc:`configuration` for the full reference. A minimal example::
         "secretname": "s3-credentials",
         "prefix": "mampok"
       },
-      "mamplan_repo": "/home/user/mamplans",
       "mamplates_path": "/home/user/mamplates",
       "lifetime_days": 30,
       "mampok_version": ">=2.0.0,<3.0.0"
@@ -69,7 +70,7 @@ create one is with the :ref:`create-mamplan <cmd-create-mamplan>` command::
     mampok create-mamplan \
       --project-id my-cellxgene-project \
       --tool cellxgene \
-      --cluster BN \
+      --cluster MY_CLUSTER \
       --owner jdoe \
       --datatype scRNA-seq \
       --files data.h5ad \
@@ -87,7 +88,7 @@ This generates ``~/mamplans/my-cellxgene-project-mamplan.json``:
         "creation_date": "2026-03-26T12:00:00Z"
       },
       "deployment": {
-        "cluster": "BN",
+        "cluster": "MY_CLUSTER",
         "status": false,
         "auth": false,
         "bucket": "",
@@ -105,11 +106,6 @@ This generates ``~/mamplans/my-cellxgene-project-mamplan.json``:
       }
     }
 
-.. tip::
-
-   You can also copy and edit a Mamplan by hand. See :doc:`mamplans` for a
-   complete field reference.
-
 **Step 2: Deploy**
 
 ::
@@ -124,7 +120,7 @@ it finishes, the Mamplan file is updated in-place with the URL and status:
     The following 1 Mamplan(s) will be deployed:
       Project ID             Cluster       Owner         URL
       ─────────────────────────────────────────────────────
-      my-cellxgene-project   BN            jdoe
+      my-cellxgene-project   MY_CLUSTER    jdoe
 
     Continue? [y/N]: y
 
@@ -143,21 +139,33 @@ What Happens During Deploy
 
    The seven steps Mampok executes when you run ``mampok deploy``.
 
-1. **Load Mamplan + Mamplate** — Mampok reads the project file and the
-   matching container template (e.g. ``cellxgene-mamplate.json``).
-2. **Create S3 bucket** — If the bucket does not exist yet, it is created.
-3. **Upload files** — Each file listed in ``project.files`` is uploaded to
-   ``s3://bucket/analysis_data/``. Files are skipped if the S3 object already
-   has the same size (use ``--reupload`` to force a fresh upload).
-4. **Generate auth secret** — Only when ``deployment.auth: true``. A JWT
-   secret and auth token URL are created.
-5. **Apply Kubernetes resources** — A Deployment, Service, Ingress, and
-   supporting Secrets are applied to the cluster.
-6. **Wait for pod readiness** — Mampok polls until all pods are ready (default
-   timeout: 300 seconds, configurable with ``--timeout``).
-7. **Write back to Mamplan** — ``deployment.status`` is set to ``true``,
-   ``deployment.url`` and ``deployment.lifetime`` are updated, and the file
-   is saved to disk.
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Step
+     - Description
+   * - 1. Load Mamplan + Mamplate
+     - Mampok reads the project file and the matching container template
+       (e.g. ``cellxgene-mamplate.json``).
+   * - 2. Create S3 bucket
+     - If the bucket does not exist yet, it is created.
+   * - 3. Upload files
+     - Each file listed in ``project.files`` is uploaded to
+       ``s3://bucket/analysis_data/``. Files are skipped if the S3 object
+       already has the same size; use ``--reupload`` to force a fresh upload.
+   * - 4. Generate auth secret
+     - Only when ``deployment.auth: true``. A JWT secret and auth token URL
+       are created.
+   * - 5. Apply Kubernetes resources
+     - A Deployment, Service, Ingress, and supporting Secrets are applied
+       to the cluster.
+   * - 6. Wait for pod readiness
+     - Mampok polls until all pods are ready. Default timeout: 900 seconds,
+       configurable with ``--timeout``.
+   * - 7. Write back to Mamplan
+     - ``deployment.status`` is set to ``true``, ``deployment.url`` and
+       ``deployment.lifetime`` are updated, and the file is saved to disk.
 
 Next Steps
 ----------

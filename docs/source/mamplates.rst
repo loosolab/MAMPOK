@@ -18,7 +18,7 @@ Mamplate files follow this naming convention::
 
 Examples: ``cellxgene-mamplate.json``, ``jupyter-mamplate.json``.
 
-The tool name (the part before ``-mamplate.json``) is what users write in
+The ``tool`` field inside the Mamplate JSON is what users reference in
 ``project.tool`` of their Mamplan.
 
 All Mamplate files live in a flat directory specified by ``mamplates_path``
@@ -212,6 +212,12 @@ deploy time after the Mamplan's ``container`` overrides are merged.
      - The cluster name from the Mamplan
    * - ``__service.owner__``
      - The owner username
+   * - ``__url_base_path__``
+     - The URL path of the deployed tool (e.g. ``/my-project/cellxgene/``).
+       Only supported inside ``readinessProbe``.
+
+Any other dot-separated Mamplan field path (e.g. ``__deployment.auth__``) is
+also valid in ``command``, ``args``, and ``env[].value``.
 
 Example — Cellxgene uses ``__project.files__`` to pass the data files as a
 command-line argument::
@@ -270,7 +276,7 @@ Probe fields:
      - Description
    * - ``initialDelaySeconds``
      - integer
-     - ``5``
+     - ``15``
      - Seconds to wait after container start before probing.
    * - ``periodSeconds``
      - integer
@@ -278,11 +284,11 @@ Probe fields:
      - How often (in seconds) to probe.
    * - ``failureThreshold``
      - integer
-     - ``3``
+     - ``6``
      - Consecutive failures before marking not ready.
    * - ``timeoutSeconds``
      - integer
-     - ``1``
+     - ``15``
      - Seconds per probe attempt before timing out.
 
 .. _s3-persistence:
