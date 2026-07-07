@@ -1,0 +1,52 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "MaMPOK (Managing Multiple Projects On Kubernetes)"
+abstract: "A tool to deploy containerized bioinformatics tools (e.g. Cellxgene, Jupyter, RStudio, IGV) on a Kubernetes cluster backed by S3-compatible object storage."
+authors:
+  - family-names: Walter
+    given-names: Jasmin
+    affiliation: "Bioinformatics Core Unit, Max Planck Institute for Heart and Lung Research, Bad Nauheim, Germany"
+    orcid: "https://orcid.org/0000-0003-3279-5955"
+  - family-names: Knoppik
+    given-names: Noah
+    affiliation: "Bioinformatics Core Unit, Max Planck Institute for Heart and Lung Research, Bad Nauheim, Germany"
+    orcid: "https://orcid.org/0009-0008-1467-1549"
+  - family-names: Goymann
+    given-names: Philipp
+    affiliation: "Bioinformatics Core Unit, Max Planck Institute for Heart and Lung Research, Bad Nauheim, Germany"
+    orcid: "https://orcid.org/0000-0001-5640-9356"
+  - family-names: Kuenne
+    given-names: Carsten
+    affiliation: "Bioinformatics Core Unit, Max Planck Institute for Heart and Lung Research, Bad Nauheim, Germany"
+    orcid: "https://orcid.org/0000-0001-8013-5906"
+  - family-names: Looso
+    given-names: Mario
+    affiliation: "Bioinformatics Core Unit, Max Planck Institute for Heart and Lung Research, Bad Nauheim, Germany; Cardio-Pulmonary Institute (CPI), Bad Nauheim, Germany"
+    orcid: "https://orcid.org/0000-0003-1495-9530"
+version: "2.0.0"
+license: MIT
+repository-code: "https://github.com/loosolab/MAMPOK"
+url: "https://loosolab.pages.gwdg.de/software/mampok_v2/"
+doi: "10.5281/zenodo.21237697"
+keywords:
+  - Kubernetes
+  - S3
+  - omics
+  - bioinformatics
+# preferred-citation:
+#  type: article
+#  title: # TODO
+#  authors:
+#    - family-names: Walter
+#      given-names: Jasmin
+#    - family-names: Knoppik
+#      given-names: Noah
+#    - family-names: Goymann
+#      given-names: Philipp
+#    - family-names: Kuenne
+#      given-names: Carsten 
+#    - family-names: Looso
+#      given-names: Mario
+  # journal:  # TODO
+  # year: XXXX      # TODO: nach Publikation eintragen
+  # doi: "10.XXXXX" # TODO: nach Publikation eintragen
