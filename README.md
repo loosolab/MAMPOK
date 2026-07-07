@@ -2,6 +2,7 @@
 [![PyPI](https://img.shields.io/pypi/v/mampok)](https://pypi.org/project/mampok/)
 [![Documentation](https://img.shields.io/badge/documentation-online-blue)](https://loosolab.pages.gwdg.de/software/mampok_v2/)
 
+
 <p align="center">
   <img width=400 src="https://raw.githubusercontent.com/loosolab/MAMPOK/main/docs/source/images/LOGO.png">
 </p>
