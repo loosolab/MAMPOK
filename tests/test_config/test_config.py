@@ -9,7 +9,7 @@ import pytest
 
 import jsonschema
 
-from mampok.config import AuthProxyConfig, ClusterConfig, MampokConfig, S3Config
+from mampok.config import AuthProxyConfig, ClusterConfig, MampokConfig
 
 
 MINIMAL_CONFIG = {

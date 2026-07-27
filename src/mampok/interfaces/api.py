@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
@@ -366,7 +366,6 @@ class API:
                 config = self._load_config()
                 mamplates = self._load_mamplates(config)
                 mampok = create_mampok_instance(config, mamplan, mamplates)
-                # auth_users = (users or []) + (organizations or [])
                 token_url = mampok.update_auth_secret(config)
                 yield {
                     "stage": "auth_secret",

@@ -290,14 +290,23 @@ class _Printer:
             self._active = False
 
 
-def _handle_deploy_events(events: Iterator[dict], p: _Printer) -> None:
-    """Consume a mampok.deploy() event stream and print progress to the terminal."""
+def _handle_deploy_events(events: Iterator[dict], p: _Printer) -> str | None:
+    """Consume a mampok.deploy() event stream and print progress to the terminal.
+
+    Returns:
+        Token URL from the done event if auth is enabled, otherwise None.
+    """
     k8s_init_shown = False
+    token_url: str | None = None
     for event in events:
         stage = event.get("stage")
         status = event.get("status")
 
-        if stage == "s3_upload":
+        if stage == "done":
+            selfservice = event.get("selfservice", {})
+            token_url = selfservice.get("token_url")
+
+        elif stage == "s3_upload":
             file_ = event.get("file", "")
             size_human = _fmt_bytes(event.get("size_bytes", 0))
             if status == "starting":
@@ -351,6 +360,8 @@ def _handle_deploy_events(events: Iterator[dict], p: _Printer) -> None:
 
         elif stage == "k8s_cleanup":
             p.echo("  Cleaned up K8s resources after deploy error")
+
+    return token_url
 
 
 def _handle_stop_events(events: Iterator[dict], p: _Printer) -> None:
@@ -632,28 +643,6 @@ def _expand_relative_lifetime(fields: list[str], mamplan: MamplanBase) -> list[s
 # ---------------------------------------------------------------------------
 
 
-def _derive_users(mamplan: MamplanBase) -> list[str]:
-    """Derive the user list for auth secret from service.organization + service.user.
-
-    If 'public' is in organization, returns ``['public']``.
-
-    Args:
-        mamplan: Mamplan to inspect.
-
-    Returns:
-        Deduplicated list of usernames.
-    """
-    service = mamplan.data.get("service", {})
-    organization: list[str] = service.get("organization", [])
-    users: list[str] = service.get("user", [])
-
-    if "public" in organization:
-        return ["public"]
-
-    combined = list(dict.fromkeys(organization + users))
-    return combined
-
-
 # ---------------------------------------------------------------------------
 # I5b — Interactive Confirmation
 # ---------------------------------------------------------------------------
@@ -739,10 +728,16 @@ def _do_redeploy(
     p.end()
     mamplan.write(write_path)
     typer.echo(f"Stopped: {project_id}")
-    _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
+    token_url = _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
     p.end()
     mamplan.write(write_path)
     typer.echo(f"Redeployed: {project_id}")
+    if token_url:
+        typer.echo(f"Token URL: {token_url}")
+    else:
+        url = mamplan.data["deployment"].get("url", "")
+        if url:
+            typer.echo(f"URL: {url}")
 
 
 def _do_restore(
@@ -756,10 +751,16 @@ def _do_restore(
     mampok = create_mampok_instance(config, mamplan, mamplates)
     project_id = mamplan.data["project"]["project_id"]
     p = _Printer()
-    _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
+    token_url = _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
     p.end()
     mamplan.write(write_path)
     typer.echo(f"Restored: {project_id}")
+    if token_url:
+        typer.echo(f"Token URL: {token_url}")
+    else:
+        url = mamplan.data["deployment"].get("url", "")
+        if url:
+            typer.echo(f"URL: {url}")
 
 
 def _do_s3_upload(
@@ -862,13 +863,16 @@ class CLI:
         def _deploy(mamplan: MamplanBase) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             p = _Printer()
-            _handle_deploy_events(mampok.deploy(config, timeout=timeout, cleanup=not no_cleanup), p)
+            token_url = _handle_deploy_events(mampok.deploy(config, timeout=timeout, cleanup=not no_cleanup), p)
             p.end()
             mamplan.write(mamplan.source_path)
             typer.echo(f"Deployed: {mamplan.data['project']['project_id']}")
-            url = mamplan.data["deployment"].get("url", "")
-            if url:
-                typer.echo(f"URL: {url}")
+            if token_url:
+                typer.echo(f"Token URL: {token_url}")
+            else:
+                url = mamplan.data["deployment"].get("url", "")
+                if url:
+                    typer.echo(f"URL: {url}")
 
         run_with_error_tolerance(mamplans, _deploy, throw_error=throw_error)
 
@@ -1037,7 +1041,7 @@ class CLI:
         mamplan_path: Path,
         selection: list[str] | None = None,
         regex_selection: list[str] | None = None,
-        timeout: int = 300,
+        timeout: int = 900,
         throw_error: bool = False,
         yes: bool = False,
         reupload: bool = False,
@@ -1321,9 +1325,6 @@ class CLI:
     ) -> None:
         """Update the auth secret for one or more projects.
 
-        Derives the user list from service.organization + service.user.
-        If 'public' is in organization, uses ['public'].
-
         Args:
             mamplan_path: Path to Mamplan file or directory.
             throw_error: If True, disable error tolerance.
@@ -1351,46 +1352,10 @@ class CLI:
 
 
 # ---------------------------------------------------------------------------
-# Lifetime parsing helper
+# Expiring-window helpers
 # ---------------------------------------------------------------------------
 
 _RELATIVE_LIFETIME_RE = re.compile(r"^(\d+)([dwm])$", re.IGNORECASE)
-
-
-def _parse_lifetime(value: str) -> str:
-    """Parse lifetime as relative shorthand or ISO 8601 string.
-
-    Args:
-        value: Relative string like '30d', '4w', '3m', or ISO 8601 datetime.
-
-    Returns:
-        ISO 8601 UTC datetime string.
-
-    Raises:
-        typer.BadParameter: If the value is neither a valid relative format nor ISO 8601.
-    """
-    match = _RELATIVE_LIFETIME_RE.match(value)
-    if match:
-        amount = int(match.group(1))
-        unit = match.group(2).lower()
-        if unit == "d":
-            delta = timedelta(days=amount)
-        elif unit == "w":
-            delta = timedelta(weeks=amount)
-        else:  # 'm'
-            delta = timedelta(days=amount * 30)
-        return (datetime.now(timezone.utc) + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
-    try:
-        return parse_lifetime(value).strftime("%Y-%m-%dT%H:%M:%SZ")
-    except ValueError:
-        raise typer.BadParameter(
-            f"Invalid lifetime '{value}'. Use relative (30d, 4w, 3m) or ISO 8601 (2026-12-31T00:00:00Z)."
-        )
-
-
-# ---------------------------------------------------------------------------
-# Expiring-window helpers
-# ---------------------------------------------------------------------------
 
 
 def _parse_within(value: str) -> timedelta:
@@ -1456,7 +1421,7 @@ def deploy(
     config: Annotated[Path, _OPT_CONFIG],
     selection: Annotated[list[str], _OPT_SELECTION] = [],
     regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
-    timeout: Annotated[int, _OPT_TIMEOUT] = 300,
+    timeout: Annotated[int, _OPT_TIMEOUT] = 900,
     dry_run: Annotated[bool, _OPT_DRY_RUN] = False,
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
     no_cleanup: Annotated[bool, _OPT_NO_CLEANUP] = False,
@@ -1573,7 +1538,7 @@ def redeploy(
     config: Annotated[Path, _OPT_CONFIG],
     selection: Annotated[list[str], _OPT_SELECTION] = [],
     regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
-    timeout: Annotated[int, _OPT_TIMEOUT] = 300,
+    timeout: Annotated[int, _OPT_TIMEOUT] = 900,
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
     yes: Annotated[bool, _OPT_YES] = False,
     reupload: Annotated[bool, _OPT_REUPLOAD] = False,
