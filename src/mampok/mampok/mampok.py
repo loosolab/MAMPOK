@@ -589,6 +589,7 @@ class Mampok:
         resources = main.get("resources", {})
         limits = resources.get("limits", {})
         requests = resources.get("requests", {})
+        proxy_resources = main.get("proxy_resources", {})
 
         # volume: {mountPath, name} → volume_mounts + volumes (emptyDir)
         volume = main.get("volume")
@@ -679,6 +680,8 @@ class Mampok:
             container_data_s3_subpath=container_data_s3_subpath,
             auth_proxy_image=auth_proxy.auth_proxy_image if auth_proxy else "",
             proxy_port=auth_proxy.proxy_port if auth_proxy else 8080,
+            proxy_cpu=str(proxy_resources.get("cpu", "100m")),
+            proxy_memory=str(proxy_resources.get("memory", "128Mi")),
             auth_annotations=auth_proxy.auth_annotations if auth_proxy else {},
             image_pull_secrets=auth_proxy.image_pull_secrets if auth_proxy else [],
             container_data_paths=container_data_paths,

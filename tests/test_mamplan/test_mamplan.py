@@ -492,6 +492,37 @@ class TestMamplan:
         # requests fully kept from Mamplate
         assert result["main"]["resources"]["requests"]["cpu"] == "500m"
 
+    def test_merge_deep_merges_proxy_resources_dict(self, mamplan_data, mamplate_data):
+        mamplate_data["proxy_resources"] = {"cpu": "100m", "memory": "128Mi"}
+        mamplan_data["container"] = {
+            "main": {"proxy_resources": {"cpu": "250m"}}
+        }
+        mp = Mamplan(mamplan_data)
+        mt = Mamplate(mamplate_data)
+        result = mp.merge_container_config(mt, mamplan_data)
+        # cpu overridden, memory kept from Mamplate
+        assert result["main"]["proxy_resources"]["cpu"] == "250m"
+        assert result["main"]["proxy_resources"]["memory"] == "128Mi"
+
+    def test_merge_proxy_resources_partial_override_without_mamplate_base(
+        self, mamplan_data, mamplate_data
+    ):
+        mamplan_data["container"] = {
+            "main": {"proxy_resources": {"cpu": "500m"}}
+        }
+        mp = Mamplan(mamplan_data)
+        mt = Mamplate(mamplate_data)
+        result = mp.merge_container_config(mt, mamplan_data)
+        assert result["main"]["proxy_resources"] == {"cpu": "500m"}
+
+    def test_merge_no_proxy_resources_when_absent_everywhere(
+        self, mamplan_data, mamplate_data
+    ):
+        mp = Mamplan(mamplan_data)
+        mt = Mamplate(mamplate_data)
+        result = mp.merge_container_config(mt, mamplan_data)
+        assert "proxy_resources" not in result["main"]
+
     def test_merge_replaces_list_fields(self, mamplan_data, mamplate_data):
         mamplate_data["args"] = ["--default-arg"]
         mamplan_data["container"] = {"main": {"args": ["--my-file", "data.h5ad"]}}

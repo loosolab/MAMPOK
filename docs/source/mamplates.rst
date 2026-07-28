@@ -117,6 +117,12 @@ Field Reference
      - object
      - yes
      - CPU and memory resource requests and limits. See :ref:`resources`.
+   * - ``proxy_resources``
+     - object
+     - no
+     - CPU and memory for the Gatekeeper auth-proxy sidecar. Only applies
+       when ``deployment.auth: true`` in the Mamplan; ignored otherwise. See
+       :ref:`resources`.
    * - ``command``
      - array of strings
      - no
@@ -187,6 +193,21 @@ The ``resources`` field follows the Kubernetes conventions:
 * CPU can be specified as an integer/float (``2``, ``0.5``) or in millicores
   (``"500m"``).
 * Memory uses Kubernetes notation: ``"512Mi"``, ``"4Gi"``, ``"80Gi"``.
+
+``proxy_resources`` follows the same flat ``{cpu, memory}`` shape (no
+``limits``/``requests`` split, since the Gatekeeper sidecar always sets both
+to the same value), e.g.:
+
+.. code-block:: json
+
+    "proxy_resources": {
+      "cpu": "200m",
+      "memory": "256Mi"
+    }
+
+It overrides the Gatekeeper sidecar's default ``100m`` CPU / ``128Mi``
+memory and only has an effect when the Mamplan sets ``deployment.auth:
+true`` — see :doc:`advanced`.
 
 .. _template-tokens:
 
