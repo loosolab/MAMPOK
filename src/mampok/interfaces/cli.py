@@ -12,6 +12,7 @@ from typing import Annotated, Callable, Iterator, Optional
 
 import typer
 
+from mampok import __version__
 from mampok.config.config import MampokConfig
 from mampok.mamplan.base import ListAdd, ListRemove, ListReplace, MamplanBase, parse_lifetime
 from mampok.mamplan.mamplan import Mamplan
@@ -30,8 +31,23 @@ app = typer.Typer(
 )
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"mampok {__version__}")
+        raise typer.Exit()
+
+
 @app.callback()
 def _setup_logging(
+    version: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--version",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show the Mampok version and exit.",
+        ),
+    ] = None,
     log_level: Annotated[
         str,
         typer.Option("--log-level", help="Log level: DEBUG, INFO, WARNING, ERROR."),
