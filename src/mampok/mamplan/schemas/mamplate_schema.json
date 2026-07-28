@@ -118,6 +118,10 @@
             "requests": { "$ref": "#/definitions/ResourceSpec" }
           }
         },
+        "proxy_resources": {
+          "description": "CPU and memory for the Gatekeeper auth-proxy sidecar container (sets both resource limits and requests to the same value). Only takes effect when 'deployment.auth' is true in the Mamplan; has no effect otherwise.",
+          "$ref": "#/definitions/ResourceSpec"
+        },
         "volume": {
           "type": "object",
           "description": "Volume mount configuration for the container.",

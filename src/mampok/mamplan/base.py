@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from mampok.mamplan.mamplate import Mamplate
 
 # Dict fields: deep-merge in merge_container_config instead of replacing
-_DICT_FIELDS = {"resources", "volume", "downloadpaths", "annotation", "readinessProbe"}
+_DICT_FIELDS = {"resources", "proxy_resources", "volume", "downloadpaths", "annotation", "readinessProbe"}
 # List fields: fully replace in merge_container_config
 _LIST_FIELDS = {"args", "command", "env"}
 
