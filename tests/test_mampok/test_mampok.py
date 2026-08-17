@@ -1,11 +1,10 @@
 """Tests for the Mampok orchestrator."""
 
 from pathlib import Path
-from unittest.mock import ANY, MagicMock, call, patch
+from unittest.mock import ANY, patch
 
 import pytest
 
-from mampok.kubernetes.config import DeploymentConfig
 from mampok.mampok.mampok import Mampok
 
 
@@ -158,7 +157,6 @@ class TestBuildDeploymentConfig:
         config_no_host = MampokConfig(
             clusters={"BN": cluster_no_host},
             s3=mock_config.s3,
-            mamplan_repo=mock_config.mamplan_repo,
             mamplates_path=mock_config.mamplates_path,
             lifetime_days=10,
             mampok_version=">=2.0.0.dev0",
@@ -526,6 +524,52 @@ class TestBuildDeploymentConfigAuthProxy:
         assert cfg.proxy_port == 8080
         assert cfg.auth_annotations == {}
         assert cfg.image_pull_secrets == []
+
+    def test_proxy_cpu_memory_defaults_when_absent(self, mampok, mock_config_with_auth):
+        cfg = mampok._build_deployment_config(mock_config_with_auth)
+        assert cfg.proxy_cpu == "100m"
+        assert cfg.proxy_memory == "128Mi"
+
+    def test_proxy_cpu_memory_mapped_when_present(self, mampok, mock_config_with_auth):
+        mampok.mamplan.merge_container_config.return_value = {
+            "main": {
+                "image": "cellxgene:1.0",
+                "ports": 8080,
+                "resources": {
+                    "limits": {"cpu": "2", "memory": "4Gi"},
+                    "requests": {},
+                },
+                "proxy_resources": {"cpu": "500m", "memory": "1Gi"},
+                "env": [],
+                "args": [],
+                "command": [],
+            }
+        }
+        cfg = mampok._build_deployment_config(mock_config_with_auth)
+        assert cfg.proxy_cpu == "500m"
+        assert cfg.proxy_memory == "1Gi"
+
+    def test_proxy_resources_mapped_regardless_of_auth_flag(self, mampok, mock_config):
+        """proxy_cpu/proxy_memory are mapped unconditionally; auth=False neutralizes
+        their effect downstream in the builder, not at mapping time."""
+        mampok.mamplan.merge_container_config.return_value = {
+            "main": {
+                "image": "cellxgene:1.0",
+                "ports": 8080,
+                "resources": {
+                    "limits": {"cpu": "2", "memory": "4Gi"},
+                    "requests": {},
+                },
+                "proxy_resources": {"cpu": "500m", "memory": "1Gi"},
+                "env": [],
+                "args": [],
+                "command": [],
+            }
+        }
+        cfg = mampok._build_deployment_config(mock_config)
+        assert cfg.auth is False
+        assert cfg.proxy_cpu == "500m"
+        assert cfg.proxy_memory == "1Gi"
 
     def test_build_passes_mamplan_data_to_merge(self, mampok, mock_config):
         """merge_container_config wird mit mamplan.data als zweitem Argument aufgerufen."""

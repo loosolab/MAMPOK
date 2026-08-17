@@ -12,6 +12,7 @@ from typing import Annotated, Callable, Iterator, Optional
 
 import typer
 
+from mampok import __version__
 from mampok.config.config import MampokConfig
 from mampok.mamplan.base import ListAdd, ListRemove, ListReplace, MamplanBase, parse_lifetime
 from mampok.mamplan.mamplan import Mamplan
@@ -30,8 +31,23 @@ app = typer.Typer(
 )
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        typer.echo(f"mampok {__version__}")
+        raise typer.Exit()
+
+
 @app.callback()
 def _setup_logging(
+    version: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--version",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show the Mampok version and exit.",
+        ),
+    ] = None,
     log_level: Annotated[
         str,
         typer.Option("--log-level", help="Log level: DEBUG, INFO, WARNING, ERROR."),
@@ -290,14 +306,23 @@ class _Printer:
             self._active = False
 
 
-def _handle_deploy_events(events: Iterator[dict], p: _Printer) -> None:
-    """Consume a mampok.deploy() event stream and print progress to the terminal."""
+def _handle_deploy_events(events: Iterator[dict], p: _Printer) -> str | None:
+    """Consume a mampok.deploy() event stream and print progress to the terminal.
+
+    Returns:
+        Token URL from the done event if auth is enabled, otherwise None.
+    """
     k8s_init_shown = False
+    token_url: str | None = None
     for event in events:
         stage = event.get("stage")
         status = event.get("status")
 
-        if stage == "s3_upload":
+        if stage == "done":
+            selfservice = event.get("selfservice", {})
+            token_url = selfservice.get("token_url")
+
+        elif stage == "s3_upload":
             file_ = event.get("file", "")
             size_human = _fmt_bytes(event.get("size_bytes", 0))
             if status == "starting":
@@ -351,6 +376,8 @@ def _handle_deploy_events(events: Iterator[dict], p: _Printer) -> None:
 
         elif stage == "k8s_cleanup":
             p.echo("  Cleaned up K8s resources after deploy error")
+
+    return token_url
 
 
 def _handle_stop_events(events: Iterator[dict], p: _Printer) -> None:
@@ -539,8 +566,8 @@ def _mamplan_matches(
 # ---------------------------------------------------------------------------
 
 
-def _parse_edit_args(fields: list[str]) -> dict:
-    """Parse ``-e section:key:value`` strings into edit() kwargs.
+def _parse_edit_args(fields: list[str]) -> list[tuple[str, object]]:
+    """Parse ``-e section:key:value`` strings into edit() ops.
 
     Supports list-element operations:
 
@@ -553,16 +580,21 @@ def _parse_edit_args(fields: list[str]) -> dict:
     no shell quoting. Values that contain colons (e.g. URLs) are safe as long as
     they do not contain ``%``.
 
+    ``-e`` may be repeated for the same ``section:key`` (e.g. to append several
+    items to the same list) — every token is preserved and applied in order,
+    since the return value is an ordered list rather than a dict.
+
     Args:
         fields: List of edit token strings.
 
     Returns:
-        Dict with ``__``-joined keys suitable for ``mamplan.edit(**kwargs)``.
+        Ordered ``(key, value)`` pairs with ``__``-joined keys, suitable for
+        ``mamplan.edit(ops=...)``.
 
     Raises:
         ValueError: If a token has fewer than two colons.
     """
-    kwargs: dict = {}
+    ops: list[tuple[str, object]] = []
     for token in fields:
         parts = token.split(":", 3)
         if len(parts) < 3:
@@ -582,8 +614,8 @@ def _parse_edit_args(fields: list[str]) -> dict:
                 value = ListReplace(old, new)
             else:
                 value = raw_value
-        kwargs[f"{section}__{key}"] = value
-    return kwargs
+        ops.append((f"{section}__{key}", value))
+    return ops
 
 
 _RELATIVE_OFFSET_RE = re.compile(r"^\+(\d+)([dwm])$", re.IGNORECASE)
@@ -630,28 +662,6 @@ def _expand_relative_lifetime(fields: list[str], mamplan: MamplanBase) -> list[s
 # ---------------------------------------------------------------------------
 # I13 helper — derive user list from mamplan
 # ---------------------------------------------------------------------------
-
-
-def _derive_users(mamplan: MamplanBase) -> list[str]:
-    """Derive the user list for auth secret from service.organization + service.user.
-
-    If 'public' is in organization, returns ``['public']``.
-
-    Args:
-        mamplan: Mamplan to inspect.
-
-    Returns:
-        Deduplicated list of usernames.
-    """
-    service = mamplan.data.get("service", {})
-    organization: list[str] = service.get("organization", [])
-    users: list[str] = service.get("user", [])
-
-    if "public" in organization:
-        return ["public"]
-
-    combined = list(dict.fromkeys(organization + users))
-    return combined
 
 
 # ---------------------------------------------------------------------------
@@ -739,10 +749,16 @@ def _do_redeploy(
     p.end()
     mamplan.write(write_path)
     typer.echo(f"Stopped: {project_id}")
-    _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
+    token_url = _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
     p.end()
     mamplan.write(write_path)
     typer.echo(f"Redeployed: {project_id}")
+    if token_url:
+        typer.echo(f"Token URL: {token_url}")
+    else:
+        url = mamplan.data["deployment"].get("url", "")
+        if url:
+            typer.echo(f"URL: {url}")
 
 
 def _do_restore(
@@ -756,10 +772,16 @@ def _do_restore(
     mampok = create_mampok_instance(config, mamplan, mamplates)
     project_id = mamplan.data["project"]["project_id"]
     p = _Printer()
-    _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
+    token_url = _handle_deploy_events(mampok.deploy(config, timeout=timeout, reupload=reupload), p)
     p.end()
     mamplan.write(write_path)
     typer.echo(f"Restored: {project_id}")
+    if token_url:
+        typer.echo(f"Token URL: {token_url}")
+    else:
+        url = mamplan.data["deployment"].get("url", "")
+        if url:
+            typer.echo(f"URL: {url}")
 
 
 def _do_s3_upload(
@@ -862,13 +884,16 @@ class CLI:
         def _deploy(mamplan: MamplanBase) -> None:
             mampok = create_mampok_instance(config, mamplan, mamplates)
             p = _Printer()
-            _handle_deploy_events(mampok.deploy(config, timeout=timeout, cleanup=not no_cleanup), p)
+            token_url = _handle_deploy_events(mampok.deploy(config, timeout=timeout, cleanup=not no_cleanup), p)
             p.end()
             mamplan.write(mamplan.source_path)
             typer.echo(f"Deployed: {mamplan.data['project']['project_id']}")
-            url = mamplan.data["deployment"].get("url", "")
-            if url:
-                typer.echo(f"URL: {url}")
+            if token_url:
+                typer.echo(f"Token URL: {token_url}")
+            else:
+                url = mamplan.data["deployment"].get("url", "")
+                if url:
+                    typer.echo(f"URL: {url}")
 
         run_with_error_tolerance(mamplans, _deploy, throw_error=throw_error)
 
@@ -1037,7 +1062,7 @@ class CLI:
         mamplan_path: Path,
         selection: list[str] | None = None,
         regex_selection: list[str] | None = None,
-        timeout: int = 300,
+        timeout: int = 900,
         throw_error: bool = False,
         yes: bool = False,
         reupload: bool = False,
@@ -1120,8 +1145,8 @@ class CLI:
 
         def _edit(mamplan: MamplanBase) -> None:
             expanded = _expand_relative_lifetime(fields or [], mamplan)
-            kwargs = _parse_edit_args(expanded)
-            mamplan.edit(**kwargs)
+            ops = _parse_edit_args(expanded)
+            mamplan.edit(ops=ops)
             mamplan.write(mamplan.source_path)
             typer.echo(f"Saved: {mamplan.source_path}")
             if redeploy:
@@ -1321,9 +1346,6 @@ class CLI:
     ) -> None:
         """Update the auth secret for one or more projects.
 
-        Derives the user list from service.organization + service.user.
-        If 'public' is in organization, uses ['public'].
-
         Args:
             mamplan_path: Path to Mamplan file or directory.
             throw_error: If True, disable error tolerance.
@@ -1333,6 +1355,7 @@ class CLI:
         """
         mamplans, mamplates = self._load(mamplan_path)
         mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
+        mamplans = [m for m in mamplans if m.data["deployment"].get("status", False)]
 
         if not _confirm_mamplans(mamplans, "auth-updated", yes):
             return
@@ -1351,46 +1374,10 @@ class CLI:
 
 
 # ---------------------------------------------------------------------------
-# Lifetime parsing helper
+# Expiring-window helpers
 # ---------------------------------------------------------------------------
 
 _RELATIVE_LIFETIME_RE = re.compile(r"^(\d+)([dwm])$", re.IGNORECASE)
-
-
-def _parse_lifetime(value: str) -> str:
-    """Parse lifetime as relative shorthand or ISO 8601 string.
-
-    Args:
-        value: Relative string like '30d', '4w', '3m', or ISO 8601 datetime.
-
-    Returns:
-        ISO 8601 UTC datetime string.
-
-    Raises:
-        typer.BadParameter: If the value is neither a valid relative format nor ISO 8601.
-    """
-    match = _RELATIVE_LIFETIME_RE.match(value)
-    if match:
-        amount = int(match.group(1))
-        unit = match.group(2).lower()
-        if unit == "d":
-            delta = timedelta(days=amount)
-        elif unit == "w":
-            delta = timedelta(weeks=amount)
-        else:  # 'm'
-            delta = timedelta(days=amount * 30)
-        return (datetime.now(timezone.utc) + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
-    try:
-        return parse_lifetime(value).strftime("%Y-%m-%dT%H:%M:%SZ")
-    except ValueError:
-        raise typer.BadParameter(
-            f"Invalid lifetime '{value}'. Use relative (30d, 4w, 3m) or ISO 8601 (2026-12-31T00:00:00Z)."
-        )
-
-
-# ---------------------------------------------------------------------------
-# Expiring-window helpers
-# ---------------------------------------------------------------------------
 
 
 def _parse_within(value: str) -> timedelta:
@@ -1456,7 +1443,7 @@ def deploy(
     config: Annotated[Path, _OPT_CONFIG],
     selection: Annotated[list[str], _OPT_SELECTION] = [],
     regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
-    timeout: Annotated[int, _OPT_TIMEOUT] = 300,
+    timeout: Annotated[int, _OPT_TIMEOUT] = 900,
     dry_run: Annotated[bool, _OPT_DRY_RUN] = False,
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
     no_cleanup: Annotated[bool, _OPT_NO_CLEANUP] = False,
@@ -1573,7 +1560,7 @@ def redeploy(
     config: Annotated[Path, _OPT_CONFIG],
     selection: Annotated[list[str], _OPT_SELECTION] = [],
     regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
-    timeout: Annotated[int, _OPT_TIMEOUT] = 300,
+    timeout: Annotated[int, _OPT_TIMEOUT] = 900,
     throw_error: Annotated[bool, _OPT_THROW_ERROR] = False,
     yes: Annotated[bool, _OPT_YES] = False,
     reupload: Annotated[bool, _OPT_REUPLOAD] = False,

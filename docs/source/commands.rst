@@ -583,6 +583,13 @@ operations:
 The ``%`` separator marks a list-replace operation and is safe for values
 containing colons (e.g. URLs), as long as they do not contain ``%``.
 
+``-e`` can be repeated, including several times for the *same* ``section:key``
+— e.g. to append multiple items to one list in a single call::
+
+    -e service:organization:+:mpi-iem -e service:organization:+:mpi-fkm
+
+Both are applied, in the order given.
+
 .. important::
 
    The ``+Nd/w/m`` offset for ``deployment:lifetime`` is added to the

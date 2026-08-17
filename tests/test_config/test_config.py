@@ -9,7 +9,7 @@ import pytest
 
 import jsonschema
 
-from mampok.config import AuthProxyConfig, ClusterConfig, MampokConfig, S3Config
+from mampok.config import AuthProxyConfig, ClusterConfig, MampokConfig
 
 
 MINIMAL_CONFIG = {
@@ -26,7 +26,6 @@ MINIMAL_CONFIG = {
         "secret_key": "secret123",
         "secretname": "mpis",
     },
-    "mamplan_repo": "/app/BCU_REPOSITORY/",
     "mamplates_path": "/app/BCU_REPOSITORY/MaMplates",
     "lifetime_days": 10,
     "mampok_version": ">=2.0.0.dev0",
@@ -56,7 +55,6 @@ FULL_CONFIG = {
         "secretname": "mpis",
         "prefix": "mampok-cluster-bn",
     },
-    "mamplan_repo": "/app/BCU_REPOSITORY/",
     "mamplates_path": "/app/BCU_REPOSITORY/MaMplates",
     "lifetime_days": 10,
     "mampok_version": ">=2.0.0.dev0",
@@ -69,7 +67,6 @@ class TestMampokConfigFromDict:
     def test_minimal_config_valid(self):
         cfg = MampokConfig.from_dict(MINIMAL_CONFIG)
         assert cfg.lifetime_days == 10
-        assert cfg.mamplan_repo == Path("/app/BCU_REPOSITORY/")
         assert cfg.mamplates_path == Path("/app/BCU_REPOSITORY/MaMplates")
 
     def test_full_config_valid(self):
@@ -111,7 +108,6 @@ class TestMampokConfigFromDict:
 
     def test_paths_are_path_objects(self):
         cfg = MampokConfig.from_dict(MINIMAL_CONFIG)
-        assert isinstance(cfg.mamplan_repo, Path)
         assert isinstance(cfg.mamplates_path, Path)
 
     def test_missing_cluster_raises(self):

@@ -112,14 +112,12 @@ class MampokConfig:
     Args:
         clusters: Named cluster profiles (e.g. {'BN': ClusterConfig(...)}).
         s3: S3 storage credentials.
-        mamplan_repo: Path to the Mamplan repository directory.
         mamplates_path: Path to the Mamplates directory.
         lifetime_days: Default deployment lifetime in days.
     """
 
     clusters: dict[str, ClusterConfig]
     s3: S3Config
-    mamplan_repo: Path
     mamplates_path: Path
     lifetime_days: int
     mampok_version: str
@@ -240,7 +238,6 @@ class MampokConfig:
         return cls(
             clusters=clusters,
             s3=s3,
-            mamplan_repo=Path(data["mamplan_repo"]),
             mamplates_path=Path(data["mamplates_path"]),
             lifetime_days=data["lifetime_days"],
             mampok_version=data["mampok_version"],

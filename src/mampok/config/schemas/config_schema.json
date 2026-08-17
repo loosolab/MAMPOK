@@ -3,7 +3,7 @@
   "title": "MampokConfig",
   "description": "Schema for Mampok v2 configuration files.",
   "type": "object",
-  "required": ["cluster", "s3", "mamplan_repo", "mamplates_path", "lifetime_days", "mampok_version"],
+  "required": ["cluster", "s3", "mamplates_path", "lifetime_days", "mampok_version"],
   "additionalProperties": false,
   "properties": {
     "cluster": {
@@ -42,10 +42,6 @@
           "default": ""
         }
       }
-    },
-    "mamplan_repo": {
-      "type": "string",
-      "description": "Path to the Mamplan repository directory."
     },
     "mamplates_path": {
       "type": "string",

@@ -40,6 +40,13 @@ With ``auth: true``, Mampok additionally:
 
 The Gatekeeper sidecar validates incoming requests against the JWT secret.
 
+Cluster-wide Gatekeeper settings (``auth_proxy_image``, ``proxy_port``,
+``auth_annotations``, ``image_pull_secrets``) always come from
+``config.json``. The sidecar's CPU/memory, however, can optionally be
+tuned per tool via the Mamplate's ``proxy_resources`` field (see
+:doc:`mamplates`) — useful when a tool proxies large uploads/downloads
+through the Gatekeeper and needs more than the ``100m``/``128Mi`` default.
+
 **Token URL**
 
 After ``mampok deploy``, ``mampok redeploy``, ``mampok restore``, or

@@ -205,34 +205,99 @@ class TestCLIRedeployStopFirst:
         assert out.index("Stopped: test-proj") < out.index("Redeployed: test-proj")
 
 
+# ---------------------------------------------------------------------------
+# TestCLIUpdateAuthOnlyDeployed — update-auth wirkt nur auf deployte Mamplans
+# ---------------------------------------------------------------------------
+
+
+class TestCLIUpdateAuthOnlyDeployed:
+    """CLI.update_auth aktualisiert nur Mamplans mit deployment.status=True."""
+
+    def _make_mamplan(self, project_id: str, deployment: dict) -> MagicMock:
+        mp = MagicMock()
+        mp.data = {"project": {"project_id": project_id}, "deployment": deployment}
+        return mp
+
+    def test_only_deployed_mamplan_is_updated(self, tmp_path):
+        deployed = self._make_mamplan("deployed-proj", {"status": True})
+        undeployed = self._make_mamplan("undeployed-proj", {"status": False})
+
+        mock_mampok = MagicMock()
+        mock_mampok.update_auth_secret.return_value = "https://example.com/token"
+
+        cli = CLI(MagicMock())
+
+        with patch.object(cli, "_load", return_value=([deployed, undeployed], {})), \
+             patch("mampok.interfaces.cli.apply_selection", return_value=[deployed, undeployed]), \
+             patch("mampok.interfaces.cli._confirm_mamplans", return_value=True) as mock_confirm, \
+             patch("mampok.interfaces.cli.create_mampok_instance", return_value=mock_mampok):
+            cli.update_auth(tmp_path / "mamplan.yaml", yes=True)
+
+        mock_mampok.update_auth_secret.assert_called_once_with(cli.config)
+        assert mock_confirm.call_args[0][0] == [deployed]
+
+    def test_no_deployed_mamplans_updates_nothing(self, tmp_path, capsys):
+        undeployed = self._make_mamplan("undeployed-proj", {"status": False})
+        mock_mampok = MagicMock()
+        cli = CLI(MagicMock())
+
+        with patch.object(cli, "_load", return_value=([undeployed], {})), \
+             patch("mampok.interfaces.cli.apply_selection", return_value=[undeployed]), \
+             patch("mampok.interfaces.cli.create_mampok_instance", return_value=mock_mampok):
+            cli.update_auth(tmp_path / "mamplan.yaml", yes=True)
+
+        mock_mampok.update_auth_secret.assert_not_called()
+        assert "No Mamplans match" in capsys.readouterr().out
+
+    def test_missing_status_defaults_to_not_deployed(self, tmp_path):
+        mp = self._make_mamplan("no-status-proj", {})
+        mock_mampok = MagicMock()
+        cli = CLI(MagicMock())
+
+        with patch.object(cli, "_load", return_value=([mp], {})), \
+             patch("mampok.interfaces.cli.apply_selection", return_value=[mp]), \
+             patch("mampok.interfaces.cli.create_mampok_instance", return_value=mock_mampok):
+            cli.update_auth(tmp_path / "mamplan.yaml", yes=True)
+
+        mock_mampok.update_auth_secret.assert_not_called()
+
+
 class TestParseEditArgs:
     def test_scalar_token(self):
         result = _parse_edit_args(["service:owner:alice"])
-        assert result == {"service__owner": "alice"}
+        assert result == [("service__owner", "alice")]
 
     def test_list_add_token(self):
         result = _parse_edit_args(["service:analyst:+:alice"])
-        assert isinstance(result["service__analyst"], ListAdd)
-        assert result["service__analyst"].item == "alice"
+        assert len(result) == 1
+        key, value = result[0]
+        assert key == "service__analyst"
+        assert isinstance(value, ListAdd)
+        assert value.item == "alice"
 
     def test_list_remove_token(self):
         result = _parse_edit_args(["service:analyst:-:jdoe"])
-        assert isinstance(result["service__analyst"], ListRemove)
-        assert result["service__analyst"].item == "jdoe"
+        key, value = result[0]
+        assert key == "service__analyst"
+        assert isinstance(value, ListRemove)
+        assert value.item == "jdoe"
 
     def test_list_replace_token(self):
         result = _parse_edit_args(["service:analyst:old_name%new_name"])
-        assert isinstance(result["service__analyst"], ListReplace)
-        assert result["service__analyst"].old == "old_name"
-        assert result["service__analyst"].new == "new_name"
+        key, value = result[0]
+        assert key == "service__analyst"
+        assert isinstance(value, ListReplace)
+        assert value.old == "old_name"
+        assert value.new == "new_name"
 
     def test_mixed_tokens(self):
         result = _parse_edit_args([
             "service:owner:alice",
             "service:analyst:+:bob",
         ])
-        assert result["service__owner"] == "alice"
-        assert isinstance(result["service__analyst"], ListAdd)
+        assert result[0] == ("service__owner", "alice")
+        assert result[1][0] == "service__analyst"
+        assert isinstance(result[1][1], ListAdd)
 
     def test_invalid_token_raises(self):
         with pytest.raises(ValueError, match="Invalid edit token"):
@@ -240,14 +305,24 @@ class TestParseEditArgs:
 
     def test_value_with_colon_in_scalar(self):
         result = _parse_edit_args(["deployment:url:https://example.com"])
-        assert result == {"deployment__url": "https://example.com"}
+        assert result == [("deployment__url", "https://example.com")]
 
     def test_new_value_with_colon_in_replace(self):
         result = _parse_edit_args(["service:analyst:old%new:with:colons"])
-        op = result["service__analyst"]
+        key, op = result[0]
+        assert key == "service__analyst"
         assert isinstance(op, ListReplace)
         assert op.old == "old"
         assert op.new == "new:with:colons"
+
+    def test_duplicate_key_tokens_preserved(self):
+        result = _parse_edit_args([
+            "service:analyst:+:alice",
+            "service:analyst:+:bob",
+            "service:analyst:+:carol",
+        ])
+        assert [key for key, _ in result] == ["service__analyst"] * 3
+        assert [value.item for _, value in result] == ["alice", "bob", "carol"]
 
 
 class TestApplySelection:

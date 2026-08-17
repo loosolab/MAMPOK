@@ -11,7 +11,7 @@ from typing import Iterator
 from mampok.kubernetes.builder import ManifestBuilder, _S3SYNC_SIDECAR_NAME, _sync_sidecar_subpath
 from mampok.kubernetes.client import KubeClient
 from mampok.kubernetes.config import DeploymentConfig
-from mampok.kubernetes.validator import ManifestValidationError, ManifestValidator
+from mampok.kubernetes.validator import ManifestValidator
 
 logger = logging.getLogger(__name__)
 
