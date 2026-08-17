@@ -205,6 +205,63 @@ class TestCLIRedeployStopFirst:
         assert out.index("Stopped: test-proj") < out.index("Redeployed: test-proj")
 
 
+# ---------------------------------------------------------------------------
+# TestCLIUpdateAuthOnlyDeployed — update-auth wirkt nur auf deployte Mamplans
+# ---------------------------------------------------------------------------
+
+
+class TestCLIUpdateAuthOnlyDeployed:
+    """CLI.update_auth aktualisiert nur Mamplans mit deployment.status=True."""
+
+    def _make_mamplan(self, project_id: str, deployment: dict) -> MagicMock:
+        mp = MagicMock()
+        mp.data = {"project": {"project_id": project_id}, "deployment": deployment}
+        return mp
+
+    def test_only_deployed_mamplan_is_updated(self, tmp_path):
+        deployed = self._make_mamplan("deployed-proj", {"status": True})
+        undeployed = self._make_mamplan("undeployed-proj", {"status": False})
+
+        mock_mampok = MagicMock()
+        mock_mampok.update_auth_secret.return_value = "https://example.com/token"
+
+        cli = CLI(MagicMock())
+
+        with patch.object(cli, "_load", return_value=([deployed, undeployed], {})), \
+             patch("mampok.interfaces.cli.apply_selection", return_value=[deployed, undeployed]), \
+             patch("mampok.interfaces.cli._confirm_mamplans", return_value=True) as mock_confirm, \
+             patch("mampok.interfaces.cli.create_mampok_instance", return_value=mock_mampok):
+            cli.update_auth(tmp_path / "mamplan.yaml", yes=True)
+
+        mock_mampok.update_auth_secret.assert_called_once_with(cli.config)
+        assert mock_confirm.call_args[0][0] == [deployed]
+
+    def test_no_deployed_mamplans_updates_nothing(self, tmp_path, capsys):
+        undeployed = self._make_mamplan("undeployed-proj", {"status": False})
+        mock_mampok = MagicMock()
+        cli = CLI(MagicMock())
+
+        with patch.object(cli, "_load", return_value=([undeployed], {})), \
+             patch("mampok.interfaces.cli.apply_selection", return_value=[undeployed]), \
+             patch("mampok.interfaces.cli.create_mampok_instance", return_value=mock_mampok):
+            cli.update_auth(tmp_path / "mamplan.yaml", yes=True)
+
+        mock_mampok.update_auth_secret.assert_not_called()
+        assert "No Mamplans match" in capsys.readouterr().out
+
+    def test_missing_status_defaults_to_not_deployed(self, tmp_path):
+        mp = self._make_mamplan("no-status-proj", {})
+        mock_mampok = MagicMock()
+        cli = CLI(MagicMock())
+
+        with patch.object(cli, "_load", return_value=([mp], {})), \
+             patch("mampok.interfaces.cli.apply_selection", return_value=[mp]), \
+             patch("mampok.interfaces.cli.create_mampok_instance", return_value=mock_mampok):
+            cli.update_auth(tmp_path / "mamplan.yaml", yes=True)
+
+        mock_mampok.update_auth_secret.assert_not_called()
+
+
 class TestParseEditArgs:
     def test_scalar_token(self):
         result = _parse_edit_args(["service:owner:alice"])

@@ -1355,6 +1355,7 @@ class CLI:
         """
         mamplans, mamplates = self._load(mamplan_path)
         mamplans = apply_selection(mamplans, selection or [], regex_selection or [])
+        mamplans = [m for m in mamplans if m.data["deployment"].get("status", False)]
 
         if not _confirm_mamplans(mamplans, "auth-updated", yes):
             return
