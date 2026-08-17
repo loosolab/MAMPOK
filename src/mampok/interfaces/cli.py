@@ -566,8 +566,8 @@ def _mamplan_matches(
 # ---------------------------------------------------------------------------
 
 
-def _parse_edit_args(fields: list[str]) -> dict:
-    """Parse ``-e section:key:value`` strings into edit() kwargs.
+def _parse_edit_args(fields: list[str]) -> list[tuple[str, object]]:
+    """Parse ``-e section:key:value`` strings into edit() ops.
 
     Supports list-element operations:
 
@@ -580,16 +580,21 @@ def _parse_edit_args(fields: list[str]) -> dict:
     no shell quoting. Values that contain colons (e.g. URLs) are safe as long as
     they do not contain ``%``.
 
+    ``-e`` may be repeated for the same ``section:key`` (e.g. to append several
+    items to the same list) — every token is preserved and applied in order,
+    since the return value is an ordered list rather than a dict.
+
     Args:
         fields: List of edit token strings.
 
     Returns:
-        Dict with ``__``-joined keys suitable for ``mamplan.edit(**kwargs)``.
+        Ordered ``(key, value)`` pairs with ``__``-joined keys, suitable for
+        ``mamplan.edit(ops=...)``.
 
     Raises:
         ValueError: If a token has fewer than two colons.
     """
-    kwargs: dict = {}
+    ops: list[tuple[str, object]] = []
     for token in fields:
         parts = token.split(":", 3)
         if len(parts) < 3:
@@ -609,8 +614,8 @@ def _parse_edit_args(fields: list[str]) -> dict:
                 value = ListReplace(old, new)
             else:
                 value = raw_value
-        kwargs[f"{section}__{key}"] = value
-    return kwargs
+        ops.append((f"{section}__{key}", value))
+    return ops
 
 
 _RELATIVE_OFFSET_RE = re.compile(r"^\+(\d+)([dwm])$", re.IGNORECASE)
@@ -1140,8 +1145,8 @@ class CLI:
 
         def _edit(mamplan: MamplanBase) -> None:
             expanded = _expand_relative_lifetime(fields or [], mamplan)
-            kwargs = _parse_edit_args(expanded)
-            mamplan.edit(**kwargs)
+            ops = _parse_edit_args(expanded)
+            mamplan.edit(ops=ops)
             mamplan.write(mamplan.source_path)
             typer.echo(f"Saved: {mamplan.source_path}")
             if redeploy:

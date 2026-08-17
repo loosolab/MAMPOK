@@ -237,6 +237,24 @@ class TestMamplan:
         assert "alice" in mamplan.data["service"]["analyst"]
         assert "jdoe" in mamplan.data["service"]["analyst"]
 
+    def test_edit_ops_multiple_same_key(self, mamplan):
+        mamplan.edit(ops=[
+            ("service__analyst", ListAdd("alice")),
+            ("service__analyst", ListAdd("bob")),
+        ])
+        assert "alice" in mamplan.data["service"]["analyst"]
+        assert "bob" in mamplan.data["service"]["analyst"]
+        assert "jdoe" in mamplan.data["service"]["analyst"]
+
+    def test_edit_ops_combined_with_kwargs(self, mamplan):
+        mamplan.edit(service__owner="alice", ops=[
+            ("service__analyst", ListAdd("bob")),
+            ("service__analyst", ListAdd("carol")),
+        ])
+        assert mamplan.data["service"]["owner"] == "alice"
+        assert "bob" in mamplan.data["service"]["analyst"]
+        assert "carol" in mamplan.data["service"]["analyst"]
+
     def test_edit_list_remove(self, mamplan):
         mamplan.data["service"]["analyst"].append("alice")
         mamplan.edit(service__analyst=ListRemove("jdoe"))

@@ -206,7 +206,7 @@ class MamplanBase(ABC):
         with path.open("w", encoding="utf-8") as f:
             json.dump(self.data, f, indent=2, ensure_ascii=False)
 
-    def edit(self, **kwargs) -> None:
+    def edit(self, ops: list[tuple[str, object]] | None = None, **kwargs) -> None:
         """Update fields in the configuration dict and re-validate atomically.
 
         Nested keys via ``__`` notation (e.g. ``deployment__status=True``).
@@ -215,7 +215,14 @@ class MamplanBase(ABC):
         elements instead of overwriting the whole list.
         On any error the dict is rolled back to its previous state.
 
+        ``**kwargs`` cannot express more than one operation per field (Python
+        forbids duplicate keyword arguments). Pass ``ops`` instead when the
+        same field needs several operations applied in sequence, e.g. two
+        ``ListAdd`` calls appending different items to the same list.
+
         Args:
+            ops: Ordered ``(key, value)`` pairs, applied after ``kwargs`` and
+                allowing the same key to appear more than once.
             **kwargs: Fields and new values. Nested keys as ``a__b__c``.
                 Values may be plain scalars or ListAdd/ListRemove/ListReplace.
 
@@ -225,10 +232,11 @@ class MamplanBase(ABC):
                 plain scalar is assigned to a list field.
             ValueError: If ListRemove/ListReplace target an item not in the list.
         """
-        logger.debug("edit: %s", kwargs)
+        all_ops = list(kwargs.items()) + list(ops or [])
+        logger.debug("edit: %s", all_ops)
         backup = copy.deepcopy(self.data)
         try:
-            for key, value in kwargs.items():
+            for key, value in all_ops:
                 parts = key.split("__")
                 target = self.data
                 for part in parts[:-1]:
