@@ -36,3 +36,21 @@ keywords:
   - containerization
   - S3
   - research data management
+# preferred-citation:
+#  type: article
+#  title: # TODO
+#  authors:
+#    - family-names: Walter
+#      given-names: Jasmin
+#    - family-names: Knoppik
+#      given-names: Noah
+#    - family-names: Goymann
+#      given-names: Philipp
+#    - family-names: Kuenne
+#      given-names: Carsten 
+#    - family-names: Looso
+#      given-names: Mario
+  # journal:  # TODO
+  # year: XXXX      # TODO: nach Publikation eintragen
+  # doi: "10.XXXXX" # TODO: nach Publikation eintragen
+  
