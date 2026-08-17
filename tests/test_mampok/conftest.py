@@ -97,7 +97,6 @@ def mock_config():
     return MampokConfig(
         clusters={"BN": cluster},
         s3=s3,
-        mamplan_repo=__import__("pathlib").Path("/app/BCU_REPOSITORY/"),
         mamplates_path=__import__("pathlib").Path("/app/BCU_REPOSITORY/MaMplates"),
         lifetime_days=10,
         mampok_version=">=2.0.0.dev0",
@@ -126,7 +125,6 @@ def mock_config_with_auth():
     return MampokConfig(
         clusters={"BN": cluster},
         s3=s3,
-        mamplan_repo=__import__("pathlib").Path("/app/BCU_REPOSITORY/"),
         mamplates_path=__import__("pathlib").Path("/app/BCU_REPOSITORY/MaMplates"),
         lifetime_days=10,
         mampok_version=">=2.0.0.dev0",

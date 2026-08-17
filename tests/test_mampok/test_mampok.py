@@ -157,7 +157,6 @@ class TestBuildDeploymentConfig:
         config_no_host = MampokConfig(
             clusters={"BN": cluster_no_host},
             s3=mock_config.s3,
-            mamplan_repo=mock_config.mamplan_repo,
             mamplates_path=mock_config.mamplates_path,
             lifetime_days=10,
             mampok_version=">=2.0.0.dev0",
