@@ -1,12 +1,13 @@
-<p align="center">
-  <img width=400 src="https://raw.githubusercontent.com/loosolab/MAMPOK/main/docs/source/images/LOGO.png">
-</p>
-
 [![DOI](https://img.shields.io/badge/Zenodo-10.5281%2Fzenodo.21237697-blue)](https://doi.org/10.5281/zenodo.21237697)
 [![Release](https://img.shields.io/github/v/release/loosolab/MAMPOK)](https://github.com/loosolab/MAMPOK/releases)
 [![PyPI](https://img.shields.io/pypi/v/mampok)](https://pypi.org/project/mampok/)
 [![Documentation](https://img.shields.io/badge/documentation-online-blue)](https://loosolab.pages.gwdg.de/software/mampok_v2/)
 [![FAIR checklist badge](https://img.shields.io/badge/Software-green?label=FAIR)](https://fairsoftwarechecklist.net/v0.2?f=31&a=32113&i=32100&r=133)
+
+
+<p align="center">
+  <img width=400 src="https://raw.githubusercontent.com/loosolab/MAMPOK/main/docs/source/images/LOGO.png">
+</p>
 
 **Mampok** (**Ma**naging **M**ultiple **P**rojects **O**n **K**ubernetes) deploys
 containerized bioinformatics tools — Cellxgene, Jupyter, RStudio, IGV, and more — on a
