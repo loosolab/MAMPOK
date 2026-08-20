@@ -74,7 +74,7 @@ class DeploymentConfig:
     proxy_port: int = 8080
     """Port on which the Gatekeeper listens."""
 
-    proxy_cpu: str = "100m"
+    proxy_cpu: str = "1000m"
     """CPU limit for the Gatekeeper sidecar."""
 
     proxy_memory: str = "128Mi"
