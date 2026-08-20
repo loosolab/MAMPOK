@@ -144,8 +144,9 @@ def load_mamplans(path: Path) -> list[MamplanBase]:
     if path.is_file():
         return [_load_single_mamplan(path)]
 
-    # *-mamplan.json matches both *-mamplan.json and *-shmamplan.json via glob wildcard
-    mamplan_files = sorted(path.rglob("*-mamplan.json"))
+    # *-mamplan.json does NOT match *-shmamplan.json (the char before "mamplan.json"
+    # is "h", not "-"), so both patterns must be globbed explicitly.
+    mamplan_files = sorted(set(path.rglob("*-mamplan.json")) | set(path.rglob("*-shmamplan.json")))
     if not mamplan_files:
         typer.echo(f"No mamplan files found in: {path}")
         return []

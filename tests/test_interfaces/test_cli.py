@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mampok.interfaces.cli import CLI, _confirm_mamplans, _expand_relative_lifetime, _mamplan_expiry_info, _parse_edit_args, _warn_unknown_selection_keys, apply_selection
+from mampok.interfaces.cli import CLI, _confirm_mamplans, _expand_relative_lifetime, _mamplan_expiry_info, _parse_edit_args, _warn_unknown_selection_keys, apply_selection, load_mamplans
 from mampok.mamplan.base import ListAdd, ListRemove, ListReplace
+from mampok.mamplan.mamplan import Mamplan
+from mampok.mamplan.shmamplan import SHMamplan
 
 
 # ---------------------------------------------------------------------------
@@ -412,3 +415,75 @@ class TestConfirmMamplans:
         _confirm_mamplans([], "edited")
         out = capsys.readouterr().out
         assert "No Mamplans match" in out
+
+
+# ---------------------------------------------------------------------------
+# TestLoadMamplans — directory scan must pick up both Mamplan and SHMamplan
+# ---------------------------------------------------------------------------
+
+
+MINIMAL_MAMPLAN = {
+    "project": {
+        "project_id": "my-project",
+        "tool": "cellxgene",
+        "files": ["data.h5ad"],
+        "creation_date": "2026-01-15T12:00:00Z",
+    },
+    "deployment": {
+        "cluster": "BN",
+        "status": True,
+        "auth": False,
+        "bucket": "mampok-my-project-cellxgene",
+        "lifetime": "2020-01-01T00:00:00Z",
+        "url": "",
+    },
+    "service": {
+        "analyst": ["jdoe"],
+        "datatype": ["scRNA-seq"],
+        "download_allowed": False,
+        "metadata": [],
+        "organization": ["bioinfo"],
+        "owner": "jdoe",
+        "user": ["jdoe"],
+    },
+}
+
+MINIMAL_SHMAMPLAN = {
+    "project": {
+        "project_id": "jdoe-cellxgene",
+        "tool": "cellxgene",
+    },
+    "deployment": {
+        "cluster": "BN",
+        "bucket": "mampok-jdoe-cellxgene",
+        "lifetime": "2020-01-01T00:00:00Z",
+        "status": True,
+        "url": "",
+    },
+    "service": {
+        "owner": "jdoe",
+    },
+}
+
+
+class TestLoadMamplans:
+    """load_mamplans() must find both Mamplan and SHMamplan files in a directory."""
+
+    def test_directory_scan_finds_both_mamplan_and_shmamplan(self, tmp_path):
+        (tmp_path / "my-project-mamplan.json").write_text(json.dumps(MINIMAL_MAMPLAN))
+        (tmp_path / "jdoe-cellxgene-shmamplan.json").write_text(json.dumps(MINIMAL_SHMAMPLAN))
+
+        loaded = load_mamplans(tmp_path)
+
+        assert len(loaded) == 2
+        by_id = {m.data["project"]["project_id"]: m for m in loaded}
+        assert isinstance(by_id["my-project"], Mamplan)
+        assert isinstance(by_id["jdoe-cellxgene"], SHMamplan)
+
+    def test_expired_shmamplan_is_included_via_directory_scan(self, tmp_path):
+        (tmp_path / "jdoe-cellxgene-shmamplan.json").write_text(json.dumps(MINIMAL_SHMAMPLAN))
+
+        loaded = load_mamplans(tmp_path)
+
+        assert len(loaded) == 1
+        assert loaded[0].is_expired is True

@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1] - 2026-08-20
+
+### Changed
+
+- Pinned the `jsonschema` dependency to `>=4.18`.
+
+### Fixed
+
+- Directory-based Mamplan loading (used by `deploy`, `restore`, `list-expired`, and the Python API) now correctly picks up `*-shmamplan.json` files, which were previously skipped when scanning a directory.
+
+[3.1.1]: https://gitlab.gwdg.de/loosolab/software/mampok_v2/-/compare/v3.1.0...v3.1.1
+
 ## [3.1.0] - 2026-08-17
 
 ### Breaking
