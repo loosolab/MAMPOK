@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.2] - 2026-08-26
+
+### Added
+
+- `ListSet` sentinel for `MamplanBase.edit()`, to replace an entire list field in one call instead of editing it element by element.
+
+### Fixed
+
+- `API.edit_sharing()` no longer raises `TypeError: Field 'user' is a list` when updating `service.user`/`service.organization`. It now uses the new `ListSet` sentinel to replace the sharing lists, instead of passing a plain list to `edit()`, which `MamplanBase.edit()` rejects.
+
+[3.1.2]: https://gitlab.gwdg.de/loosolab/software/mampok_v2/-/compare/v3.1.1...v3.1.2
+
 ## [3.1.1] - 2026-08-20
 
 ### Changed
