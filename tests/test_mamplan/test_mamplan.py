@@ -7,7 +7,7 @@ import pytest
 import jsonschema
 
 from mampok.mamplan import Mamplan, Mamplate
-from mampok.mamplan.base import ListAdd, ListRemove, ListReplace
+from mampok.mamplan.base import ListAdd, ListRemove, ListReplace, ListSet
 
 
 # ---------------------------------------------------------------------------
@@ -294,6 +294,16 @@ class TestMamplan:
         original = copy.deepcopy(mamplan.data)
         with pytest.raises(TypeError, match="is not a list"):
             mamplan.edit(service__owner=ListRemove("jdoe"))
+        assert mamplan.data == original
+
+    def test_edit_list_set(self, mamplan):
+        mamplan.edit(service__analyst=ListSet(["alice", "bob"]))
+        assert mamplan.data["service"]["analyst"] == ["alice", "bob"]
+
+    def test_edit_list_set_on_scalar(self, mamplan):
+        original = copy.deepcopy(mamplan.data)
+        with pytest.raises(TypeError, match="is not a list"):
+            mamplan.edit(deployment__auth=ListSet(["a"]))
         assert mamplan.data == original
 
     def test_edit_scalar_on_list(self, mamplan):

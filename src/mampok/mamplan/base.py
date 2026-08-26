@@ -46,6 +46,13 @@ class ListReplace:
         self.new = new
 
 
+class ListSet:
+    """Sentinel for edit(): replace an entire list field with a new list."""
+
+    def __init__(self, items: list) -> None:
+        self.items = items
+
+
 def parse_lifetime(value: str) -> datetime:
     """Parse an ISO 8601 lifetime string to a timezone-aware UTC datetime.
 
@@ -212,7 +219,8 @@ class MamplanBase(ABC):
         Nested keys via ``__`` notation (e.g. ``deployment__status=True``).
         List fields accept :class:`ListAdd`, :class:`ListRemove`, or
         :class:`ListReplace` as values to add, remove, or replace individual
-        elements instead of overwriting the whole list.
+        elements instead of overwriting the whole list. Use :class:`ListSet`
+        to replace the whole list at once.
         On any error the dict is rolled back to its previous state.
 
         ``**kwargs`` cannot express more than one operation per field (Python
@@ -224,7 +232,7 @@ class MamplanBase(ABC):
             ops: Ordered ``(key, value)`` pairs, applied after ``kwargs`` and
                 allowing the same key to appear more than once.
             **kwargs: Fields and new values. Nested keys as ``a__b__c``.
-                Values may be plain scalars or ListAdd/ListRemove/ListReplace.
+                Values may be plain scalars or ListAdd/ListRemove/ListReplace/ListSet.
 
         Raises:
             jsonschema.ValidationError: If the result violates the schema.
@@ -266,6 +274,12 @@ class MamplanBase(ABC):
                         )
                     lst = target[last_key]
                     lst[lst.index(value.old)] = value.new
+                elif isinstance(value, ListSet):
+                    if not isinstance(target.get(last_key), list):
+                        raise TypeError(
+                            f"Field '{last_key}' is not a list — cannot set list."
+                        )
+                    target[last_key] = list(value.items)
                 else:
                     if isinstance(target.get(last_key), list):
                         raise TypeError(

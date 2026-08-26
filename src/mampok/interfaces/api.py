@@ -10,7 +10,7 @@ from typing import Iterator
 from mampok.config.config import MampokConfig
 from mampok.interfaces.cli import create_mampok_instance
 from mampok.kubernetes.builder import _sync_sidecar_subpath
-from mampok.mamplan.base import MamplanBase, parse_lifetime
+from mampok.mamplan.base import ListSet, MamplanBase, parse_lifetime
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.mamplate import Mamplate
 from mampok.mamplan.metadata import parse_metadata_files
@@ -351,9 +351,9 @@ class API:
 
         # Phase 1: update service (MamplanBase.edit() is atomic — rolls back on ValidationError)
         if users is not None:
-            mamplan.edit(service__user=users)
+            mamplan.edit(service__user=ListSet(users))
         if organizations is not None:
-            mamplan.edit(service__organization=organizations)
+            mamplan.edit(service__organization=ListSet(organizations))
         mamplan.write(mamplan_path)
         yield {"stage": "edit_sharing", "status": "saved", "project_id": project_id}
 
