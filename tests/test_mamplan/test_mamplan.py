@@ -217,6 +217,13 @@ class TestMamplan:
         assert mamplan.data["deployment"]["status"] is True
         assert mamplan.data["deployment"]["auth"] is True
 
+    def test_edit_optional_schema_field_not_yet_present(self, mamplan):
+        # project_size is optional in the schema and absent from MINIMAL_MAMPLAN —
+        # edit() must allow setting it, not just fields already present in the dict.
+        assert "project_size" not in mamplan.data["project"]
+        mamplan.edit(project__project_size=1024)
+        assert mamplan.data["project"]["project_size"] == 1024
+
     def test_edit_invalid_rolls_back(self, mamplan):
         original_status = mamplan.data["deployment"]["status"]
         with pytest.raises(jsonschema.ValidationError):
