@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Loading a config file that doesn't exist, or isn't valid JSON (e.g. an old v1 YAML config), now prints a one-line error instead of a raw traceback.
 
-[3.2.0]: https://gitlab.gwdg.de/loosolab/software/mampok_v2/-/compare/v3.1.1...v3.2.0
+[3.2.0]: https://gitlab.gwdg.de/loosolab/software/mampok_v2/-/compare/v3.1.3...v3.2.0
 
 
 ## [3.1.3] - 2026-09-02
