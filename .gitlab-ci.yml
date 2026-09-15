@@ -2,7 +2,22 @@ variables:
   GIT_SUBMODULE_STRATEGY: normal
 
 stages:          # List of stages for jobs, and their order of execution
+  - test
   - pages
+
+# Run the test suite: on every merge request (fast feedback before merge),
+# and on every push to main/unstable directly (merge commits, hotfixes).
+run-tests:
+  image: python:3.12
+  stage: test
+  script:
+    - pip install --upgrade pip
+    - pip install -e ".[dev]"
+    - pytest
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "unstable"
 
 # Build documentation
 build-pages:

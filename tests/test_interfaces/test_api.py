@@ -253,7 +253,7 @@ class TestAPIEditLifetime:
 
             api.edit_lifetime(mamplan_file, "2025-06-01T00:00:00")
 
-            mock_mp.edit.assert_called_once_with(deployment__lifetime="2025-06-01T00:00:00")
+            mock_mp.edit.assert_called_once_with(deployment__lifetime="2025-06-01T00:00:00Z")
             mock_mp.write.assert_called_once_with(mamplan_file)
 
 
@@ -393,13 +393,15 @@ class TestAPIProjectInfo:
         assert proj["owner"] == "alice"
         assert proj["lifetime"] == datetime(2099, 12, 31, 0, 0, tzinfo=timezone.utc)
 
-    def test_includes_status_from_kube(self, patched_api, tmp_path):
+    def test_status_reflects_declared_deployment_status(self, patched_api, tmp_path):
+        """status comes from the Mamplan's own deployment.status — no live cluster check."""
         api, mamplan, mampok = patched_api
         mamplan_file = tmp_path / "test-proj-mamplan.json"
         mamplan_file.touch()
-        mampok.check_status.return_value["actually_deployed"] = True
+        mamplan.data["deployment"]["status"] = True
         result = api.project_info(mamplan_file)
         assert result["projects"]["test-proj"]["status"] is True
+        mampok.check_status.assert_not_called()
 
     def test_no_output_file_by_default(self, patched_api, tmp_path):
         api, mamplan, mampok = patched_api
