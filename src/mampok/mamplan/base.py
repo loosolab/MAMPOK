@@ -247,28 +247,33 @@ class MamplanBase(ABC):
             for key, value in all_ops:
                 parts = key.split("__")
                 target = self.data
+                schema_target = self.schema.get("properties", {})
                 for part in parts[:-1]:
                     target = target[part]
+                    schema_target = schema_target.get(part, {}).get("properties", {})
                 last_key = parts[-1]
-                if last_key not in target:
-                    valid = ", ".join(sorted(target.keys()))
+                valid_keys = set(schema_target.keys()) | set(target.keys())
+                if last_key not in valid_keys:
+                    valid = ", ".join(sorted(valid_keys))
                     raise KeyError(
                         f"Unknown field '{last_key}'. Valid fields in this section: {valid}"
                     )
                 if isinstance(value, ListAdd):
+                    if last_key not in target:
+                        target[last_key] = []
                     if not isinstance(target[last_key], list):
                         raise TypeError(
                             f"Field '{last_key}' is not a list — cannot add elements."
                         )
                     target[last_key].append(value.item)
                 elif isinstance(value, ListRemove):
-                    if not isinstance(target[last_key], list):
+                    if not isinstance(target.get(last_key), list):
                         raise TypeError(
                             f"Field '{last_key}' is not a list — cannot remove elements."
                         )
                     target[last_key].remove(value.item)
                 elif isinstance(value, ListReplace):
-                    if not isinstance(target[last_key], list):
+                    if not isinstance(target.get(last_key), list):
                         raise TypeError(
                             f"Field '{last_key}' is not a list — cannot replace elements."
                         )
