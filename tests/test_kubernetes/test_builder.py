@@ -182,10 +182,10 @@ class TestBuildDeployment:
         assert container["volumeMounts"] == [{"name": "vol", "mountPath": "/mnt"}]
         assert container["readinessProbe"] == {
             "tcpSocket": {"port": 8080},
-            "initialDelaySeconds": 5,
+            "initialDelaySeconds": 15,
             "periodSeconds": 10,
-            "failureThreshold": 3,
-            "timeoutSeconds": 10,
+            "failureThreshold": 6,
+            "timeoutSeconds": 15,
         }
         assert dep["spec"]["template"]["spec"]["volumes"] == [
             {"name": "vol", "emptyDir": {}}
@@ -201,10 +201,10 @@ class TestBuildDeployment:
         container = dep["spec"]["template"]["spec"]["containers"][0]
         assert container["readinessProbe"] == {
             "httpGet": {"path": "/ns/myproject/tool/", "port": 8888},
-            "initialDelaySeconds": 5,
+            "initialDelaySeconds": 15,
             "periodSeconds": 10,
-            "failureThreshold": 3,
-            "timeoutSeconds": 10,
+            "failureThreshold": 6,
+            "timeoutSeconds": 15,
         }
 
     def test_readiness_probe_default_timeout_applied(self, make_config):
@@ -214,7 +214,7 @@ class TestBuildDeployment:
         )
         dep = builder.build_deployment(cfg)
         container = dep["spec"]["template"]["spec"]["containers"][0]
-        assert container["readinessProbe"]["timeoutSeconds"] == 10
+        assert container["readinessProbe"]["timeoutSeconds"] == 15
 
     def test_readiness_probe_explicit_timeout_preserved(self, make_config):
         builder = ManifestBuilder()

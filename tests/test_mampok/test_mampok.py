@@ -464,30 +464,36 @@ class TestUpdateAuthSecret:
         return json.loads(base64.b64decode(manifest["data"]["auth-proxy.json"]).decode())
 
     def test_includes_users_in_auth_config(self, mampok, mock_config, mock_kube):
-        mampok.update_auth_secret(["alice", "bob"], mock_config)
+        mampok.mamplan.data["service"]["user"] = ["alice", "bob"]
+        mampok.update_auth_secret(mock_config)
         mock_kube._kube.apply.assert_called_once()
         data = self._get_auth_proxy_data(mock_kube)
         assert "alice" in data["users"]
         assert "bob" in data["users"]
 
     def test_includes_secret_key_in_auth_config(self, mampok, mock_config, mock_kube):
-        mampok.update_auth_secret(["alice"], mock_config)
+        mampok.mamplan.data["service"]["user"] = ["alice"]
+        mampok.update_auth_secret(mock_config)
         data = self._get_auth_proxy_data(mock_kube)
         assert "secret_key" in data
         assert len(data["secret_key"]) >= 16
 
-    def test_public_user_single_entry(self, mampok, mock_config, mock_kube):
-        mampok.update_auth_secret(["public"], mock_config)
+    def test_public_owner_passed_through_unchanged(self, mampok, mock_config, mock_kube):
+        """owner="_public" is passed through as-is; consumers check the owner field directly."""
+        mampok.mamplan.data["service"]["owner"] = "_public"
+        mampok.update_auth_secret(mock_config)
         data = self._get_auth_proxy_data(mock_kube)
-        assert data["users"] == ["public"]
+        assert data["owner"] == "_public"
+        assert data["groups"] == []
 
     def test_applies_auth_secret_manifest(self, mampok, mock_config, mock_kube):
-        mampok.update_auth_secret(["alice"], mock_config)
+        mampok.mamplan.data["service"]["user"] = ["alice"]
+        mampok.update_auth_secret(mock_config)
         manifest = mock_kube._kube.apply.call_args[0][0]
         assert manifest["kind"] == "Secret"
 
     def test_secret_name_uses_project_and_tool(self, mampok, mock_config, mock_kube):
-        mampok.update_auth_secret(["alice"], mock_config)
+        mampok.update_auth_secret(mock_config)
         manifest = mock_kube._kube.apply.call_args[0][0]
         assert manifest["metadata"]["name"] == "test-proj-sc-cellxgene-auth"
 

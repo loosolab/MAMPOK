@@ -8,11 +8,80 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import typer
 
-from mampok.interfaces.cli import CLI, _confirm_mamplans, _expand_relative_lifetime, _mamplan_expiry_info, _parse_edit_args, _warn_unknown_selection_keys, apply_selection, load_mamplans
+from mampok.interfaces.cli import CLI, _confirm_mamplans, _expand_relative_lifetime, _load_config, _mamplan_expiry_info, _parse_edit_args, _warn_unknown_selection_keys, apply_selection, load_mamplans
 from mampok.mamplan.base import ListAdd, ListRemove, ListReplace
 from mampok.mamplan.mamplan import Mamplan
 from mampok.mamplan.shmamplan import SHMamplan
+
+MINIMAL_CONFIG = {
+    "cluster": {
+        "MY_CLUSTER": {
+            "host": "cluster.example.com",
+            "namespace": "mampok",
+            "kubeconfig_path": "/app/my_kube_config",
+        }
+    },
+    "s3": {
+        "endpoint": "https://s3.example.com",
+        "access_key": "mampok-service",
+        "secret_key": "secret123",
+        "secretname": "mampok-secrets",
+    },
+    "mamplates_path": "/app/mamplates",
+    "lifetime_days": 10,
+    "mampok_version": ">=3.0.0",
+}
+
+
+# ---------------------------------------------------------------------------
+# TestLoadConfig — friendly config-loading errors (Issue 1)
+# ---------------------------------------------------------------------------
+
+
+class TestLoadConfig:
+    """_load_config() must turn config-loading exceptions into readable errors."""
+
+    def test_loads_valid_config(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps(MINIMAL_CONFIG))
+
+        cfg = _load_config(config_path)
+
+        assert "MY_CLUSTER" in cfg.clusters
+
+    def test_missing_file_exits_with_message(self, tmp_path, capsys):
+        config_path = tmp_path / "does-not-exist.json"
+
+        with pytest.raises(typer.Exit) as exc_info:
+            _load_config(config_path)
+
+        assert exc_info.value.exit_code == 1
+        assert "not found" in capsys.readouterr().err
+
+    def test_invalid_json_exits_with_message(self, tmp_path, capsys):
+        config_path = tmp_path / "config.yml"
+        config_path.write_text("cluster:\n  MY_CLUSTER:\n    host: example.com\n")
+
+        with pytest.raises(typer.Exit) as exc_info:
+            _load_config(config_path)
+
+        assert exc_info.value.exit_code == 1
+        err = capsys.readouterr().err
+        assert "not valid JSON" in err
+        assert "Only JSON" in err
+
+    def test_schema_violation_exits_with_message(self, tmp_path, capsys):
+        broken = {k: v for k, v in MINIMAL_CONFIG.items() if k != "cluster"}
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps(broken))
+
+        with pytest.raises(typer.Exit) as exc_info:
+            _load_config(config_path)
+
+        assert exc_info.value.exit_code == 1
+        assert "Config file invalid" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +214,7 @@ class TestCLIRedeployStopFirst:
 
     def _make_mamplan(self, project_id: str = "test-proj", tmp_path: Path | None = None) -> MagicMock:
         mp = MagicMock()
-        mp.data = {"project": {"project_id": project_id}}
+        mp.data = {"project": {"project_id": project_id}, "deployment": {"url": ""}}
         mp.source_path = (tmp_path / f"{project_id}.yaml") if tmp_path else Path("/tmp/test.yaml")
         return mp
 
@@ -487,3 +556,25 @@ class TestLoadMamplans:
 
         assert len(loaded) == 1
         assert loaded[0].is_expired is True
+
+    def test_warns_about_misnamed_mamplan_like_file(self, tmp_path, capsys):
+        """A file that looks like a mamplan but has the wrong suffix is skipped with a warning."""
+        (tmp_path / "my-project-mamplan.json").write_text(json.dumps(MINIMAL_MAMPLAN))
+        (tmp_path / "igv_MaMPlan.json").write_text(json.dumps(MINIMAL_MAMPLAN))
+
+        loaded = load_mamplans(tmp_path)
+
+        assert len(loaded) == 1
+        err = capsys.readouterr().err
+        assert "igv_MaMPlan.json" in err
+        assert "naming convention" in err
+
+    def test_no_warning_for_unrelated_json_files(self, tmp_path, capsys):
+        """Unrelated *.json files (e.g. pipeline outputs) must not trigger a warning."""
+        (tmp_path / "my-project-mamplan.json").write_text(json.dumps(MINIMAL_MAMPLAN))
+        (tmp_path / "multiqc_report.json").write_text("{}")
+
+        loaded = load_mamplans(tmp_path)
+
+        assert len(loaded) == 1
+        assert capsys.readouterr().err == ""
