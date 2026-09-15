@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-09-15
+
+### Added
+
+- `--help` text for `-s`/`--selection`, `-rs`/`--regex-select`, `--within`, `-e`/`--edit`, and `--metadata-file` now includes a concrete example (`Ex: ...`) instead of only the abstract format.
+- Loading a Mamplan directory now warns about `.json` files that look like a mamplan (name contains "mamplan") but don't match the required `*-mamplan.json`/`*-shmamplan.json` naming convention, instead of silently skipping them.
+- The `commands` documentation page now lists and explains `--version`, `--install-completion`, `--show-completion`, and `--help`/`-h`, and clarifies that these belong to the root `mampok` command rather than to a subcommand. `create-mamplan --files` now links to the Mamplate docs describing which tools consume it.
+
+### Changed
+
+- A CI pipeline (GitLab CI) now runs the test suite on every merge request and on every push to `main`/`unstable`.
+
+### Fixed
+
+- Loading a config file that doesn't exist, or isn't valid JSON (e.g. an old v1 YAML config), now prints a one-line error instead of a raw traceback.
+
+[3.2.0]: https://gitlab.gwdg.de/loosolab/software/mampok_v2/-/compare/v3.1.1...v3.2.0
+
 ## [3.1.1] - 2026-08-20
 
 ### Changed

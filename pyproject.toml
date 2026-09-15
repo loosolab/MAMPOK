@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mampok"
-version = "3.1.1"
+version = "3.2.0"
 description = "Kubernetes deployment manager for bioinformatics tools"
 authors = [
   { name="Jasmin Walter", email="Jasmin.Walter@mpi-bn.mpg.de" },
