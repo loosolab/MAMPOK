@@ -31,6 +31,45 @@ These options are available on all commands:
      - off
      - Shorthand for ``--log-level DEBUG``.
 
+.. note::
+
+   ``--log-level``, ``--debug``, ``--version``, and the completion options
+   below belong to the root ``mampok`` command, not to the subcommand — pass
+   them *before* the subcommand name, e.g.
+   ``mampok --log-level DEBUG deploy ...``. ``--config`` and the selection
+   options belong to the subcommand instead, e.g.
+   ``mampok deploy ... --config /path/to/config.json``.
+
+The root command additionally provides:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 15 45
+
+   * - Option
+     - Default
+     - Description
+   * - ``--version``
+     - —
+     - Print the installed Mampok version and exit.
+   * - ``--install-completion``
+     - —
+     - Install shell tab-completion for ``mampok`` (bash/zsh/fish/PowerShell),
+       so e.g. ``mampok dep<TAB>`` completes to ``mampok deploy``. Added
+       automatically by the underlying Typer framework — see `Typer:
+       User-friendly CLI apps
+       <https://typer.tiangolo.com/features/#user-friendly-cli-apps>`_.
+   * - ``--show-completion``
+     - —
+     - Print the shell completion script without installing it, e.g. to
+       inspect it or wire it into your own dotfiles manually. Also a Typer
+       built-in — see `Typer: User-friendly CLI apps
+       <https://typer.tiangolo.com/features/#user-friendly-cli-apps>`_.
+   * - ``--help`` / ``-h``
+     - —
+     - Show help and exit. Works both on the root command (``mampok --help``)
+       and on any subcommand (``mampok deploy --help``).
+
 Selection options (available on most commands — see :doc:`selection`):
 
 .. list-table::
@@ -676,7 +715,9 @@ exists in config before writing the file.
      - Data type (repeatable). *Required unless in ``--metadata-file``.
    * - ``--files TEXT``
      - no
-     - Files to upload (repeatable).
+     - Files to upload (repeatable). Whether a tool needs any files here (and
+       what it does with them) depends on its Mamplate — see
+       :ref:`template-tokens`.
    * - ``--analyst TEXT``
      - no
      - Analyst usernames (repeatable).

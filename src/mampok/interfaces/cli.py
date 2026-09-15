@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import sys
@@ -10,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Callable, Iterator, Optional
 
+import jsonschema
 import typer
 
 from mampok import __version__
@@ -66,6 +68,36 @@ def _setup_logging(
     )
 
 # ---------------------------------------------------------------------------
+# Config loading
+# ---------------------------------------------------------------------------
+
+
+def _load_config(path: Path) -> MampokConfig:
+    """Load a MampokConfig from a JSON file, or exit with a readable error.
+
+    Turns the exceptions ``MampokConfig.from_file`` raises for the common
+    user mistakes (missing file, not valid JSON, schema mismatch) into a
+    one-line message instead of a raw traceback.
+    """
+    try:
+        return MampokConfig.from_file(path.expanduser())
+    except FileNotFoundError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1) from e
+    except json.JSONDecodeError as e:
+        typer.echo(
+            f"Error: Config file is not valid JSON: {path} ({e}). "
+            "Only JSON config files are supported.",
+            err=True,
+        )
+        raise typer.Exit(1) from e
+    except jsonschema.ValidationError as e:
+        location = "/".join(str(p) for p in e.path) or "<root>"
+        typer.echo(f"Error: Config file invalid at '{location}': {e.message}", err=True)
+        raise typer.Exit(1) from e
+
+
+# ---------------------------------------------------------------------------
 # Shared Typer option definitions
 # ---------------------------------------------------------------------------
 
@@ -76,12 +108,14 @@ _OPT_CONFIG = typer.Option(
 _OPT_SELECTION = typer.Option(
     "-s",
     "--selection",
-    help="Filter: section:key:value (repeatable, AND-combined).",
+    help="Filter: section:🔑:value (repeatable, AND-combined). "
+    "Ex: -s project:project_id:my-project",
 )
 _OPT_REGEX_SELECTION = typer.Option(
     "-rs",
     "--regex-select",
-    help="Regex filter: section:key:pattern (repeatable, AND-combined).",
+    help="Regex filter: section:🔑:pattern (repeatable, AND-combined). "
+    "Ex: -rs project:project_id:my-project-.*",
 )
 _OPT_TIMEOUT = typer.Option(
     "--timeout",
@@ -123,6 +157,9 @@ def _load_single_mamplan(path: Path) -> MamplanBase:
     return Mamplan.read_in(path)
 
 
+_MAMPLAN_LIKE_RE = re.compile(r"mamplan", re.IGNORECASE)
+
+
 def load_mamplans(path: Path) -> list[MamplanBase]:
     """Load one or more Mamplans or SHMamplans from a file or directory.
 
@@ -147,6 +184,23 @@ def load_mamplans(path: Path) -> list[MamplanBase]:
     # *-mamplan.json does NOT match *-shmamplan.json (the char before "mamplan.json"
     # is "h", not "-"), so both patterns must be globbed explicitly.
     mamplan_files = sorted(set(path.rglob("*-mamplan.json")) | set(path.rglob("*-shmamplan.json")))
+
+    # Catches misnamed mamplans (e.g. "igv_MaMPlan.json") that the glob above
+    # silently skips, without warning about unrelated *.json files (pipeline
+    # outputs etc.) that happen to live in the same repository.
+    mamplan_like = sorted(
+        f for f in path.rglob("*.json")
+        if f not in mamplan_files and _MAMPLAN_LIKE_RE.search(f.name)
+    )
+    if mamplan_like:
+        names = ", ".join(f.name for f in mamplan_like)
+        typer.echo(
+            f"Warning: found {len(mamplan_like)} .json file(s) that look like mamplans but do "
+            f"not match the required naming convention ('*-mamplan.json' / '*-shmamplan.json'), "
+            f"so they were skipped: {names}",
+            err=True,
+        )
+
     if not mamplan_files:
         typer.echo(f"No mamplan files found in: {path}")
         return []
@@ -1455,7 +1509,7 @@ def deploy(
         "deploy: mamplan=%s, config=%s, selection=%s, regex_selection=%s, timeout=%s, dry_run=%s, throw_error=%s, no_cleanup=%s, yes=%s",
         mamplan, config, selection, regex_selection, timeout, dry_run, throw_error, no_cleanup, yes,
     )
-    cfg = MampokConfig.from_file(config.expanduser())
+    cfg = _load_config(config)
     CLI(cfg).deploy(
         mamplan,
         selection=selection,
@@ -1487,7 +1541,7 @@ def stop(
         "stop: mamplan=%s, config=%s, selection=%s, regex_selection=%s, throw_error=%s, yes=%s, download=%s, output_dir=%s",
         mamplan, config, selection, regex_selection, throw_error, yes, download, output_dir,
     )
-    cfg = MampokConfig.from_file(config.expanduser())
+    cfg = _load_config(config)
     CLI(cfg).stop(
         mamplan,
         selection=selection,
@@ -1514,7 +1568,7 @@ def download(
         "download: mamplan=%s, config=%s, output_dir=%s, selection=%s, regex_selection=%s, throw_error=%s, yes=%s",
         mamplan, config, output_dir, selection, regex_selection, throw_error, yes,
     )
-    cfg = MampokConfig.from_file(config.expanduser())
+    cfg = _load_config(config)
     CLI(cfg).download(
         mamplan,
         output_dir=output_dir.expanduser(),
@@ -1539,7 +1593,7 @@ def stop_expired(
         "stop-expired: repository=%s, config=%s, selection=%s, regex_selection=%s, yes=%s, throw_error=%s",
         repository, config, selection, regex_selection, yes, throw_error,
     )
-    cfg = MampokConfig.from_file(config.expanduser())
+    cfg = _load_config(config)
     CLI(cfg).stop_expired(repository, yes=yes, throw_error=throw_error, selection=selection, regex_selection=regex_selection)
 
 
@@ -1547,11 +1601,11 @@ def stop_expired(
 def list_expiring(
     repository: Annotated[Path, typer.Argument(help="Path to mamplan repository directory.")],
     config: Annotated[Path, _OPT_CONFIG],
-    within: Annotated[str, typer.Option("--within", help="Alert window: relative (7d, 2w, 1m). Default: 7d.")] = "7d",
+    within: Annotated[str, typer.Option("--within", help="Alert window: relative (7d, 2w, 1m). Default: 7d. Ex: --within 14d")] = "7d",
 ) -> None:
     """List active deployments expiring within a given window."""
     logger.info("list-expiring: repository=%s, config=%s, within=%s", repository, config, within)
-    cfg = MampokConfig.from_file(config.expanduser())
+    cfg = _load_config(config)
     CLI(cfg).list_expiring(repository, within=_parse_within(within))
 
 
@@ -1571,7 +1625,7 @@ def redeploy(
         "redeploy: mamplan=%s, config=%s, selection=%s, regex_selection=%s, timeout=%s, throw_error=%s, yes=%s, reupload=%s",
         mamplan, config, selection, regex_selection, timeout, throw_error, yes, reupload,
     )
-    cfg = MampokConfig.from_file(config.expanduser())
+    cfg = _load_config(config)
     CLI(cfg).redeploy(
         mamplan,
         selection=selection,
@@ -1611,7 +1665,7 @@ def restore(
         repository, config, selection, regex_selection, timeout, throw_error, yes, reupload, dry_run,
         full_s3_restore, include_downloadables,
     )
-    cfg = MampokConfig.from_file(config.expanduser())
+    cfg = _load_config(config)
     CLI(cfg).restore(
         repository,
         selection=selection,
@@ -1632,7 +1686,11 @@ def edit_mamplan(
     config: Annotated[Path, _OPT_CONFIG],
     fields: Annotated[
         list[str],
-        typer.Option("--edit", "-e", help="Fields to edit: section:key:value."),
+        typer.Option(
+            "--edit", "-e",
+            help="Fields to edit: section:🔑:value (repeatable). "
+            "Ex: -e deployment:lifetime:+30d",
+        ),
     ] = [],
     selection: Annotated[list[str], _OPT_SELECTION] = [],
     regex_selection: Annotated[list[str], _OPT_REGEX_SELECTION] = [],
@@ -1655,7 +1713,7 @@ def edit_mamplan(
         "edit-mamplan: mamplan=%s, config=%s, fields=%s, selection=%s, regex_selection=%s, redeploy=%s, timeout=%s, throw_error=%s, yes=%s",
         mamplan, config, fields, selection, regex_selection, redeploy_after, timeout, throw_error, yes,
     )
-    cfg = MampokConfig.from_file(config.expanduser())
+    cfg = _load_config(config)
     CLI(cfg).edit_mamplan(
         mamplan,
         fields=fields,
@@ -1682,7 +1740,7 @@ def create_mamplan(
     organization: Annotated[list[str], typer.Option(help="Organizations (repeatable).")] = [],
     user: Annotated[list[str], typer.Option(help="User access list (repeatable).")] = [],
     metadata: Annotated[list[str], typer.Option(help="Metadata IDs (repeatable).")] = [],
-    metadata_file: Annotated[list[Path], typer.Option(help="YAML metadata file(s) to populate the service section (repeatable).")] = [],
+    metadata_file: Annotated[list[Path], typer.Option(help="YAML metadata file(s) to populate the service section (repeatable). Ex: --metadata-file metadata.yaml")] = [],
     merge: Annotated[bool, typer.Option("--merge", help="Merge explicitly passed list values with values from --metadata-file instead of replacing them.")] = False,
     bucket: Annotated[str, typer.Option(help="S3 bucket name (auto-generated if empty).")] = "",
     auth: Annotated[bool, typer.Option(help="Enable login protection.")] = False,
@@ -1713,7 +1771,7 @@ def create_mamplan(
         "owner=%s, datatype=%s, auth=%s, metadata_file=%s",
         project_id, tool, cluster, output, resolved_owner, resolved_datatype, auth, metadata_file,
     )
-    cfg = MampokConfig.from_file(config.expanduser())
+    cfg = _load_config(config)
 
     mamplates = load_mamplates(cfg.mamplates_path)
     if tool not in mamplates:
@@ -1779,7 +1837,7 @@ def check_status(
         "check-status: repository=%s, config=%s, selection=%s, regex_selection=%s, throw_error=%s",
         repository, config, selection, regex_selection, throw_error,
     )
-    cfg = MampokConfig.from_file(config.expanduser())
+    cfg = _load_config(config)
     CLI(cfg).check_status_report(
         repository,
         selection=selection,
@@ -1802,7 +1860,7 @@ def update_auth(
         "update-auth: mamplan=%s, config=%s, selection=%s, regex_selection=%s, throw_error=%s, yes=%s",
         mamplan, config, selection, regex_selection, throw_error, yes,
     )
-    cfg = MampokConfig.from_file(config.expanduser())
+    cfg = _load_config(config)
     CLI(cfg).update_auth(mamplan, throw_error=throw_error, yes=yes, selection=selection, regex_selection=regex_selection)
 
 
