@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mampok"
-version = "3.2.0"
+version = "3.3.0"
 description = "Kubernetes deployment manager for bioinformatics tools"
 authors = [
   { name="Jasmin Walter", email="Jasmin.Walter@mpi-bn.mpg.de" },
@@ -44,3 +44,6 @@ testpaths = ["tests"]
 markers = [
     "integration: marks tests that need external services",
 ]
+
+[tool.coverage.run]
+source = ["mampok"]

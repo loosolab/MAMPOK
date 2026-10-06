@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from kubernetes.client.rest import ApiException
@@ -213,3 +213,38 @@ class TestPatch:
             call_kwargs.kwargs["header_params"]["Content-Type"]
             == "application/strategic-merge-patch+json"
         )
+
+
+class TestListPods:
+    """Tests for KubeClient.list_pods."""
+
+    def test_returns_pod_dicts(self, mock_api_client):
+        pod = MagicMock()
+        pod.to_dict.return_value = {"metadata": {"name": "p1"}, "status": {"phase": "Pending"}}
+        with patch("kubernetes.client.CoreV1Api") as v1_cls:
+            v1_cls.return_value.list_namespaced_pod.return_value.items = [pod]
+            result = KubeClient("ns", mock_api_client).list_pods("app=x")
+        assert result == [{"metadata": {"name": "p1"}, "status": {"phase": "Pending"}}]
+        v1_cls.return_value.list_namespaced_pod.assert_called_once_with(
+            namespace="ns", label_selector="app=x"
+        )
+
+
+class TestGetPodLog:
+    """Tests for KubeClient.get_pod_log."""
+
+    def test_reads_container_log(self, mock_api_client):
+        with patch("kubernetes.client.CoreV1Api") as v1_cls:
+            v1_cls.return_value.read_namespaced_pod_log.return_value = "log"
+            out = KubeClient("ns", mock_api_client).get_pod_log("p1", "init", tail_lines=50)
+        assert out == "log"
+        v1_cls.return_value.read_namespaced_pod_log.assert_called_once_with(
+            name="p1", namespace="ns", container="init", tail_lines=50
+        )
+
+
+class TestApiClientProperty:
+    """Tests for KubeClient.api_client."""
+
+    def test_exposes_api_client(self, mock_api_client):
+        assert KubeClient("ns", mock_api_client).api_client is mock_api_client

@@ -442,6 +442,152 @@ class TestParseRcloneStats:
         assert result["speed"] == "0 B/s"
 
 
+class TestPodHelpers:
+    """Tests for the pod-status helpers that parse KubeClient.list_pods() dicts."""
+
+    @staticmethod
+    def _pod(init=None, containers=None, name="pod-1"):
+        return {
+            "metadata": {"name": name},
+            "status": {
+                "init_container_statuses": init,
+                "container_statuses": containers,
+            },
+        }
+
+    @staticmethod
+    def _cs(name="main", state=None, last_state=None, restart_count=0, ready=False):
+        return {
+            "name": name,
+            "state": state,
+            "last_state": last_state,
+            "restart_count": restart_count,
+            "ready": ready,
+        }
+
+    def _mgr(self, pods):
+        kube = MagicMock()
+        kube.list_pods.return_value = pods
+        return DeploymentManager(kube), kube
+
+    def test_list_pods_called_with_app_label(self, make_config):
+        cfg = make_config()
+        mgr, kube = self._mgr([])
+        mgr._get_pod_phase(cfg)
+        kube.list_pods.assert_called_once_with(f"app={cfg.app_label}")
+
+    # _diagnose_pod_failure
+
+    def test_diagnose_oomkilled(self, make_config):
+        cs = self._cs(
+            last_state={"terminated": {"reason": "OOMKilled"}}, restart_count=2
+        )
+        mgr, _ = self._mgr([self._pod(containers=[cs])])
+        result = mgr._diagnose_pod_failure(make_config())
+        assert result["reason"] == "OOMKilled"
+        assert result["container"] == "main"
+        assert result["restart_count"] == 2
+
+    @pytest.mark.parametrize("reason", ["CrashLoopBackOff", "ImagePullBackOff"])
+    def test_diagnose_waiting_reason(self, make_config, reason):
+        cs = self._cs(
+            state={"waiting": {"reason": reason, "message": "boom"}}, restart_count=4
+        )
+        mgr, _ = self._mgr([self._pod(containers=[cs])])
+        result = mgr._diagnose_pod_failure(make_config())
+        assert result["reason"] == reason
+        assert result["restart_count"] == 4
+        assert "boom" in result["message"]
+
+    def test_diagnose_no_findings_is_timeout(self, make_config):
+        cs = self._cs(state={"running": {}})
+        mgr, _ = self._mgr([self._pod(containers=[cs])])
+        assert mgr._diagnose_pod_failure(make_config())["reason"] == "Timeout"
+
+    def test_diagnose_list_pods_error_is_unknown(self, make_config):
+        mgr, kube = self._mgr([])
+        kube.list_pods.side_effect = Exception("api down")
+        assert mgr._diagnose_pod_failure(make_config())["reason"] == "Unknown"
+
+    # _get_pod_phase
+
+    def test_phase_init_containers(self, make_config):
+        init = [self._cs("init", state={"running": {}})]
+        mgr, _ = self._mgr([self._pod(init=init)])
+        assert mgr._get_pod_phase(make_config()) == "init_containers"
+
+    def test_phase_starting(self, make_config):
+        cs = self._cs(state={"running": {}}, ready=False)
+        mgr, _ = self._mgr([self._pod(containers=[cs])])
+        assert mgr._get_pod_phase(make_config()) == "starting"
+
+    def test_phase_none_when_ready(self, make_config):
+        cs = self._cs(state={"running": {}}, ready=True)
+        mgr, _ = self._mgr([self._pod(containers=[cs])])
+        assert mgr._get_pod_phase(make_config()) is None
+
+    def test_phase_none_on_error(self, make_config):
+        mgr, kube = self._mgr([])
+        kube.list_pods.side_effect = Exception("api down")
+        assert mgr._get_pod_phase(make_config()) is None
+
+    # init container helpers
+
+    def test_running_init_container(self, make_config):
+        init = [
+            self._cs("done", state={"terminated": {"exit_code": 0}}),
+            self._cs("s3-restore", state={"running": {}}),
+        ]
+        mgr, _ = self._mgr([self._pod(init=init)])
+        assert mgr._get_running_init_container(make_config()) == "s3-restore"
+
+    def test_running_init_container_none(self, make_config):
+        mgr, _ = self._mgr([self._pod(init=[self._cs("i", state=None)])])
+        assert mgr._get_running_init_container(make_config()) is None
+
+    def test_completed_init_containers_only_exit_code_zero(self, make_config):
+        init = [
+            self._cs("ok", state={"terminated": {"exit_code": 0}}),
+            self._cs("failed", state={"terminated": {"exit_code": 1}}),
+            self._cs("running", state={"running": {}}),
+        ]
+        mgr, _ = self._mgr([self._pod(init=init)])
+        assert mgr._get_completed_init_containers(make_config()) == ["ok"]
+
+    def test_pods_without_status_fields_do_not_crash(self, make_config):
+        mgr, _ = self._mgr([{"metadata": {"name": "p"}, "status": None}])
+        cfg = make_config()
+        assert mgr._get_pod_phase(cfg) is None
+        assert mgr._get_running_init_container(cfg) is None
+        assert mgr._get_completed_init_containers(cfg) == []
+        assert mgr._diagnose_pod_failure(cfg)["reason"] == "Timeout"
+
+    # _get_init_container_log_progress
+
+    def test_log_progress_parses_log(self, make_config):
+        mgr, kube = self._mgr([self._pod(name="pod-1")])
+        kube.get_pod_log.return_value = (
+            "Transferred:   10.0 MiB / 10.0 MiB, 100%, 51.2 MiB/s\n"
+        )
+        result = mgr._get_init_container_log_progress(make_config(), "s3-restore")
+        assert result["speed"] == "51.2 MiB/s"
+        kube.get_pod_log.assert_called_once_with("pod-1", "s3-restore", tail_lines=100)
+
+    def test_log_progress_skips_failing_pod(self, make_config):
+        mgr, kube = self._mgr([self._pod(name="a"), self._pod(name="b")])
+        kube.get_pod_log.side_effect = [
+            Exception("no logs"),
+            "Transferred:   10.0 MiB / 10.0 MiB, 100%, 51.2 MiB/s\n",
+        ]
+        result = mgr._get_init_container_log_progress(make_config(), "s3-restore")
+        assert result["speed"] == "51.2 MiB/s"
+
+    def test_log_progress_empty_on_list_error(self, make_config):
+        mgr, kube = self._mgr([])
+        kube.list_pods.side_effect = Exception("api down")
+        assert mgr._get_init_container_log_progress(make_config(), "x") == {}
+
+
 # ---------------------------------------------------------------------------
 # TestFastInitContainer (additional TestWaitForReady cases)
 # ---------------------------------------------------------------------------

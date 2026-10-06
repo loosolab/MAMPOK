@@ -380,6 +380,34 @@ class API:
                 yield {"stage": "rollback", "status": "done"}
                 raise
 
+    def generate_jwt(
+        self,
+        mamplan_path: Path,
+        username: str,
+        groups: list[str] | None = None,
+    ) -> str:
+        """Generate a JWT token URL for a user, without rotating the auth secret.
+
+        Signs with the secret_key of the already deployed auth Secret, so
+        previously issued tokens stay valid. The deployment must have been
+        deployed with auth (an auth Secret must exist).
+
+        Args:
+            mamplan_path: Path to the Mamplan file.
+            username: Username to embed in the token.
+            groups: Organizations/groups to embed in the token.
+
+        Returns:
+            Token URL (cfg.url + "?token=<jwt>").
+
+        Raises:
+            FileNotFoundError: If mamplan_path does not exist.
+            kubernetes.client.rest.ApiException: If no auth Secret exists (404).
+        """
+        mamplan, mamplates, config = self._load(Path(mamplan_path))
+        mampok = create_mampok_instance(config, mamplan, mamplates)
+        return mampok.generate_jwt(username, groups or [], config)
+
     # ---------------------------------------------------------------------------
     # API-specific additional methods
     # ---------------------------------------------------------------------------

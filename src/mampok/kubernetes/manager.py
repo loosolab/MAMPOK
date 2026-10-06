@@ -344,48 +344,42 @@ class DeploymentManager:
             Dict with "reason" (str), "container" (str), "restart_count" (int),
             and "message" (str) describing the failure.
         """
-        import kubernetes.client
-
-        v1 = kubernetes.client.CoreV1Api(api_client=self._kube._api_client)
         try:
-            pods = v1.list_namespaced_pod(
-                namespace=cfg.namespace,
-                label_selector=f"app={cfg.app_label}",
-            )
+            pods = self._kube.list_pods(f"app={cfg.app_label}")
         except Exception as e:
             logger.warning("Could not list pods for %s: %s", cfg.project_id, e)
             return {"reason": "Unknown", "container": "", "restart_count": 0,
                     "message": "Could not query pod status"}
 
-        for pod in pods.items:
-            for cs in pod.status.container_statuses or []:
+        for pod in pods:
+            for cs in (pod.get("status") or {}).get("container_statuses") or []:
                 # Check last terminated state (OOMKilled shows up here after restart)
-                last = cs.last_state.terminated if cs.last_state else None
-                if last and last.reason == "OOMKilled":
+                last = (cs.get("last_state") or {}).get("terminated")
+                if last and last.get("reason") == "OOMKilled":
                     return {
                         "reason": "OOMKilled",
-                        "container": cs.name,
-                        "restart_count": cs.restart_count,
+                        "container": cs["name"],
+                        "restart_count": cs["restart_count"],
                         "message": (
-                            f"Container '{cs.name}' OOMKilled "
-                            f"(Restarts: {cs.restart_count}). "
+                            f"Container '{cs['name']}' OOMKilled "
+                            f"(Restarts: {cs['restart_count']}). "
                             "Memory limit possibly too low."
                         ),
                     }
                 # Check current waiting state
-                waiting = cs.state.waiting if cs.state else None
-                if waiting and waiting.reason in (
+                waiting = (cs.get("state") or {}).get("waiting")
+                if waiting and waiting.get("reason") in (
                     "CrashLoopBackOff", "Error",
                     "ImagePullBackOff", "ErrImagePull",
                 ):
                     return {
-                        "reason": waiting.reason,
-                        "container": cs.name,
-                        "restart_count": cs.restart_count,
+                        "reason": waiting["reason"],
+                        "container": cs["name"],
+                        "restart_count": cs["restart_count"],
                         "message": (
-                            f"Container '{cs.name}' is in status '{waiting.reason}'"
-                            f" (Restarts: {cs.restart_count})"
-                            + (f": {waiting.message}" if waiting.message else "")
+                            f"Container '{cs['name']}' is in status '{waiting['reason']}'"
+                            f" (Restarts: {cs['restart_count']})"
+                            + (f": {waiting['message']}" if waiting.get("message") else "")
                         ),
                     }
 
@@ -457,24 +451,19 @@ class DeploymentManager:
             "starting" if init containers completed but readiness probe not yet passed,
             None if phase cannot be determined or pods are already ready.
         """
-        import kubernetes.client
-
-        v1 = kubernetes.client.CoreV1Api(api_client=self._kube._api_client)
         try:
-            pods = v1.list_namespaced_pod(
-                namespace=cfg.namespace,
-                label_selector=f"app={cfg.app_label}",
-            )
+            pods = self._kube.list_pods(f"app={cfg.app_label}")
         except Exception as e:
             logger.debug("Could not get pod phase for %s: %s", cfg.project_id, e)
             return None
 
-        for pod in pods.items:
-            for cs in (pod.status.init_container_statuses or []):
-                if cs.state and cs.state.running is not None:
+        for pod in pods:
+            status = pod.get("status") or {}
+            for cs in status.get("init_container_statuses") or []:
+                if (cs.get("state") or {}).get("running") is not None:
                     return "init_containers"
-            for cs in (pod.status.container_statuses or []):
-                if cs.state and cs.state.running is not None and not cs.ready:
+            for cs in status.get("container_statuses") or []:
+                if (cs.get("state") or {}).get("running") is not None and not cs.get("ready"):
                     return "starting"
         return None
 
@@ -487,38 +476,23 @@ class DeploymentManager:
         Returns:
             Name of the running init container, or None if no init container is running.
         """
-        import kubernetes.client
-
-        v1 = kubernetes.client.CoreV1Api(api_client=self._kube._api_client)
         try:
-            pods = v1.list_namespaced_pod(
-                namespace=cfg.namespace,
-                label_selector=f"app={cfg.app_label}",
-            )
-            for pod in pods.items:
-                for cs in (pod.status.init_container_statuses or []):
-                    if cs.state and cs.state.running is not None:
-                        return cs.name
+            for pod in self._kube.list_pods(f"app={cfg.app_label}"):
+                for cs in (pod.get("status") or {}).get("init_container_statuses") or []:
+                    if (cs.get("state") or {}).get("running") is not None:
+                        return cs["name"]
         except Exception as e:
             logger.debug("Could not get running init container for %s: %s", cfg.project_id, e)
         return None
 
     def _get_completed_init_containers(self, cfg: DeploymentConfig) -> list[str]:
         """Return names of successfully-terminated init containers for the deployment."""
-        import kubernetes.client
-
-        v1 = kubernetes.client.CoreV1Api(api_client=self._kube._api_client)
         try:
-            pods = v1.list_namespaced_pod(
-                namespace=cfg.namespace,
-                label_selector=f"app={cfg.app_label}",
-            )
-            for pod in pods.items:
+            for pod in self._kube.list_pods(f"app={cfg.app_label}"):
                 completed = [
-                    cs.name
-                    for cs in (pod.status.init_container_statuses or [])
-                    if cs.state and cs.state.terminated is not None
-                    and cs.state.terminated.exit_code == 0
+                    cs["name"]
+                    for cs in (pod.get("status") or {}).get("init_container_statuses") or []
+                    if ((cs.get("state") or {}).get("terminated") or {}).get("exit_code") == 0
                 ]
                 if completed:
                     return completed
@@ -540,21 +514,11 @@ class DeploymentManager:
             Dict with rclone stats (subset of transferred_pct, transferred_bytes_human,
             total_bytes_human, speed, elapsed). Empty dict on failure or no stats found.
         """
-        import kubernetes.client
-
-        v1 = kubernetes.client.CoreV1Api(api_client=self._kube._api_client)
         try:
-            pods = v1.list_namespaced_pod(
-                namespace=cfg.namespace,
-                label_selector=f"app={cfg.app_label}",
-            )
-            for pod in pods.items:
+            for pod in self._kube.list_pods(f"app={cfg.app_label}"):
                 try:
-                    log = v1.read_namespaced_pod_log(
-                        name=pod.metadata.name,
-                        namespace=cfg.namespace,
-                        container=container_name,
-                        tail_lines=100,
+                    log = self._kube.get_pod_log(
+                        pod["metadata"]["name"], container_name, tail_lines=100
                     )
                     return _parse_rclone_stats(log)
                 except Exception:
@@ -614,7 +578,7 @@ class DeploymentManager:
         _FAIL_FAST_RESTART_THRESHOLD = 3
         _POLL_INTERVAL = 10
 
-        apps_v1 = kubernetes.client.AppsV1Api(api_client=self._kube._api_client)
+        apps_v1 = kubernetes.client.AppsV1Api(api_client=self._kube.api_client)
         last_restart_counts: dict[str, int] = {}
         last_ready: int = -1  # sentinel: -1 = not yet reported; triggers yield on first event
         last_phase: str | None = None
