@@ -47,6 +47,22 @@ tuned per tool via the Mamplate's ``proxy_resources`` field (see
 :doc:`mamplates`) — useful when a tool proxies large uploads/downloads
 through the Gatekeeper and needs more than the ``100m``/``128Mi`` default.
 
+**Pluggable Gatekeeper**
+
+Mampok does not implement authentication itself. ``auth_proxy_image``
+points to any container image that speaks a small contract: it receives
+four environment variables (``REVERSE_PORT``, ``REDIRECT_HOST``,
+``REDIRECT_URL``, ``PROJECT_ID``) and a mounted Secret
+(``auth-proxy.json``, containing ``secret_key``, ``owner``, ``users``,
+``groups``), and is responsible for enforcing whatever authorization
+policy it wants on top of that.
+
+A minimal reference implementation is available at
+`mampok-gatekeeper-example <https://github.com/loosolab/mampok-gatekeeper-example>`_,
+documenting the full contract and one example authorization policy
+(including the ``"_public"`` convention referenced below, which is that
+example's own design, not a Mampok requirement).
+
 **Token URL**
 
 After ``mampok deploy``, ``mampok redeploy``, ``mampok restore``, or
@@ -66,8 +82,9 @@ restart is required.
 **User list derivation**
 
 The authorized user list is derived from ``service.organization`` plus
-``service.user``. Set ``service.owner`` to ``"_public"`` to make the
-deployment accessible to all authenticated users.
+``service.user``. Whether and how ``service.owner`` grants broader access
+(e.g. a "public" convention) depends entirely on the Gatekeeper image in
+use, not on Mampok itself — see "Pluggable Gatekeeper" above.
 
 .. _shmamplan:
 

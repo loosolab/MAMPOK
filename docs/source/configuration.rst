@@ -241,6 +241,13 @@ that handles JWT-based authentication.
      - Path to the ``project_auth.json`` file used by the Gatekeeper
        container to look up valid users.
 
+.. seealso::
+
+   `mampok-gatekeeper-example <https://github.com/loosolab/mampok-gatekeeper-example>`_
+   — a reference implementation documenting the full contract an
+   ``auth_proxy_image`` must satisfy (the four env vars, the
+   ``auth-proxy.json`` secret shape, and the expected HTTP behavior).
+
 Multiple Clusters
 -----------------
 
