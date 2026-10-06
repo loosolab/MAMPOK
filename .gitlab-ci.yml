@@ -13,7 +13,21 @@ run-tests:
   script:
     - pip install --upgrade pip
     - pip install -e ".[dev]"
-    - pytest
+    - pytest --cov --cov-report=term --cov-report=xml
+    # Coverage badge data (shields.io endpoint format), published via the pages job on main
+    - |
+      PCT=$(python -c "import xml.etree.ElementTree as ET; print(round(float(ET.parse('coverage.xml').getroot().get('line-rate')) * 100))")
+      if [ "$PCT" -ge 80 ]; then COLOR=brightgreen; elif [ "$PCT" -ge 60 ]; then COLOR=yellow; else COLOR=red; fi
+      mkdir -p badges
+      echo "{\"schemaVersion\": 1, \"label\": \"coverage\", \"message\": \"${PCT}%\", \"color\": \"${COLOR}\"}" > badges/coverage.json
+  coverage: '/^TOTAL\s+\d+\s+\d+\s+(\d+(?:\.\d+)?)%/'
+  artifacts:
+    paths:
+      - badges/
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
@@ -92,10 +106,14 @@ pages:
   needs:
     - job: build-pages
       artifacts: True
+    - job: run-tests
+      artifacts: True
   inherit:
     default: false
   script:
     - mv docs/build/html/ public/
+    - mkdir -p public/badges
+    - mv badges/coverage.json public/badges/coverage.json
   artifacts:
     paths:
       - public

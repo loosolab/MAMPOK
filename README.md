@@ -2,6 +2,7 @@
 [![Release](https://img.shields.io/github/v/release/loosolab/MAMPOK)](https://github.com/loosolab/MAMPOK/releases)
 [![PyPI](https://img.shields.io/pypi/v/mampok)](https://pypi.org/project/mampok/)
 [![Documentation](https://img.shields.io/badge/documentation-online-blue)](https://loosolab.pages.gwdg.de/software/mampok_v2/)
+[![Coverage](https://img.shields.io/endpoint?url=https://loosolab.pages.gwdg.de/software/mampok_v2/badges/coverage.json)](https://loosolab.pages.gwdg.de/software/mampok_v2/)
 [![FAIR checklist badge](https://img.shields.io/badge/Software-green?label=FAIR)](https://fairsoftwarechecklist.net/v0.2?f=31&a=32113&i=32100&r=133)
 
 
