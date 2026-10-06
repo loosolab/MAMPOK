@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2026-10-06
+
+### Added
+
+- `API.generate_jwt()` / `Mampok.generate_jwt()`: sign a JWT for a given user and groups using the existing auth secret of a deployment, without rotating the secret. Previously issued tokens stay valid.
+- Documentation: new "Pluggable Gatekeeper" section describing the contract an `auth_proxy_image` must satisfy (environment variables and the mounted `auth-proxy.json` Secret), with a link to the reference implementation `mampok-gatekeeper-example`.
+- Test coverage is now measured in CI and shown as a badge in the README.
+
+### Changed
+
+- `Mampok.update_auth_secret()` signs its token via a shared internal helper (no behavior change).
+- `DeploymentManager` no longer accesses the private `KubeClient._api_client`; pod status and log queries go through the new `KubeClient.list_pods()`, `KubeClient.get_pod_log()` and the `KubeClient.api_client` property.
+
+[3.3.0]: https://gitlab.gwdg.de/loosolab/software/mampok_v2/-/compare/v3.2.0...v3.3.0
+
 ## [3.2.0] - 2026-09-15
 
 ### Added
