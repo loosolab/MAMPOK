@@ -257,6 +257,22 @@ class TestAPIEditLifetime:
             mock_mp.write.assert_called_once_with(mamplan_file)
 
 
+class TestAPIGenerateJwt:
+    """Tests for API.generate_jwt()."""
+
+    def test_delegates_to_mampok(self, patched_api):
+        api, _, mampok = patched_api
+        mampok.generate_jwt.return_value = "https://x?token=t"
+        result = api.generate_jwt(Path("/fake/mamplan.json"), "alice", ["g1"])
+        assert result == "https://x?token=t"
+        assert mampok.generate_jwt.call_args.args[:2] == ("alice", ["g1"])
+
+    def test_groups_default_to_empty_list(self, patched_api):
+        api, _, mampok = patched_api
+        api.generate_jwt(Path("/fake/mamplan.json"), "alice")
+        assert mampok.generate_jwt.call_args.args[:2] == ("alice", [])
+
+
 # ---------------------------------------------------------------------------
 # TestAPIEditSharing
 # ---------------------------------------------------------------------------

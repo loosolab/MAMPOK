@@ -7,7 +7,7 @@ format.
 
 .. seealso::
 
-   :doc:`concepts` — conceptual overview of how Mamplans, Mamplates, and
+   :doc:`concepts`: conceptual overview of how Mamplans, Mamplates, and
    config.json interact.
 
 File Naming and Location
@@ -19,14 +19,15 @@ Mamplan files must follow this naming convention::
 
 The only hard requirement for the file to be discovered is the
 ``-mamplan.json`` suffix. The ``{project_id}-`` prefix is a convention
-applied by ``create-mamplan``; the file loader does not enforce it.
+applied by ``create-mamplan``. The file loader does not enforce it.
 
-The ``project_id`` field *inside* the JSON is schema-validated: lowercase
-letters and hyphens only — no uppercase, no underscores. ``create-mamplan``
-auto-normalizes the value (converts underscores to hyphens, lowercases
-everything) before writing the file.
+The ``project_id`` field *inside* the JSON is schema-validated: no uppercase
+letters and no underscores (digits, dots, and other characters are
+technically allowed, but ``create-mamplan`` auto-normalizes the value to
+lowercase letters and hyphens, converting underscores to hyphens and
+lowercasing everything, before writing the file).
 
-Mamplan files can live in any directory; the path is passed as an argument
+Mamplan files can live in any directory. The path is passed as an argument
 to each command. Subdirectories are scanned recursively, so you can organize
 projects into folders.
 
@@ -128,8 +129,9 @@ Section Reference
      - array of strings
      - no
      - Names of additional init container Mamplates to run before the main
-       container. Mampok always adds a built-in S3 download init container
-       when ``files`` is non-empty.
+       container. Mampok adds a built-in S3 download init container when
+       ``files`` is non-empty, unless the Mamplate uses ``bucket_overwrite``
+       (which skips it).
    * - ``project_size``
      - integer (KB)
      - no
@@ -176,9 +178,11 @@ Section Reference
      - yes
      - —
      - Expiry date of the deployment. **Overwritten by Mampok on deploy**
-       to ``now + lifetime_days``. Use ``mampok edit-mamplan`` or
-       ``mampok create-mamplan`` to set a relative value (``30d``, ``4w``,
-       ``3m``).
+       to ``now + lifetime_days``. To extend an existing deployment's
+       lifetime, use ``mampok edit-mamplan`` with a relative offset such as
+       ``-e deployment:lifetime:+30d`` (see :ref:`lifetime-format`).
+       ``create-mamplan`` has no lifetime option (the field is only a
+       placeholder until the first deploy).
    * - ``url``
      - string
      - yes
@@ -215,11 +219,13 @@ Section Reference
    * - ``analyst``
      - array of strings
      - yes
-     - Usernames of analysts working on this project.
+     - Usernames of analysts working on this project. Must contain at least
+       one entry (unlike ``organization``/``user``, this cannot be empty).
    * - ``datatype``
      - array of strings
      - yes
-     - Data type labels (e.g. ``["scRNA-seq", "ATAC-seq"]``).
+     - Data type labels (e.g. ``["scRNA-seq", "ATAC-seq"]``). Must contain
+       at least one entry.
    * - ``download_allowed``
      - boolean
      - yes
@@ -301,14 +307,14 @@ You should not set them manually in a freshly created Mamplan:
    * - Field
      - When it is set
    * - ``deployment.status``
-     - ``true`` after successful deploy; ``false`` after stop
+     - ``true`` after successful deploy, ``false`` after stop
    * - ``deployment.url``
      - Written after successful deploy
    * - ``deployment.lifetime``
      - Overwritten on deploy to ``now + config.lifetime_days``
    * - ``deployment.bucket``
      - Written after deploy or after ``restore --full-s3-restore`` /
-       ``--include-downloadables``; used by download endpoints to locate data
+       ``--include-downloadables``. Used by download endpoints to locate data
    * - ``project.project_size``
      - Written after files are uploaded to S3 (total KB)
 
@@ -318,6 +324,8 @@ You should not set them manually in a freshly created Mamplan:
    This can cause ``check-status`` to report incorrect results or
    ``stop-expired`` to miss an expired project.
 
+.. _lifetime-format:
+
 Lifetime Format
 ---------------
 
@@ -325,36 +333,41 @@ The ``deployment.lifetime`` field stores an ISO 8601 UTC datetime string::
 
     2027-01-01T00:00:00Z
 
-When creating or editing a Mamplan via the CLI, you can use convenient
-relative shorthands that are automatically converted to absolute dates:
+There is no way to set a relative value when creating a Mamplan:
+``create-mamplan`` has no lifetime option, and the field is just a
+placeholder until the first ``deploy`` overwrites it with
+``now + lifetime_days`` from your config.
+
+To extend an already-deployed project, use ``edit-mamplan`` with a
+``+``-prefixed relative offset::
+
+    mampok edit-mamplan my-project-mamplan.json -e deployment:lifetime:+30d
 
 .. list-table::
    :header-rows: 1
    :widths: 15 40
 
-   * - Format
+   * - Offset
      - Meaning
-   * - ``30d``
-     - 30 days from now
-   * - ``4w``
-     - 4 weeks (28 days) from now
-   * - ``3m``
-     - 3 months (90 days) from now
+   * - ``+30d``
+     - add 30 days to the current lifetime
+   * - ``+4w``
+     - add 4 weeks (28 days) to the current lifetime
+   * - ``+3m``
+     - add 3 months (90 days) to the current lifetime
 
-In ``edit-mamplan``, you can also extend the existing lifetime by a relative
-offset::
-
-    mampok edit-mamplan my-project-mamplan.json -e deployment:lifetime:+30d
-
-This adds 30 days to the **current lifetime** (not to today), making it safe
-to renew a project multiple times without losing days.
+The offset is added to the **current lifetime value**, not to today's date,
+so renewing a project multiple times doesn't lose days. A bare value without
+the ``+`` (e.g. ``30d``) is not recognized and will be stored as a literal,
+invalid string.
 
 What Happens on Stop
 --------------------
 
 When you run ``mampok stop``:
 
-1. A final S3 sync is triggered (if the Mamplate uses ``container_data``).
+1. A final S3 sync is triggered (if the Mamplate uses ``container_data``
+   or ``bucket_overwrite``).
 2. All Kubernetes resources are deleted (Deployment, Service, Ingress,
    Secrets).
 3. ``deployment.status`` is set to ``false`` and the Mamplan file is saved.

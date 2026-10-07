@@ -6,7 +6,7 @@ together.
 
 .. figure:: images/architecture_overview.png
    :align: center
-   :width: 90%
+   :width: 100%
 
    Overview of who creates what and where it ends up.
 
@@ -43,12 +43,12 @@ creates and maintains.
 
 Key characteristics:
 
-* Named ``{project_id}-mamplan.json`` (all lowercase, hyphens only — no
+* Named ``{project_id}-mamplan.json`` (all lowercase, hyphens only, no
   underscores, no uppercase)
-* Stored in any directory — the path is passed as an argument to each command
-* **Mutable** — Mampok writes ``deployment.status``, ``deployment.url``,
-  ``deployment.lifetime``, and ``project.project_size`` back into the file
-  after each operation
+* Stored in any directory: the path is passed as an argument to each command
+* **Mutable**: Mampok writes ``deployment.status``, ``deployment.url``,
+  ``deployment.lifetime``, ``deployment.bucket``, and ``project.project_size``
+  back into the file after each operation
 
 A Mamplan has up to five JSON sections:
 
@@ -81,14 +81,14 @@ Mamplate
 --------
 
 A **Mamplate** (Mampok Template) is a JSON file that describes a reusable
-container blueprint for a specific tool. Admins write Mamplates once; end
+container blueprint for a specific tool. Admins write Mamplates once, and end
 users reference them by the ``tool`` name in their Mamplan.
 
 Key characteristics:
 
 * Named ``{tool}-mamplate.json`` (e.g. ``cellxgene-mamplate.json``)
 * Stored in the ``mamplates_path`` directory defined in your config
-* **Immutable at deploy time** — users do not edit Mamplates directly; they
+* **Immutable at deploy time**: users do not edit Mamplates directly. They
   use the optional ``container`` section in their Mamplan to override fields
 
 A Mamplate describes:
@@ -124,7 +124,7 @@ How They Connect at Deploy Time
 
 .. figure:: images/mamplan_mamplate_flow.png
    :align: center
-   :width: 95%
+   :width: 100%
 
    Data flow during a ``mampok deploy`` call.
 
@@ -133,12 +133,12 @@ When you run ``mampok deploy my-project-mamplan.json``:
 1. Mampok reads the Mamplan and looks up the cluster name in the config.
 2. It finds the matching Mamplate file using ``project.tool``.
 3. The optional ``container`` section in the Mamplan is **deep-merged** on top
-   of the Mamplate's container definition. Dict fields are merged recursively;
-   list fields are replaced entirely by the Mamplan value.
+   of the Mamplate's container definition. Dict fields are merged recursively,
+   and list fields are replaced entirely by the Mamplan value.
 
    Example: if the Mamplate defines ``resources.requests.cpu: "500m"`` and the
    Mamplan overrides only ``resources.requests.memory: "4Gi"``, the result keeps
-   both — ``cpu`` from the Mamplate, ``memory`` from the Mamplan. If the Mamplate
+   both (``cpu`` from the Mamplate, ``memory`` from the Mamplan). If the Mamplate
    defines ``args: ["--host=0.0.0.0"]`` and the Mamplan sets
    ``args: ["--host=0.0.0.0", "--dark-mode"]``, the Mamplate's list is discarded
    entirely and the Mamplan's list is used.
@@ -146,38 +146,27 @@ When you run ``mampok deploy my-project-mamplan.json``:
    ``command``, ``args``, and ``env`` fields are expanded using values from
    the Mamplan. For example, ``__project.files__`` becomes the comma-joined
    list of file paths from ``project.files``.
-5. Mampok builds Kubernetes manifests (Deployment, Service, Ingress, Secrets)
-   and applies them to the cluster.
-6. After successful deployment, ``deployment.status``, ``deployment.url``, and
-   ``deployment.lifetime`` are written back into the Mamplan JSON file on disk.
+5. Each file listed in ``project.files`` is uploaded to
+   ``s3://bucket/analysis_data/``, skipped if the S3 object already has the
+   same size (use ``--reupload`` to force a fresh upload).
+6. Mampok builds Kubernetes manifests and applies them to the cluster: a
+   Deployment and a Secret (S3 credentials) are always applied. A Service is
+   added only if the tool exposes ports, and an Ingress only if a URL/host is
+   configured.
+7. After successful deployment, ``deployment.status``, ``deployment.url``,
+   ``deployment.lifetime``, and ``deployment.bucket`` are written back into
+   the Mamplan JSON file on disk, along with ``project.project_size``.
 
 Project Lifecycle
 -----------------
 
 A project follows this state machine:
 
-.. code-block:: text
+.. figure:: images/project_lifecycle.png
+   :align: center
+   :width: 100%
 
-    create-mamplan
-          │
-          ▼
-    [Mamplan exists, status=false]
-          │
-          │  mampok deploy
-          ▼
-    [Running: status=true, K8s resources exist, S3 data exists]
-          │         │
-          │         │  mampok redeploy  (stop + deploy on a running project)
-          │         ▼
-          │    [Running again]
-          │
-          │  mampok stop
-          ▼
-    [Stopped: status=false, K8s resources deleted, S3 data preserved]
-          │
-          │  mampok deploy
-          ▼
-    [Running again]
+   State transitions of a project across its Mamplan lifecycle.
 
 The ``deployment.lifetime`` field records the expiry date. Mampok uses this
 field for ``stop-expired`` (batch stop of overdue projects) and

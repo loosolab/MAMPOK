@@ -49,6 +49,11 @@ class KubeClient:
         self._namespace = namespace
         self._api_client = api_client
 
+    @property
+    def api_client(self) -> Any:
+        """Underlying kubernetes ApiClient (for SDK features like Watch)."""
+        return self._api_client
+
     def _resolve_path(self, kind: str, name: str) -> str:
         """Build the API path for a given kind and resource name.
 
@@ -201,6 +206,50 @@ class KubeClient:
             label_selector=label_selector,
         )
         return [p.metadata.name for p in pods.items if p.status.phase == "Running"]
+
+    def list_pods(self, label_selector: str) -> list[dict]:
+        """Return all pods matching the label selector as dicts.
+
+        Unlike list_running_pods(), returns the full pod objects (metadata,
+        status incl. container statuses) regardless of phase.
+
+        Args:
+            label_selector: K8s label selector string (e.g. "app=myapp").
+
+        Returns:
+            List of pod objects as dicts (kubernetes SDK ``to_dict()`` format).
+        """
+        import kubernetes.client
+
+        v1 = kubernetes.client.CoreV1Api(api_client=self._api_client)
+        pods = v1.list_namespaced_pod(
+            namespace=self._namespace,
+            label_selector=label_selector,
+        )
+        return [p.to_dict() for p in pods.items]
+
+    def get_pod_log(self, pod_name: str, container: str, tail_lines: int = 100) -> str:
+        """Read the log of one container in a pod.
+
+        Works for running and terminated containers (incl. init containers).
+
+        Args:
+            pod_name: Name of the pod.
+            container: Name of the container within the pod.
+            tail_lines: Number of lines from the end of the log.
+
+        Returns:
+            Log text.
+        """
+        import kubernetes.client
+
+        v1 = kubernetes.client.CoreV1Api(api_client=self._api_client)
+        return v1.read_namespaced_pod_log(
+            name=pod_name,
+            namespace=self._namespace,
+            container=container,
+            tail_lines=tail_lines,
+        )
 
     def exec_in_pod_stream(
         self,

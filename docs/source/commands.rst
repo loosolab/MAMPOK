@@ -34,7 +34,7 @@ These options are available on all commands:
 .. note::
 
    ``--log-level``, ``--debug``, ``--version``, and the completion options
-   below belong to the root ``mampok`` command, not to the subcommand — pass
+   below belong to the root ``mampok`` command, not to the subcommand. Pass
    them *before* the subcommand name, e.g.
    ``mampok --log-level DEBUG deploy ...``. ``--config`` and the selection
    options belong to the subcommand instead, e.g.
@@ -56,21 +56,21 @@ The root command additionally provides:
      - —
      - Install shell tab-completion for ``mampok`` (bash/zsh/fish/PowerShell),
        so e.g. ``mampok dep<TAB>`` completes to ``mampok deploy``. Added
-       automatically by the underlying Typer framework — see `Typer:
+       automatically by the underlying Typer framework (see `Typer:
        User-friendly CLI apps
-       <https://typer.tiangolo.com/features/#user-friendly-cli-apps>`_.
+       <https://typer.tiangolo.com/features/#user-friendly-cli-apps>`_).
    * - ``--show-completion``
      - —
      - Print the shell completion script without installing it, e.g. to
        inspect it or wire it into your own dotfiles manually. Also a Typer
-       built-in — see `Typer: User-friendly CLI apps
-       <https://typer.tiangolo.com/features/#user-friendly-cli-apps>`_.
+       built-in (see `Typer: User-friendly CLI apps
+       <https://typer.tiangolo.com/features/#user-friendly-cli-apps>`_).
    * - ``--help`` / ``-h``
      - —
      - Show help and exit. Works both on the root command (``mampok --help``)
        and on any subcommand (``mampok deploy --help``).
 
-Selection options (available on most commands — see :doc:`selection`):
+Selection options (available on most commands, see :doc:`selection`):
 
 .. list-table::
    :header-rows: 1
@@ -145,10 +145,7 @@ After a successful deployment the Mamplan file is updated in-place with
    * - ``--no-cleanup``
      - off
      - Do not delete Kubernetes resources automatically on deploy failure.
-       Useful for debugging — resources remain so you can inspect them.
-   * - ``--reupload``
-     - off
-     - Force re-upload of all files to S3, ignoring the size-based cache.
+       Useful for debugging (resources remain so you can inspect them).
    * - ``--throw-error``
      - off
      - Abort on the first failure instead of collecting errors.
@@ -177,10 +174,13 @@ Preview without deploying::
 **Notes**
 
 * Files are only re-uploaded if the S3 object size differs from the local
-  file. Use ``--reupload`` to force a fresh upload regardless of size.
-* If pod readiness times out, the deploy fails but Kubernetes resources
-  are left in place so you can investigate. Use ``--no-cleanup`` intentionally
-  if you always want this behavior.
+  file. ``deploy`` has no re-upload override. Use ``mampok redeploy`` or
+  ``mampok restore`` with ``--reupload`` to force a fresh upload regardless
+  of size.
+* By default, if pod readiness times out, Mampok automatically deletes the
+  Kubernetes resources it just applied, so a failed deploy doesn't leave a
+  half-running project behind. Pass ``--no-cleanup`` if you want the
+  resources left in place for debugging instead.
 
 ----
 
@@ -195,9 +195,11 @@ stop
 
 **Description**
 
-Stop one or more running deployments. Removes all Kubernetes resources
-(Deployment, Service, Ingress, Secrets) and sets ``deployment.status=false``
-in the Mamplan file.
+Stop one or more running deployments. If the Mamplate uses ``container_data``
+or ``bucket_overwrite``, a final sync from the running pod to S3 is attempted
+first (best-effort, deletion proceeds even if it times out). Removes all
+Kubernetes resources (Deployment, Service, Ingress, Secrets) and sets
+``deployment.status=false`` in the Mamplan file.
 
 .. important::
 
@@ -330,8 +332,9 @@ stop-expired
 **Description**
 
 Stop all active deployments whose ``deployment.lifetime`` is in the past.
-Operates on an entire repository directory. Shows a confirmation table of
-affected projects before proceeding.
+Operates on an entire repository directory, optionally narrowed with
+``-s``/``-rs``. Shows a confirmation table of affected projects before
+proceeding.
 
 Safe to use in automated cron jobs with ``-Y``. The exit code is ``1`` if
 any project failed to stop (useful for cron monitoring).
@@ -359,6 +362,12 @@ any project failed to stop (useful for cron monitoring).
    * - ``--config PATH``
      - required
      - Config file path.
+   * - ``-s / --selection``
+     - none
+     - Filter Mamplans (see :doc:`selection`).
+   * - ``-rs / --regex-select``
+     - none
+     - Regex filter (see :doc:`selection`).
    * - ``--throw-error``
      - off
      - Abort on first failure.
@@ -419,7 +428,7 @@ Useful for setting up monitoring or pre-expiry alerts.
 .. code-block:: text
 
     Project ID              Lifetime                    Days Remaining
-    ──────────────────────────────────────────────────────────────────
+    --------------------------------------------------------------------
     my-cellxgene-project    2026-04-24T12:00:00Z        5
 
 **Example**::
@@ -446,8 +455,8 @@ the missing ones.
 
 Two additional S3-only modes are available (no Kubernetes deployment):
 
-* ``--full-s3-restore`` — re-upload data files for **all** projects to S3.
-* ``--include-downloadables`` — upload data for stopped projects that have
+* ``--full-s3-restore``: re-upload data files for **all** projects to S3.
+* ``--include-downloadables``: upload data for stopped projects that have
   ``service.download_allowed = true``.
 
 Use ``--dry-run`` to preview what would be restored or uploaded without
@@ -537,7 +546,7 @@ edit-mamplan
 **Description**
 
 Edit one or more fields of a Mamplan file (or all Mamplans in a directory)
-and optionally redeploy. Planned changes are shown before applying; use
+and optionally redeploy. Planned changes are shown before applying. Use
 ``-Y`` to skip confirmation.
 
 Accepts a single Mamplan file or a directory (scanned recursively). Use
@@ -580,8 +589,9 @@ directory.
      - off
      - Stop and redeploy after saving the changes.
    * - ``--timeout INT``
-     - ``900``
-     - Pod readiness timeout (used when ``--redeploy`` is set).
+     - ``900`` *(if given)*
+     - Pod readiness timeout. Only valid together with ``--redeploy``
+       (passing it without ``--redeploy`` is an error).
    * - ``--throw-error``
      - off
      - Abort on first failure instead of collecting errors.
@@ -622,8 +632,9 @@ operations:
 The ``%`` separator marks a list-replace operation and is safe for values
 containing colons (e.g. URLs), as long as they do not contain ``%``.
 
-``-e`` can be repeated, including several times for the *same* ``section:key``
-— e.g. to append multiple items to one list in a single call::
+``-e`` can be repeated, including several times for the *same*
+``section:key`` (e.g. to append multiple items to one list in a single
+call)::
 
     -e service:organization:+:mpi-iem -e service:organization:+:mpi-fkm
 
@@ -707,34 +718,42 @@ exists in config before writing the file.
      - yes
      - Output file or directory. If directory, filename is auto-generated.
    * - ``--owner TEXT``
-     - yes*
-     - Project owner username. *Required unless supplied via
+     - yes\*
+     - Project owner username. \*Required unless supplied via
        ``--metadata-file``.
    * - ``--datatype TEXT``
-     - yes*
-     - Data type (repeatable). *Required unless in ``--metadata-file``.
+     - yes\*
+     - Data type (repeatable). \*Required unless in ``--metadata-file``.
    * - ``--files TEXT``
      - no
      - Files to upload (repeatable). Whether a tool needs any files here (and
-       what it does with them) depends on its Mamplate — see
-       :ref:`template-tokens`.
+       what it does with them) depends on its Mamplate (see
+       :ref:`template-tokens`).
    * - ``--analyst TEXT``
      - no
-     - Analyst usernames (repeatable).
+     - Analyst usernames (repeatable). Defaults to ``[owner]`` if neither
+       this nor ``--metadata-file`` supplies one.
    * - ``--organization TEXT``
      - no
      - Organizations (repeatable).
    * - ``--user TEXT``
      - no
-     - Additional user access list (repeatable).
+     - Additional user access list (repeatable). Not populated by
+       ``--metadata-file``.
    * - ``--metadata TEXT``
      - no
      - Metadata IDs (repeatable).
    * - ``--metadata-file PATH``
      - no
-     - YAML metadata file(s) to populate the service section (repeatable).
-       Merged with explicit flags; explicit values take precedence for
-       scalar fields.
+     - YAML metadata file(s) to populate ``owner``, ``analyst``,
+       ``organization``, ``datatype``, and ``metadata`` (repeatable). By
+       default, any of these also passed as an explicit flag replaces the
+       metadata-file value entirely for that field. Pass ``--merge`` to
+       combine both lists instead (scalar ``owner`` is never merged).
+   * - ``--merge``
+     - no
+     - Combine explicit list flags with ``--metadata-file`` values instead
+       of replacing them. Has no effect without ``--metadata-file``.
    * - ``--bucket TEXT``
      - no
      - S3 bucket name. Auto-generated if empty.
@@ -784,7 +803,7 @@ check-status
 **Description**
 
 Compare the expected state (``deployment.status`` in each Mamplan file)
-against the actual state (live Kubernetes resources). Prints a three-column
+against the actual state (live Kubernetes resources). Prints a four-column
 report.
 
 **Output**
@@ -792,15 +811,16 @@ report.
 .. code-block:: text
 
     Project ID              Expected    Actual      Healthy
-    ────────────────────────────────────────────────────────
+    ------------------------------------------------------------
     my-cellxgene-project    active      active      ✓
     old-project             inactive    active      ✗
     new-project             active      missing     ✗
 
-* **Expected** — derived from ``deployment.status`` in the Mamplan file.
-* **Actual** — live state from Kubernetes (active = deployment exists and
-  has ready pods; missing = deployment not found).
-* **Healthy** — ``✓`` when Expected and Actual match; ``✗`` otherwise.
+* **Expected**: derived from ``deployment.status`` in the Mamplan file.
+* **Actual**: whether the Deployment resource exists in Kubernetes (active
+  = found, missing = not found). This does not check pod readiness: a
+  Deployment with no ready pods still counts as active.
+* **Healthy**: ``✓`` when Expected and Actual match, ``✗`` otherwise.
 
 **Arguments**
 
@@ -857,6 +877,10 @@ secret is derived from ``service.organization`` and ``service.user`` in the
 Mamplan. Set ``service.owner`` to ``"_public"`` to make the project
 accessible to all authenticated users.
 
+Only affects Mamplans that are currently deployed
+(``deployment.status: true``). Undeployed projects in the selection are
+silently skipped rather than given an auth secret.
+
 Prints the new token URL after updating.
 
 **Arguments**
@@ -882,6 +906,12 @@ Prints the new token URL after updating.
    * - ``--config PATH``
      - required
      - Config file path.
+   * - ``-s / --selection``
+     - none
+     - Filter Mamplans (see :doc:`selection`).
+   * - ``-rs / --regex-select``
+     - none
+     - Regex filter (see :doc:`selection`).
    * - ``--throw-error``
      - off
      - Abort on first failure.
@@ -967,8 +997,9 @@ errors occurred.
 
 Use ``--throw-error`` to abort immediately on the first failure instead.
 
-For ``deploy`` and ``redeploy``, certain fatal Kubernetes conditions cause the
-waiting phase to abort early rather than waiting for the full timeout:
+For ``deploy``, ``redeploy``, ``restore``, and ``edit-mamplan --redeploy``,
+certain fatal Kubernetes conditions cause the waiting phase to abort early
+rather than waiting for the full timeout:
 
 * ``ImagePullBackOff`` / ``ErrImagePull``: aborts immediately.
 * ``OOMKilled`` / ``CrashLoopBackOff``: aborts after 3 restarts.
@@ -978,5 +1009,5 @@ failure: collected and reported at the end (or re-raised immediately with
 ``--throw-error``).
 
 This behavior applies to all commands that process multiple Mamplans:
-``deploy``, ``stop``, ``redeploy``, ``stop-expired``, ``check-status``,
-``update-auth``, ``download``.
+``deploy``, ``stop``, ``redeploy``, ``restore``, ``edit-mamplan``,
+``stop-expired``, ``check-status``, ``update-auth``, ``download``.

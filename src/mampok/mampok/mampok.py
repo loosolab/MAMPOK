@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import importlib.resources
 import json
 import logging
@@ -517,7 +518,6 @@ class Mampok:
         and returns an initial token URL.
 
         Args:
-            users: List of usernames/organisations with access.
             config: Configuration with cluster credentials.
 
         Returns:
@@ -555,13 +555,32 @@ class Mampok:
                 json.dump(existing, f, indent=2)
 
         # Generate initial JWT for immediate access
-        payload = {
-            "groups": groups,
-            "username": owner,
-            "iat": datetime.now(timezone.utc),
-        }
-        token = jwt.encode(payload, secret_key, algorithm="HS256")
-        return f"{cfg.url}?token={token}"
+        return _sign_jwt(cfg.url, secret_key, owner, groups)
+
+    def generate_jwt(self, username: str, groups: list[str], config: MampokConfig) -> str:
+        """Sign a new JWT for a user against the project's existing auth secret.
+
+        Reads the existing secret_key from the already-deployed Kubernetes Secret.
+        Does not create, modify, or rotate the Secret (use update_auth_secret()
+        for that). Use this when you only need a fresh token for a specific user,
+        without invalidating tokens already issued to other users.
+
+        Args:
+            username: Username to embed in the JWT payload.
+            groups: Organizations/groups to embed in the JWT payload.
+            config: Configuration with cluster credentials.
+
+        Returns:
+            Token URL (cfg.url + "?token=<jwt>").
+
+        Raises:
+            ApiException: If no auth Secret exists yet for this project (404).
+                Call update_auth_secret() once first to create one.
+        """
+        cfg = self._build_deployment_config(config)
+        secret = self.kube._kube.get("Secret", cfg.auth_secret_name)
+        auth_data = json.loads(base64.b64decode(secret["data"]["auth-proxy.json"]))
+        return _sign_jwt(cfg.url, auth_data["secret_key"], username, groups)
 
     def _build_deployment_config(self, config: MampokConfig) -> DeploymentConfig:
         """Derive a DeploymentConfig from Mamplan, Mamplate, and ClusterConfig.
@@ -702,3 +721,30 @@ def _generate_secret_key(length: int = 32) -> str:
     """
     characters = string.ascii_letters + string.digits
     return "".join(secrets.choice(characters) for _ in range(length))
+
+
+def _sign_jwt(url: str, secret_key: str, username: str, groups: list[str]) -> str:
+    """Sign a JWT for a user and return it as a token URL.
+
+    Shared by update_auth_secret() (new secret_key, just rotated) and
+    generate_jwt() (existing secret_key, read back from the Secret): the
+    payload shape and signing algorithm must stay identical for either source
+    of secret_key, since the Gatekeeper validates both the same way.
+
+    Args:
+        url: Base project URL; the token is appended as a query parameter.
+        secret_key: Shared secret to sign with. Must match what the Gatekeeper
+            sidecar has mounted from the K8s Secret, or verification fails there.
+        username: Username to embed in the JWT payload.
+        groups: Organizations/groups to embed in the JWT payload.
+
+    Returns:
+        Token URL (url + "?token=<jwt>").
+    """
+    payload = {
+        "groups": groups,
+        "username": username,
+        "iat": datetime.now(timezone.utc),
+    }
+    token = jwt.encode(payload, secret_key, algorithm="HS256")
+    return f"{url}?token={token}"

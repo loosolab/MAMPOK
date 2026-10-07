@@ -2,12 +2,12 @@ Mamplates
 =========
 
 A **Mamplate** (Mampok Template) is a JSON file that defines the container
-blueprint for a specific tool. Admins create Mamplates; end users reference
+blueprint for a specific tool. Admins create Mamplates, end users reference
 them by tool name in their Mamplans.
 
 .. seealso::
 
-   :doc:`concepts` — how Mamplates relate to Mamplans and the config.
+   :doc:`concepts`: how Mamplates relate to Mamplans and the config.
 
 File Naming and Location
 ------------------------
@@ -69,7 +69,7 @@ This is the complete ``cellxgene-mamplate.json`` from the examples directory:
 
 Key points:
 
-* ``__project.files__`` in ``command`` is a **template token** — it is
+* ``__project.files__`` in ``command`` is a **template token**: it is
   replaced at deploy time with the comma-joined file paths from the Mamplan's
   ``project.files``. See :ref:`template-tokens`.
 * ``volume.mountPath`` (``/DOWNLOADS3``) is where the S3 init container
@@ -105,14 +105,19 @@ Field Reference
    * - ``containertype``
      - string
      - yes
-     - ``"maincontainer"`` for the main application container;
+     - ``"maincontainer"`` for the main application container,
        ``"initcontainer"`` for init containers that run to completion before
        the main container starts.
+   * - ``containername``
+     - string
+     - no
+     - **Deprecated, scheduled for removal.** Still accepted by the schema
+       but should not be used in new Mamplates.
    * - ``ports``
      - integer
      - yes (if maincontainer)
      - Port the container listens on for web traffic. Required for
-       ``containertype: maincontainer``; not used for init containers.
+       ``containertype: maincontainer``, not used for init containers.
    * - ``resources``
      - object
      - yes
@@ -121,8 +126,8 @@ Field Reference
      - object
      - no
      - CPU and memory for the Gatekeeper auth-proxy sidecar. Only applies
-       when ``deployment.auth: true`` in the Mamplan; ignored otherwise. See
-       :ref:`resources`.
+       when ``deployment.auth: true`` in the Mamplan (ignored otherwise).
+       See :ref:`resources`.
    * - ``command``
      - array of strings
      - no
@@ -188,8 +193,8 @@ The ``resources`` field follows the Kubernetes conventions:
       }
     }
 
-* ``limits`` — maximum resources the container may use.
-* ``requests`` — guaranteed resources for scheduling.
+* ``limits``: maximum resources the container may use.
+* ``requests``: guaranteed resources for scheduling.
 * CPU can be specified as an integer/float (``2``, ``0.5``) or in millicores
   (``"500m"``).
 * Memory uses Kubernetes notation: ``"512Mi"``, ``"4Gi"``, ``"80Gi"``.
@@ -207,7 +212,7 @@ to the same value), e.g.:
 
 It overrides the Gatekeeper sidecar's default ``100m`` CPU / ``128Mi``
 memory and only has an effect when the Mamplan sets ``deployment.auth:
-true`` — see :doc:`advanced`.
+true`` (see :doc:`advanced`).
 
 .. _template-tokens:
 
@@ -240,7 +245,7 @@ deploy time after the Mamplan's ``container`` overrides are merged.
 Any other dot-separated Mamplan field path (e.g. ``__deployment.auth__``) is
 also valid in ``command``, ``args``, and ``env[].value``.
 
-Example — Cellxgene uses ``__project.files__`` to pass the data files as a
+Example: Cellxgene uses ``__project.files__`` to pass the data files as a
 command-line argument::
 
     "command": [
@@ -324,13 +329,15 @@ to persist this data to S3 so it survives stops and redeployments.
 .. important::
 
    ``container_data`` and ``bucket_overwrite`` are **mutually
-   exclusive** — you can use at most one per Mamplate.
+   exclusive**: you can use at most one per Mamplate.
 
-``container_data`` (selective sync)
+``container_data`` (selective paths)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Syncs specific container paths to ``s3://bucket/container_data/`` using a
-rclone sidecar container that runs during the pod's lifetime.
+Syncs specific container paths to ``s3://bucket/container_data/`` using the
+same ``rclone bisync`` sidecar mechanism as ``bucket_overwrite`` below. The
+sync itself is bidirectional in both modes. What differs is which local
+paths and which S3 location are synced, not the sync direction.
 
 .. code-block:: json
 
@@ -401,9 +408,11 @@ Init Containers
 ---------------
 
 Init containers run to completion before the main container starts. Mampok
-automatically prepends an S3 download init container whenever the Mamplan has
-non-empty ``project.files``. This init container downloads the listed files
-to the volume mount path (e.g. ``/DOWNLOADS3``).
+automatically prepends an S3 download init container when the Mamplan has
+non-empty ``project.files``, unless the Mamplate uses ``bucket_overwrite``
+(in which case this init container is skipped, since the bucket itself is
+already mounted). This init container downloads the listed files to the
+volume mount path (e.g. ``/DOWNLOADS3``).
 
 You can define additional custom init containers by setting
 ``containertype: initcontainer`` in a Mamplate and then referencing that

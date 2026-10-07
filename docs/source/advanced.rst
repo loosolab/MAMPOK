@@ -44,14 +44,30 @@ Cluster-wide Gatekeeper settings (``auth_proxy_image``, ``proxy_port``,
 ``auth_annotations``, ``image_pull_secrets``) always come from
 ``config.json``. The sidecar's CPU/memory, however, can optionally be
 tuned per tool via the Mamplate's ``proxy_resources`` field (see
-:doc:`mamplates`) — useful when a tool proxies large uploads/downloads
+:doc:`mamplates`), useful when a tool proxies large uploads/downloads
 through the Gatekeeper and needs more than the ``100m``/``128Mi`` default.
+
+**Pluggable Gatekeeper**
+
+Mampok does not implement authentication itself. ``auth_proxy_image``
+points to any container image that speaks a small contract: it receives
+four environment variables (``REVERSE_PORT``, ``REDIRECT_HOST``,
+``REDIRECT_URL``, ``PROJECT_ID``) and a mounted Secret
+(``auth-proxy.json``, containing ``secret_key``, ``owner``, ``users``,
+``groups``), and is responsible for enforcing whatever authorization
+policy it wants on top of that.
+
+A minimal reference implementation is available at
+`mampok-gatekeeper-example <https://github.com/loosolab/mampok-gatekeeper-example>`_,
+documenting the full contract and one example authorization policy
+(including the ``"_public"`` convention referenced below, which is that
+example's own design, not a Mampok requirement).
 
 **Token URL**
 
 After ``mampok deploy``, ``mampok redeploy``, ``mampok restore``, or
-``mampok update-auth``, a **token URL** is printed — a URL with a
-pre-embedded JWT token. Share this URL with the users listed in
+``mampok update-auth``, a **token URL** is printed (a URL with a
+pre-embedded JWT token). Share this URL with the users listed in
 ``service.organization`` and ``service.user``.
 
 **Updating auth without redeployment**
@@ -66,8 +82,9 @@ restart is required.
 **User list derivation**
 
 The authorized user list is derived from ``service.organization`` plus
-``service.user``. Set ``service.owner`` to ``"_public"`` to make the
-deployment accessible to all authenticated users.
+``service.user``. Whether and how ``service.owner`` grants broader access
+(e.g. a "public" convention) depends entirely on the Gatekeeper image in
+use, not on Mampok itself. See "Pluggable Gatekeeper" above.
 
 .. _shmamplan:
 
@@ -94,7 +111,8 @@ Key differences from a regular Mamplan:
      - Optional
      - Always enabled
    * - Required service fields
-     - owner, analyst, datatype, organization, user
+     - owner, analyst, datatype, download_allowed, metadata, organization,
+       user
      - owner only
    * - Filename suffix
      - ``-mamplan.json``
@@ -118,7 +136,7 @@ The Python API provides a dedicated method (see :doc:`python_api`)::
         cluster="MY_CLUSTER",
     )
 
-This creates ``alice-cellxgene-mamplan.json`` with auth always set to
+This creates ``alice-cellxgene-shmamplan.json`` with auth always set to
 ``true``.
 
 Automated Expiry Management
@@ -164,10 +182,10 @@ occurred.
    * - Behavior
      - Description
    * - Default (tolerant)
-     - Process all Mamplans; collect errors; print summary at end; exit
+     - Process all Mamplans, collect errors, print summary at end, exit
        code 1 if any failed.
    * - ``--throw-error``
-     - Abort immediately on the first failure; no summary; exit code 1.
+     - Abort immediately on the first failure, no summary, exit code 1.
 
 Use ``--throw-error`` for scripts where partial success is unacceptable (e.g.
 deployment pipelines that expect all-or-nothing semantics).
@@ -212,16 +230,19 @@ The fields are mapped as follows:
    * - ``project.id``
      - ``service.metadata``
 
-Explicit CLI flags (``--owner``, ``--analyst``, etc.) take precedence over
-values from the metadata file for scalar fields. For list fields, the values
-are merged.
+By default, an explicit CLI flag (``--owner``, ``--analyst``, etc.) replaces
+the corresponding metadata-file value entirely rather than combining with
+it. This applies to both the scalar ``owner`` field and the list fields.
+Pass ``--merge`` to combine an explicit list flag with the metadata-file
+list instead of replacing it (``owner`` is never merged, since it's scalar).
+``--user`` and ``--files`` are not populated from the metadata file at all.
 
 Relative Lifetime Syntax
 ------------------------
 
 The ``edit-mamplan`` command supports a ``+Nd/w/m`` offset syntax for the
 ``deployment:lifetime`` field. The offset is added to the **existing lifetime**
-in the Mamplan — not to today.
+in the Mamplan, not to today.
 
 .. list-table::
    :header-rows: 1
@@ -236,7 +257,7 @@ in the Mamplan — not to today.
    * - ``+3m``
      - Add 3 months (90 days) to the current lifetime
 
-Example — renewing a project that expires on 2026-05-01 by 30 days::
+Example: renewing a project that expires on 2026-05-01 by 30 days::
 
     mampok edit-mamplan my-project-mamplan.json \
       -e deployment:lifetime:+30d --config /path/to/config.json -Y
@@ -258,27 +279,30 @@ Here is guidance on which mechanism to choose:
    * - Tool type
      - Recommended mechanism
      - Reason
-   * - Cellxgene, IGV, WilsON
+   * - Cellxgene, WilsON, IGV (with user-generated tracks/annotations)
      - ``container_data``
-     - Users generate annotation files in specific paths; selective sync
+     - Users generate output files in specific paths, so selective sync
        is sufficient and avoids syncing unnecessary data.
    * - RStudio, Jupyter
      - ``bucket_overwrite``
-     - The entire working directory is the user's workspace; bidirectional
+     - The entire working directory is the user's workspace, so bidirectional
        sync keeps it consistent across redeployments.
-   * - IGV (static file viewers)
-     - Neither (no ``container_data``)
+   * - IGV (as a static file viewer only)
+     - Neither (no ``container_data``/``bucket_overwrite``)
      - Files are downloaded from S3 at startup and served statically.
        No user-generated output to persist.
 
 Custom URL IDs
 --------------
 
-By default, the deployment URL uses ``project_id`` as the path segment::
+The full URL is built as
+``https://{cluster.host}/{cluster.namespace}/{path_segment}/{tool}/``. By
+default, ``path_segment`` is ``project_id``, so for a cellxgene project in
+the ``mampok`` namespace::
 
-    https://ingress.example.com/my-cellxgene-project
+    https://ingress.example.com/mampok/my-cellxgene-project/cellxgene/
 
-You can override this with ``custom_url_id`` in the Mamplan::
+You can override the path segment with ``custom_url_id`` in the Mamplan::
 
     "deployment": {
       "custom_url_id": "mouse-atlas",
@@ -287,10 +311,11 @@ You can override this with ``custom_url_id`` in the Mamplan::
 
 Result::
 
-    https://ingress.example.com/mouse-atlas
+    https://ingress.example.com/mampok/mouse-atlas/cellxgene/
 
-Alternatively, ``random_url_suffix: true`` appends five random characters::
+Alternatively, ``random_url_suffix: true`` appends five random characters to
+the path segment::
 
-    https://ingress.example.com/my-cellxgene-project-a3f7k
+    https://ingress.example.com/mampok/my-cellxgene-project-a3f7k/cellxgene/
 
 This provides light obfuscation without requiring auth.

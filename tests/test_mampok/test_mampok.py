@@ -497,6 +497,69 @@ class TestUpdateAuthSecret:
         manifest = mock_kube._kube.apply.call_args[0][0]
         assert manifest["metadata"]["name"] == "test-proj-sc-cellxgene-auth"
 
+    def test_returned_token_signed_with_new_secret_key(self, mampok, mock_config, mock_kube):
+        import jwt
+        mampok.mamplan.data["service"]["owner"] = "alice"
+        mampok.mamplan.data["service"]["organization"] = ["grp"]
+        url = mampok.update_auth_secret(mock_config)
+        key = self._get_auth_proxy_data(mock_kube)["secret_key"]
+        payload = jwt.decode(url.split("?token=")[1], key, algorithms=["HS256"])
+        assert payload["username"] == "alice"
+        assert payload["groups"] == ["grp"]
+
+
+_JWT_KEY = "topsecret-key-0123456789abcdef0123"
+
+
+class TestSignJwt:
+    """_sign_jwt is pure: no cluster access."""
+
+    def test_token_decodes_to_expected_payload(self):
+        import jwt
+        from mampok.mampok.mampok import _sign_jwt
+
+        url = _sign_jwt("https://p.example/x", _JWT_KEY, "alice", ["grp"])
+        assert url.startswith("https://p.example/x?token=")
+        payload = jwt.decode(url.split("?token=")[1], _JWT_KEY, algorithms=["HS256"])
+        assert payload["username"] == "alice"
+        assert payload["groups"] == ["grp"]
+        assert "iat" in payload
+
+
+class TestGenerateJwt:
+    """Tests for Mampok.generate_jwt."""
+
+    def _secret(self, key=_JWT_KEY):
+        import base64
+        import json
+        data = {"secret_key": key, "users": [], "owner": "o", "groups": []}
+        encoded = base64.b64encode(json.dumps(data).encode()).decode()
+        return {"data": {"auth-proxy.json": encoded}}
+
+    def test_signs_with_key_from_existing_secret(self, mampok, mock_config, mock_kube):
+        import jwt
+        mock_kube._kube.get.return_value = self._secret()
+        url = mampok.generate_jwt("alice", ["grp"], mock_config)
+        payload = jwt.decode(url.split("?token=")[1], _JWT_KEY, algorithms=["HS256"])
+        assert payload["username"] == "alice"
+        assert payload["groups"] == ["grp"]
+
+    def test_reads_correct_secret(self, mampok, mock_config, mock_kube):
+        mock_kube._kube.get.return_value = self._secret()
+        mampok.generate_jwt("alice", [], mock_config)
+        mock_kube._kube.get.assert_called_once_with("Secret", "test-proj-sc-cellxgene-auth")
+
+    def test_does_not_rotate_secret(self, mampok, mock_config, mock_kube):
+        mock_kube._kube.get.return_value = self._secret()
+        mampok.generate_jwt("alice", [], mock_config)
+        mock_kube._kube.apply.assert_not_called()
+
+    def test_missing_secret_propagates(self, mampok, mock_config, mock_kube):
+        from kubernetes.client.rest import ApiException
+        mock_kube._kube.get.side_effect = ApiException(status=404)
+        with pytest.raises(ApiException):
+            mampok.generate_jwt("alice", [], mock_config)
+
 
 
 

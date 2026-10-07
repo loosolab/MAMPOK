@@ -2,12 +2,15 @@ Configuration
 =============
 
 Mampok reads its configuration from a JSON file. The path must be passed
-explicitly to every command via the ``--config PATH`` option; there is no
+explicitly to every command via the ``--config PATH`` option. There is no
 default location.
+
+Structure Overview
+-------------------
 
 .. figure:: images/config_structure.png
    :align: center
-   :width: 90%
+   :width: 75%
 
    Structure of the config.json file.
 
@@ -169,8 +172,10 @@ have as many as you need. The key (e.g. ``"MY_CLUSTER"``) must match the
    * - ``secretname``
      - string
      - yes
-     - Name of the Kubernetes Secret that holds the S3 credentials. This
-       secret must exist in the cluster namespace before deploying.
+     - Required by the schema, but currently has no effect: Mampok always
+       creates the S3-credentials Secret itself as part of every deploy,
+       under the computed name ``{project_id}-sc-{tool}``, regardless of
+       this value.
    * - ``prefix``
      - string
      - no
@@ -238,8 +243,18 @@ that handles JWT-based authentication.
    * - ``project_auth_path``
      - string
      - no
-     - Path to the ``project_auth.json`` file used by the Gatekeeper
-       container to look up valid users.
+     - Local path where Mampok writes a ``{project_id: secret_key}`` entry
+       on every auth-secret update, for an external Flask API's
+       ``/openProject`` endpoint. Not read by Mampok itself, and not how the
+       Gatekeeper validates users: the Gatekeeper reads the authorized
+       user/group list directly from the Kubernetes auth Secret.
+
+.. seealso::
+
+   `mampok-gatekeeper-example <https://github.com/loosolab/mampok-gatekeeper-example>`_,
+   a reference implementation documenting the full contract an
+   ``auth_proxy_image`` must satisfy (the four env vars, the
+   ``auth-proxy.json`` secret shape, and the expected HTTP behavior).
 
 Multiple Clusters
 -----------------
