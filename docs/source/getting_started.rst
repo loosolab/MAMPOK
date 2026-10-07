@@ -142,7 +142,7 @@ What Happens During Deploy
 
 .. figure:: images/deploy_sequence.png
    :align: center
-   :width: 55%
+   :width: 70%
 
    The seven steps Mampok executes when you run ``mampok deploy``.
 

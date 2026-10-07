@@ -1,9 +1,8 @@
 .. figure:: images/LOGO.png
    :align: center
-   :width: 40%
+   :width: 60%
 
-Mampok
-======
+
 
 **Mampok** (Managing Multiple Projects On Kubernetes) deploys containerized
 bioinformatics tools (Cellxgene, Jupyter, RStudio, IGV, and more) on a

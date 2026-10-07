@@ -6,7 +6,7 @@ together.
 
 .. figure:: images/architecture_overview.png
    :align: center
-   :width: 90%
+   :width: 100%
 
    Overview of who creates what and where it ends up.
 
@@ -124,7 +124,7 @@ How They Connect at Deploy Time
 
 .. figure:: images/mamplan_mamplate_flow.png
    :align: center
-   :width: 95%
+   :width: 100%
 
    Data flow during a ``mampok deploy`` call.
 
@@ -164,7 +164,7 @@ A project follows this state machine:
 
 .. figure:: images/project_lifecycle.png
    :align: center
-   :width: 90%
+   :width: 100%
 
    State transitions of a project across its Mamplan lifecycle.
 
