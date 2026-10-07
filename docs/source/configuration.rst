@@ -5,40 +5,39 @@ Mampok reads its configuration from a JSON file. The path must be passed
 explicitly to every command via the ``--config PATH`` option. There is no
 default location.
 
+Structure Overview
+-------------------
+
+.. figure:: images/config_structure.png
+   :align: center
+   :width: 75%
+
+   Structure of the config.json file.
+
 Minimal Example
 ---------------
 
-.. list-table::
-   :class: side-by-side
-   :widths: 55 45
+.. code-block:: json
 
-   * - .. figure:: images/config_structure.png
-          :align: center
-          :width: 100%
-
-          Structure of the config.json file.
-
-     - .. code-block:: json
-
-           {
-             "cluster": {
-               "MY_CLUSTER": {
-                 "host": "ingress.example.com",
-                 "namespace": "mampok",
-                 "kubeconfig_path": "/home/user/.kube/my-cluster-config"
-               }
-             },
-             "s3": {
-               "endpoint": "https://s3.example.com",
-               "access_key": "my-access-key",
-               "secret_key": "my-secret-key",
-               "secretname": "s3-credentials",
-               "prefix": "mampok"
-             },
-             "mamplates_path": "/home/user/mamplates",
-             "lifetime_days": 30,
-             "mampok_version": ">=2.0.0,<3.0.0"
-           }
+    {
+      "cluster": {
+        "MY_CLUSTER": {
+          "host": "ingress.example.com",
+          "namespace": "mampok",
+          "kubeconfig_path": "/home/user/.kube/my-cluster-config"
+        }
+      },
+      "s3": {
+        "endpoint": "https://s3.example.com",
+        "access_key": "my-access-key",
+        "secret_key": "my-secret-key",
+        "secretname": "s3-credentials",
+        "prefix": "mampok"
+      },
+      "mamplates_path": "/home/user/mamplates",
+      "lifetime_days": 30,
+      "mampok_version": ">=2.0.0,<3.0.0"
+    }
 
 File Location
 -------------
