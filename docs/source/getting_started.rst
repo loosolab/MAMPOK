@@ -32,9 +32,11 @@ Configuration
 -------------
 
 Before deploying anything, Mampok needs a configuration file that specifies
-your cluster profiles, S3 credentials, and paths to your Mamplan and Mamplate
-repositories. The path must be passed explicitly to every command via
-``--config``; there is no default location.
+your cluster profiles, S3 credentials, and the path to your Mamplates
+directory. (Mamplans have no repository path in the config: each command
+takes a Mamplan file or directory directly as an argument.) The config path
+must be passed explicitly to every command via ``--config``. There is no
+default location.
 
 See :doc:`configuration` for the full reference. A minimal example::
 
@@ -74,7 +76,8 @@ create one is with the :ref:`create-mamplan <cmd-create-mamplan>` command::
       --owner jdoe \
       --datatype scRNA-seq \
       --files data.h5ad \
-      --output ~/mamplans/
+      --output ~/mamplans/ \
+      --config ~/.mampok/config.json
 
 This generates ``~/mamplans/my-cellxgene-project-mamplan.json``:
 
@@ -93,7 +96,8 @@ This generates ``~/mamplans/my-cellxgene-project-mamplan.json``:
         "auth": false,
         "bucket": "",
         "lifetime": "2026-03-26T12:00:00Z",
-        "url": ""
+        "url": "",
+        "random_url_suffix": false
       },
       "service": {
         "owner": "jdoe",
@@ -101,8 +105,8 @@ This generates ``~/mamplans/my-cellxgene-project-mamplan.json``:
         "datatype": ["scRNA-seq"],
         "download_allowed": false,
         "metadata": [],
-        "organization": ["mpi-bn"],
-        "user": ["jdoe"]
+        "organization": [],
+        "user": []
       }
     }
 
@@ -118,14 +122,17 @@ it finishes, the Mamplan file is updated in-place with the URL and status:
 .. code-block:: text
 
     The following 1 Mamplan(s) will be deployed:
-      Project ID             Cluster       Owner         URL
-      ─────────────────────────────────────────────────────
-      my-cellxgene-project   MY_CLUSTER    jdoe
+      Project ID            Cluster       Owner         URL                                               Path
+      ------------------------------------------------------------------------------------------------------------------------------------
+      my-cellxgene-project  MY_CLUSTER    jdoe                                                            ~/mamplans/my-cellxgene-project-mamplan.json
 
     Continue? [y/N]: y
 
     Deployed: my-cellxgene-project
-    URL: https://ingress.example.com/my-cellxgene-project
+    URL: https://ingress.example.com/mampok/my-cellxgene-project/cellxgene/
+
+(The URL column is empty here because this project has never been deployed
+before. It fills in on subsequent runs once ``deployment.url`` is set.)
 
 The URL is now also written back into the ``deployment.url`` field of your
 Mamplan file.
@@ -147,30 +154,33 @@ What Happens During Deploy
      - Description
    * - 1. Load Mamplan + Mamplate
      - Mampok reads the project file and the matching container template
-       (e.g. ``cellxgene-mamplate.json``).
-   * - 2. Create S3 bucket
+       (e.g. ``cellxgene-mamplate.json``), merges container overrides, and
+       expands template tokens.
+   * - 2. Generate auth secret
+     - Only when ``deployment.auth: true``. A JWT secret and auth token URL
+       are created before anything below, since pod startup fails without it.
+   * - 3. Create S3 bucket
      - If the bucket does not exist yet, it is created.
-   * - 3. Upload files
+   * - 4. Upload files
      - Each file listed in ``project.files`` is uploaded to
        ``s3://bucket/analysis_data/``. Files are skipped if the S3 object
-       already has the same size; use ``--reupload`` to force a fresh upload.
-   * - 4. Generate auth secret
-     - Only when ``deployment.auth: true``. A JWT secret and auth token URL
-       are created.
+       already has the same size. Use ``--reupload`` to force a fresh upload.
    * - 5. Apply Kubernetes resources
-     - A Deployment, Service, Ingress, and supporting Secrets are applied
-       to the cluster.
+     - A Deployment and a Secret (S3 credentials) are always applied. A
+       Service is added only if the tool exposes ports, and an Ingress only
+       if a URL/host is configured.
    * - 6. Wait for pod readiness
      - Mampok polls until all pods are ready. Default timeout: 900 seconds,
        configurable with ``--timeout``.
    * - 7. Write back to Mamplan
-     - ``deployment.status`` is set to ``true``, ``deployment.url`` and
-       ``deployment.lifetime`` are updated, and the file is saved to disk.
+     - ``deployment.status``, ``deployment.url``, ``deployment.lifetime``,
+       and ``deployment.bucket`` are updated, along with
+       ``project.project_size``, and the file is saved to disk.
 
 Next Steps
 ----------
 
-* :doc:`concepts` — understand Mamplans, Mamplates, and how they interact
-* :doc:`mamplans` — complete Mamplan field reference
-* :doc:`commands` — all CLI commands with examples
-* :doc:`configuration` — full config.json reference
+* :doc:`concepts`: understand Mamplans, Mamplates, and how they interact
+* :doc:`mamplans`: complete Mamplan field reference
+* :doc:`commands`: all CLI commands with examples
+* :doc:`configuration`: full config.json reference

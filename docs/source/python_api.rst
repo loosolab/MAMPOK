@@ -7,12 +7,12 @@ scripts, pipelines, or web applications without spawning a subprocess.
 
 Unlike the CLI:
 
-* No interactive prompts — all operations run without user input.
-* ``deploy()`` and ``stop()`` are **generators** that yield progress dicts —
-  you must iterate them to drive execution.
+* No interactive prompts: all operations run without user input.
+* ``deploy()`` and ``stop()`` are **generators** that yield progress dicts.
+  You must iterate them to drive execution.
 * Explicit edit methods (``edit_lifetime``, ``edit_sharing``) instead of
   string-token parsing.
-* No error tolerance — exceptions propagate directly to the caller.
+* No error tolerance: exceptions propagate directly to the caller.
 
 Setup
 -----
@@ -46,7 +46,7 @@ deploy
 
     {"stage": "s3_bucket", "status": "created", ...}
     {"stage": "s3_upload", "status": "progress", "file": "...", "transferred_pct": 45}
-    {"stage": "k8s_apply", "status": "applied", "resource": "Deployment/my-project"}
+    {"stage": "k8s_apply", "status": "done", "resource": "Deployment/my-project"}
     {"stage": "k8s_ready", "status": "running", "ready_replicas": 1}
     {"stage": "done", "selfservice": {"url": "https://...", "token_url": "https://...?token=...", "project_id": "my-project", "auth": False}}
 
@@ -83,8 +83,9 @@ stop
 
     # After the loop, deployment.status is false in the Mamplan file.
 
-``stop()`` yields progress dicts from the S3 sync and Kubernetes deletion
-steps. The S3 bucket is preserved.
+``stop()`` yields progress dicts from the Kubernetes deletion steps, plus a
+final S3 sync first if the Mamplate uses ``container_data`` or
+``bucket_overwrite`` (skipped otherwise). The S3 bucket is preserved.
 
 redeploy
 ~~~~~~~~
@@ -180,6 +181,32 @@ Yields progress events:
     {"stage": "auth_secret", "status": "failed", "reason": "..."}
     {"stage": "rollback", "status": "done"}
 
+generate_jwt
+~~~~~~~~~~~~
+
+.. code-block:: python
+
+    token_url = api.generate_jwt(
+        "my-project-mamplan.json",
+        username="alice",
+        groups=["mpi-bn"],
+    )
+
+Signs a JWT for one user against the project's **existing** auth secret,
+without rotating it (unlike ``edit_sharing()``/``update_auth_secret()``,
+this does not touch the Kubernetes Secret at all), so it never invalidates
+tokens already issued to other users. Use this to hand out an individual
+access link on demand (e.g. every time a user opens the project from your
+own repository's website), reserving the heavier secret-rotating methods
+for when the authorized-user list itself changes.
+
+The deployment must already have an auth Secret (i.e. it was deployed, or
+had ``update_auth_secret()``/``edit_sharing()`` run, with
+``deployment.auth: true``). Otherwise this raises
+``kubernetes.client.rest.ApiException`` (404).
+
+Returns the token URL (``cfg.url + "?token=<jwt>"``).
+
 Creating Mamplans
 -----------------
 
@@ -218,8 +245,9 @@ Creates and validates a new Mamplan JSON file. If ``output`` is a directory,
 the filename is auto-generated as ``{project_id}-mamplan.json``.
 
 The optional ``metadata_files`` list provides YAML metadata files whose
-fields are merged into the ``service`` section. Explicit values in ``service``
-take precedence for scalar fields; lists are merged.
+fields populate the ``service`` section. For each field, an explicit value
+passed in ``service`` replaces the metadata-file value entirely rather than
+combining with it. This applies to list fields too, not just scalars.
 
 create_sh_mamplan
 ~~~~~~~~~~~~~~~~~
@@ -258,8 +286,9 @@ project_info
     print(project["lifetime"])   # timezone-aware datetime object
 
 Returns a dict with the full project metadata.
-``status`` reflects ``deployment.status`` from the Mamplan file — it is
-**not** a live Kubernetes query. Use ``check_status()`` if you need the
+``status`` reflects ``deployment.status`` from the Mamplan file. It is
+**not** a live Kubernetes query. The ``API`` class has no live-status
+equivalent. Use the ``mampok check-status`` CLI command if you need the
 actual cluster state.
 Date fields (``creation_date``, ``lifetime``) are timezone-aware
 ``datetime`` objects.
@@ -273,7 +302,7 @@ drive execution:
 
 .. code-block:: python
 
-    # Correct — iterate to drive execution
+    # Correct: iterate to drive execution
     for event in api.deploy("my-project-mamplan.json"):
         stage = event.get("stage")
         status = event.get("status")
@@ -286,13 +315,13 @@ drive execution:
             url = selfservice.get("url")
             print(f"Deployed: {token_url or url}")
 
-    # Wrong — generator is never executed
+    # Wrong: generator is never executed
     api.deploy("my-project-mamplan.json")   # ← nothing happens
 
 Error Handling
 --------------
 
-All exceptions propagate directly — there is no error tolerance like the CLI.
+All exceptions propagate directly. There is no error tolerance like the CLI.
 
 Common exceptions:
 

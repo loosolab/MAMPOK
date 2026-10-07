@@ -205,9 +205,10 @@ class API:
             output: Output path (file or directory). If directory, filename
                     is auto-generated as {project_id}-mamplan.json.
             metadata_files: Optional list of YAML metadata file paths. Extracted
-                fields (owner, analyst, organization, datatype, metadata) are
-                merged into the service section. Explicit values in ``kwargs``
-                take precedence for scalar fields; list fields are merged.
+                fields (owner, analyst, organization, datatype, metadata) populate
+                the service section. An explicit value in ``kwargs`` replaces the
+                metadata-file value entirely for that field, including list fields
+                (they are not merged).
             **kwargs: Mamplan sections (project, deployment, service, etc.).
 
         Raises:

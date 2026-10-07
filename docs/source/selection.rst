@@ -9,9 +9,9 @@ How It Works
 
 When you pass filter options, Mampok applies them **after** loading all
 Mamplans from the path argument. Only Mamplans that match **all** filters
-are processed; the rest are silently skipped.
+are processed. The rest are silently skipped.
 
-Multiple filters are AND-combined — a Mamplan must pass every filter to be
+Multiple filters are AND-combined: a Mamplan must pass every filter to be
 included.
 
 Exact Match (``-s / --selection``)
@@ -68,7 +68,7 @@ Regex Match (``-rs / --regex-select``)
 
     -rs section:key:pattern
 
-Uses Python's ``re.search()`` — the pattern is matched anywhere in the
+Uses Python's ``re.search()``: the pattern is matched anywhere in the
 string representation of the field value. The match is **not anchored** to
 the start or end. The option is repeatable.
 
@@ -90,7 +90,7 @@ Examples:
 Combining Filters
 -----------------
 
-Multiple ``-s`` and ``-rs`` flags can be combined freely — all must match::
+Multiple ``-s`` and ``-rs`` flags can be combined freely, and all must match::
 
     # Only cellxgene projects on cluster MY_CLUSTER
     mampok deploy ~/mamplans/ \

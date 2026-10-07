@@ -2,39 +2,43 @@ Configuration
 =============
 
 Mampok reads its configuration from a JSON file. The path must be passed
-explicitly to every command via the ``--config PATH`` option; there is no
+explicitly to every command via the ``--config PATH`` option. There is no
 default location.
-
-.. figure:: images/config_structure.png
-   :align: center
-   :width: 90%
-
-   Structure of the config.json file.
 
 Minimal Example
 ---------------
 
-.. code-block:: json
+.. list-table::
+   :class: side-by-side
+   :widths: 55 45
 
-    {
-      "cluster": {
-        "MY_CLUSTER": {
-          "host": "ingress.example.com",
-          "namespace": "mampok",
-          "kubeconfig_path": "/home/user/.kube/my-cluster-config"
-        }
-      },
-      "s3": {
-        "endpoint": "https://s3.example.com",
-        "access_key": "my-access-key",
-        "secret_key": "my-secret-key",
-        "secretname": "s3-credentials",
-        "prefix": "mampok"
-      },
-      "mamplates_path": "/home/user/mamplates",
-      "lifetime_days": 30,
-      "mampok_version": ">=2.0.0,<3.0.0"
-    }
+   * - .. figure:: images/config_structure.png
+          :align: center
+          :width: 100%
+
+          Structure of the config.json file.
+
+     - .. code-block:: json
+
+           {
+             "cluster": {
+               "MY_CLUSTER": {
+                 "host": "ingress.example.com",
+                 "namespace": "mampok",
+                 "kubeconfig_path": "/home/user/.kube/my-cluster-config"
+               }
+             },
+             "s3": {
+               "endpoint": "https://s3.example.com",
+               "access_key": "my-access-key",
+               "secret_key": "my-secret-key",
+               "secretname": "s3-credentials",
+               "prefix": "mampok"
+             },
+             "mamplates_path": "/home/user/mamplates",
+             "lifetime_days": 30,
+             "mampok_version": ">=2.0.0,<3.0.0"
+           }
 
 File Location
 -------------
@@ -169,8 +173,10 @@ have as many as you need. The key (e.g. ``"MY_CLUSTER"``) must match the
    * - ``secretname``
      - string
      - yes
-     - Name of the Kubernetes Secret that holds the S3 credentials. This
-       secret must exist in the cluster namespace before deploying.
+     - Required by the schema, but currently has no effect: Mampok always
+       creates the S3-credentials Secret itself as part of every deploy,
+       under the computed name ``{project_id}-sc-{tool}``, regardless of
+       this value.
    * - ``prefix``
      - string
      - no
@@ -238,13 +244,16 @@ that handles JWT-based authentication.
    * - ``project_auth_path``
      - string
      - no
-     - Path to the ``project_auth.json`` file used by the Gatekeeper
-       container to look up valid users.
+     - Local path where Mampok writes a ``{project_id: secret_key}`` entry
+       on every auth-secret update, for an external Flask API's
+       ``/openProject`` endpoint. Not read by Mampok itself, and not how the
+       Gatekeeper validates users: the Gatekeeper reads the authorized
+       user/group list directly from the Kubernetes auth Secret.
 
 .. seealso::
 
-   `mampok-gatekeeper-example <https://github.com/loosolab/mampok-gatekeeper-example>`_
-   — a reference implementation documenting the full contract an
+   `mampok-gatekeeper-example <https://github.com/loosolab/mampok-gatekeeper-example>`_,
+   a reference implementation documenting the full contract an
    ``auth_proxy_image`` must satisfy (the four env vars, the
    ``auth-proxy.json`` secret shape, and the expected HTTP behavior).
 
