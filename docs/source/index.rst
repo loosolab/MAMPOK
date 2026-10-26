@@ -1,3 +1,6 @@
+Mampok
+======
+
 .. figure:: images/LOGO.png
    :align: center
    :width: 60%
