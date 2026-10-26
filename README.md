@@ -2,7 +2,7 @@
 [![Release](https://img.shields.io/github/v/release/loosolab/MAMPOK)](https://github.com/loosolab/MAMPOK/releases)
 [![PyPI](https://img.shields.io/pypi/v/mampok)](https://pypi.org/project/mampok/)
 [![Documentation](https://img.shields.io/badge/documentation-online-blue)](https://loosolab.pages.gwdg.de/software/mampok/)
-[![Coverage](https://img.shields.io/endpoint?url=https://loosolab.pages.gwdg.de/software/mampok_v2/badges/coverage.json)](https://loosolab.pages.gwdg.de/software/mampok/)
+[![Coverage](https://img.shields.io/endpoint?url=https://loosolab.pages.gwdg.de/software/mampok/badges/coverage.json)](https://loosolab.pages.gwdg.de/software/mampok/)
 [![FAIR checklist badge](https://img.shields.io/badge/Software-green?label=FAIR)](https://fairsoftwarechecklist.net/v0.2?f=31&a=32113&i=32100&r=133)
 
 
@@ -16,7 +16,7 @@ Kubernetes cluster backed by S3-compatible object storage. You describe your pro
 JSON file (a *Mamplan*); Mampok handles S3 uploads, Kubernetes resource creation, pod
 readiness checks, and lifecycle management.
 
-For more information about Mampok, please see the [documentation](https://loosolab.pages.gwdg.de/software/mampok_v2/).
+For more information about Mampok, please see the [documentation](https://loosolab.pages.gwdg.de/software/mampok/).
 
 ## How to install
 
