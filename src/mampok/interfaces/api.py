@@ -506,7 +506,7 @@ class API:
                       (now + lifetime_days).
 
         Returns:
-            Normalized project_id string (e.g. "alice-cellxgene").
+            Normalized project_id string (e.g. "alice-cxg").
 
         Raises:
             ValueError: If cluster is not specified and no default_cluster in config,
