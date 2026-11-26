@@ -1,0 +1,39 @@
+{
+  "project": {
+    "project_id": "gse130699",
+    "tool": "cxg",
+    "files": [
+      "gse130699.h5ad"
+    ],
+    "creation_date": "2025-04-24T00:00:00Z",
+    "project_size": 111819
+  },
+  "deployment": {
+    "cluster": "MY_CLUSTER",
+    "status": false,
+    "auth": true,
+    "bucket": "mampok-bcu-gse130699-cxg",
+    "random_url_suffix": false,
+    "url": "https://bioinformatics-cluster.example.org/mampok/gse130699/cxg/",
+    "lifetime": "2026-10-09T14:18:50Z"
+  },
+  "service": {
+    "owner": "mmuster",
+    "analyst": [
+      "jdoe"
+    ],
+    "datatype": [
+      "snRNA-seq"
+    ],
+    "download_allowed": false,
+    "metadata": [
+      "gse130699"
+    ],
+    "organization": [
+      "AG-mustermann"
+    ],
+    "user": [
+      "jdoe"
+    ]
+  }
+}
