@@ -86,7 +86,7 @@ users reference them by the ``tool`` name in their Mamplan.
 
 Key characteristics:
 
-* Named ``{tool}-mamplate.json`` (e.g. ``cellxgene-mamplate.json``)
+* Named ``{tool}-mamplate.json`` (e.g. ``cxg-mamplate.json``)
 * Stored in the ``mamplates_path`` directory defined in your config
 * **Immutable at deploy time**: users do not edit Mamplates directly. They
   use the optional ``container`` section in their Mamplan to override fields

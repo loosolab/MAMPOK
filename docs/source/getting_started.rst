@@ -67,11 +67,13 @@ Your First Deployment
 **Step 1: Create a Mamplan**
 
 A Mamplan is a JSON file that describes your project. The fastest way to
-create one is with the :ref:`create-mamplan <cmd-create-mamplan>` command::
+create one is with the :ref:`create-mamplan <cmd-create-mamplan>` command.
+The examples in this documentation use ``cxg``, the short tool name of the
+cellxgene Mamplate, as tool::
 
     mampok create-mamplan \
       --project-id my-cellxgene-project \
-      --tool cellxgene \
+      --tool cxg \
       --cluster MY_CLUSTER \
       --owner jdoe \
       --datatype scRNA-seq \
@@ -86,7 +88,7 @@ This generates ``~/mamplans/my-cellxgene-project-mamplan.json``:
     {
       "project": {
         "project_id": "my-cellxgene-project",
-        "tool": "cellxgene",
+        "tool": "cxg",
         "files": ["data.h5ad"],
         "creation_date": "2026-03-26T12:00:00Z"
       },
@@ -129,7 +131,7 @@ it finishes, the Mamplan file is updated in-place with the URL and status:
     Continue? [y/N]: y
 
     Deployed: my-cellxgene-project
-    URL: https://ingress.example.com/mampok/my-cellxgene-project/cellxgene/
+    URL: https://ingress.example.com/mampok/my-cellxgene-project/cxg/
 
 (The URL column is empty here because this project has never been deployed
 before. It fills in on subsequent runs once ``deployment.url`` is set.)
@@ -154,7 +156,7 @@ What Happens During Deploy
      - Description
    * - 1. Load Mamplan + Mamplate
      - Mampok reads the project file and the matching container template
-       (e.g. ``cellxgene-mamplate.json``), merges container overrides, and
+       (e.g. ``cxg-mamplate.json``), merges container overrides, and
        expands template tokens.
    * - 2. Generate auth secret
      - Only when ``deployment.auth: true``. A JWT secret and auth token URL
@@ -176,6 +178,26 @@ What Happens During Deploy
      - ``deployment.status``, ``deployment.url``, ``deployment.lifetime``,
        and ``deployment.bucket`` are updated, along with
        ``project.project_size``, and the file is saved to disk.
+
+Example Files
+-------------
+
+The ``examples`` directory of the repository contains one example of each
+file type used above:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 60
+
+   * - File
+     - Description
+   * - ``examples/gse130699-mamplan.json``
+     - Mamplan of a cellxgene project (see :doc:`mamplans`)
+   * - ``examples/gse130699_metadata.yaml``
+     - Metadata file from which ``create-mamplan --metadata-file`` populates
+       owner, analysts, organization and data type (see :ref:`cmd-create-mamplan`)
+   * - ``examples/mamplates/cxg-mamplate.json``
+     - Mamplate of the cellxgene tool (see :ref:`mamplate-example`)
 
 Next Steps
 ----------
