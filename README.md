@@ -1,4 +1,4 @@
-[![DOI](https://img.shields.io/badge/Zenodo-10.5281%2Fzenodo.21237697-blue)](https://doi.org/10.5281/zenodo.21237697)
+[![DOI](https://img.shields.io/badge/Zenodo-10.5281%2Fzenodo.21237696-blue)](https://doi.org/10.5281/zenodo.21237696)
 [![Release](https://img.shields.io/github/v/release/loosolab/MAMPOK)](https://github.com/loosolab/MAMPOK/releases)
 [![PyPI](https://img.shields.io/pypi/v/mampok)](https://pypi.org/project/mampok/)
 [![Documentation](https://img.shields.io/badge/documentation-online-blue)](https://loosolab.pages.gwdg.de/software/mampok/)

@@ -28,7 +28,7 @@ date-released: "2026-11-26"
 license: MIT
 repository-code: "https://github.com/loosolab/MAMPOK"
 url: "https://loosolab.pages.gwdg.de/software/mampok/"
-doi: "10.5281/zenodo.21237697"
+doi: "10.5281/zenodo.21237696"
 keywords:
   - Kubernetes
   - bioinformatics
