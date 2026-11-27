@@ -45,7 +45,7 @@ Examples:
 
    * - Filter
      - Effect
-   * - ``-s project:tool:cellxgene``
+   * - ``-s project:tool:cxg``
      - Only Cellxgene projects
    * - ``-s deployment:cluster:MY_CLUSTER``
      - Only projects on cluster MY_CLUSTER
@@ -94,7 +94,7 @@ Multiple ``-s`` and ``-rs`` flags can be combined freely, and all must match::
 
     # Only cellxgene projects on cluster MY_CLUSTER
     mampok deploy ~/mamplans/ \
-      -s project:tool:cellxgene \
+      -s project:tool:cxg \
       -s deployment:cluster:MY_CLUSTER
 
     # Deployed projects owned by anyone except jdoe
@@ -116,7 +116,7 @@ Common selectable paths:
      - Example value
    * - ``project:tool``
      - string
-     - ``cellxgene``
+     - ``cxg``
    * - ``project:project_id``
      - string
      - ``my-project``

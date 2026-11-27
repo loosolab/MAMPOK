@@ -1,0 +1,288 @@
+project:
+  id: gse130699
+  project_name: Single nucleus RNA-seq of cardiomyocytes from neonatal mouse hearts
+    after injury
+  date: 15.01.2025
+  description: We performed myocardial infarction (MI) or sham surgeries to mouse
+    hearts at postnatal day 1 or day 8. At 1d and 3d post P1 and P8 surgery, ventricle
+    samples below the surgery plane were collected for single nucleus RNA-Seq.
+  publication:
+  - pubmed_id: 32220304
+    title: Dynamic Transcriptional Responses to Injury of Regenerative and Non-regenerative
+      Cardiomyocytes Revealed by Single-Nucleus RNA Sequencing.
+    year: 2020
+    author:
+    - Cui M
+    - Wang Z
+    - Chen K
+    - et. al
+    journal: Dev Cell
+    volume: 53
+    issue: 1
+    pages: 102-116.e8
+    doi: 10.1016/j.devcel.2020.02.019
+  owner:
+    name: Mustermann, Max
+    ldap_name: mmuster
+    department: AG-mustermann
+    email: max.mustermann@example.org
+experimental_setting:
+- setting_id: exp1
+  organism:
+    organism_name: Mus musculus
+    taxonomy_id: '10090'
+  experimental_factors:
+  - factor: injury
+    values:
+    - injury_status:
+      - injured
+      injury_type:
+      - LAD-ligation
+      - sham
+  - factor: age
+    values:
+    - value: 1
+      unit: days
+    - value: 8
+      unit: days
+  - factor: time_point
+    values:
+    - value: 1
+      unit: days
+    - value: 3
+      unit: days
+  conditions:
+  - condition_name: injury:{injury_type:"LAD-ligation"|injury_status:"injured"}-age:"1days"-time_point:"3days"
+    biological_replicates:
+      count: 1
+      samples:
+      - sample_name: inj#tp.LAD+sts.inj-age.1d-tmp.3d_b01
+        pooled: false
+        donor_count: 1
+        number_of_measurements: 1
+        genetic_background: WT
+        injury:
+        - injury_status: injured
+          injury_type: LAD-ligation
+        age:
+          value: 1
+          unit: days
+        cell_type: Cardiomyocytes
+        disease:
+        - disease_type: Myocardial Infarction
+          disease_status: ill
+        tissue:
+        - ventricle
+        time_point:
+          value: 3
+          unit: days
+        technical_replicates:
+          count: 1
+          sample_name:
+          - gse130699_exp1_snRNA_mmu_inj#tp.LAD+sts.inj-age.1d-tmp.3d_b01_t01_m01
+          filenames:
+          - gse130699__1__snRNA__LAD-inj_1d_3d__1
+  - condition_name: injury:{injury_type:"LAD-ligation"|injury_status:"injured"}-age:"8days"-time_point:"1days"
+    biological_replicates:
+      count: 1
+      samples:
+      - sample_name: inj#tp.LAD+sts.inj-age.8d-tmp.1d_b01
+        pooled: false
+        donor_count: 1
+        number_of_measurements: 1
+        genetic_background: WT
+        injury:
+        - injury_status: injured
+          injury_type: LAD-ligation
+        age:
+          value: 8
+          unit: days
+        cell_type: Cardiomyocytes
+        disease:
+        - disease_type: Myocardial Infarction
+          disease_status: ill
+        tissue:
+        - ventricle
+        time_point:
+          value: 1
+          unit: days
+        technical_replicates:
+          count: 1
+          sample_name:
+          - gse130699_exp1_snRNA_mmu_inj#tp.LAD+sts.inj-age.8d-tmp.1d_b01_t01_m01
+          filenames:
+          - gse130699__2__snRNA__LAD-inj_8d_1d__1
+  - condition_name: injury:{injury_type:"LAD-ligation"|injury_status:"injured"}-age:"8days"-time_point:"3days"
+    biological_replicates:
+      count: 1
+      samples:
+      - sample_name: inj#tp.LAD+sts.inj-age.8d-tmp.3d_b01
+        pooled: false
+        donor_count: 1
+        number_of_measurements: 1
+        genetic_background: WT
+        injury:
+        - injury_status: injured
+          injury_type: LAD-ligation
+        age:
+          value: 8
+          unit: days
+        cell_type: Cardiomyocytes
+        disease:
+        - disease_type: Myocardial Infarction
+          disease_status: ill
+        tissue:
+        - ventricle
+        time_point:
+          value: 3
+          unit: days
+        technical_replicates:
+          count: 1
+          sample_name:
+          - gse130699_exp1_snRNA_mmu_inj#tp.LAD+sts.inj-age.8d-tmp.3d_b01_t01_m01
+          filenames:
+          - gse130699__3__snRNA__LAD-inj_8d_3d__1
+  - condition_name: injury:{injury_type:"LAD-ligation"|injury_status:"injured"}-age:"1days"-time_point:"1days"
+    biological_replicates:
+      count: 1
+      samples:
+      - sample_name: inj#tp.LAD+sts.inj-age.1d-tmp.1d_b01
+        pooled: false
+        donor_count: 1
+        number_of_measurements: 1
+        genetic_background: WT
+        injury:
+        - injury_status: injured
+          injury_type: LAD-ligation
+        age:
+          value: 1
+          unit: days
+        cell_type: Cardiomyocytes
+        disease:
+        - disease_type: Myocardial Infarction
+          disease_status: ill
+        tissue:
+        - ventricle
+        time_point:
+          value: 1
+          unit: days
+        technical_replicates:
+          count: 1
+          sample_name:
+          - gse130699_exp1_snRNA_mmu_inj#tp.LAD+sts.inj-age.1d-tmp.1d_b01_t01_m01
+          filenames:
+          - gse130699__4__snRNA__LAD-inj_1d_1d__1
+  - condition_name: injury:{injury_type:"sham"|injury_status:"injured"}-age:"1days"-time_point:"1days"
+    biological_replicates:
+      count: 1
+      samples:
+      - sample_name: inj#tp.sham+sts.inj-age.1d-tmp.1d_b01
+        pooled: false
+        donor_count: 1
+        number_of_measurements: 1
+        genetic_background: WT
+        injury:
+        - injury_status: injured
+          injury_type: sham
+        age:
+          value: 1
+          unit: days
+        cell_type: Cardiomyocytes
+        tissue:
+        - ventricle
+        time_point:
+          value: 1
+          unit: days
+        technical_replicates:
+          count: 1
+          sample_name:
+          - gse130699_exp1_snRNA_mmu_inj#tp.sham+sts.inj-age.1d-tmp.1d_b01_t01_m01
+          filenames:
+          - gse130699__5__snRNA__sham-inj_1d_1d__1
+  - condition_name: injury:{injury_type:"sham"|injury_status:"injured"}-age:"1days"-time_point:"3days"
+    biological_replicates:
+      count: 1
+      samples:
+      - sample_name: inj#tp.sham+sts.inj-age.1d-tmp.3d_b01
+        pooled: false
+        donor_count: 1
+        number_of_measurements: 1
+        genetic_background: WT
+        injury:
+        - injury_status: injured
+          injury_type: sham
+        age:
+          value: 1
+          unit: days
+        cell_type: Cardiomyocytes
+        tissue:
+        - ventricle
+        time_point:
+          value: 3
+          unit: days
+        technical_replicates:
+          count: 1
+          sample_name:
+          - gse130699_exp1_snRNA_mmu_inj#tp.sham+sts.inj-age.1d-tmp.3d_b01_t01_m01
+          filenames:
+          - gse130699__6__snRNA__sham-inj_1d_3d__1
+  - condition_name: injury:{injury_type:"sham"|injury_status:"injured"}-age:"8days"-time_point:"1days"
+    biological_replicates:
+      count: 1
+      samples:
+      - sample_name: inj#tp.sham+sts.inj-age.8d-tmp.1d_b01
+        pooled: false
+        donor_count: 1
+        number_of_measurements: 1
+        genetic_background: WT
+        injury:
+        - injury_status: injured
+          injury_type: sham
+        age:
+          value: 8
+          unit: days
+        cell_type: Cardiomyocytes
+        tissue:
+        - ventricle
+        time_point:
+          value: 1
+          unit: days
+        technical_replicates:
+          count: 1
+          sample_name:
+          - gse130699_exp1_snRNA_mmu_inj#tp.sham+sts.inj-age.8d-tmp.1d_b01_t01_m01
+          filenames:
+          - gse130699__7__snRNA__sham-inj_8d_1d__1
+  - condition_name: injury:{injury_type:"sham"|injury_status:"injured"}-age:"8days"-time_point:"3days"
+    biological_replicates:
+      count: 1
+      samples:
+      - sample_name: inj#tp.sham+sts.inj-age.8d-tmp.3d_b01
+        pooled: false
+        donor_count: 1
+        number_of_measurements: 1
+        genetic_background: WT
+        injury:
+        - injury_status: injured
+          injury_type: sham
+        age:
+          value: 8
+          unit: days
+        cell_type: Cardiomyocytes
+        tissue:
+        - ventricle
+        time_point:
+          value: 3
+          unit: days
+        technical_replicates:
+          count: 1
+          sample_name:
+          - gse130699_exp1_snRNA_mmu_inj#tp.sham+sts.inj-age.8d-tmp.3d_b01_t01_m01
+          filenames:
+          - gse130699__8__snRNA__sham-inj_8d_3d__1
+technical_details:
+  techniques:
+  - setting: exp1
+    technique:
+    - snRNA-seq
+version: 3.0.1

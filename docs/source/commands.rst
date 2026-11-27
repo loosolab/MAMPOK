@@ -165,7 +165,7 @@ Deploy all projects in a directory::
 
 Deploy only cellxgene projects::
 
-    mampok deploy ~/mamplans/ -s project:tool:cellxgene --config /path/to/config.json
+    mampok deploy ~/mamplans/ -s project:tool:cxg --config /path/to/config.json
 
 Preview without deploying::
 
@@ -663,7 +663,7 @@ Change multiple fields and redeploy::
 Edit all cellxgene projects in a directory::
 
     mampok edit-mamplan ~/mamplans/ \
-      -s project:tool:cellxgene \
+      -s project:tool:cxg \
       -e deployment:lifetime:+30d --config /path/to/config.json -Y
 
 Add an organization to multiple projects::
@@ -770,24 +770,26 @@ Minimal creation::
 
     mampok create-mamplan \
       --project-id mouse-atlas \
-      --tool cellxgene \
+      --tool cxg \
       --cluster MY_CLUSTER \
       --owner jdoe \
       --datatype scRNA-seq \
       --output ~/mamplans/ \
       --config /path/to/config.json
 
-With metadata file and multiple data files::
+With a metadata file::
 
     mampok create-mamplan \
-      --project-id mouse-atlas \
-      --tool cellxgene \
+      --project-id gse130699 \
+      --tool cxg \
       --cluster MY_CLUSTER \
-      --metadata-file project_metadata.yaml \
-      --files atlas.h5ad \
-      --files markers.csv \
-      --output ~/mamplans/mouse-atlas-mamplan.json \
+      --metadata-file examples/gse130699_metadata.yaml \
+      --files gse130699.h5ad \
+      --output ~/mamplans/gse130699-mamplan.json \
       --config /path/to/config.json
+
+The metadata file ``examples/gse130699_metadata.yaml`` and the resulting
+Mamplan ``examples/gse130699-mamplan.json`` are provided in the repository.
 
 ----
 

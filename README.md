@@ -82,7 +82,7 @@ pip install .
 ```bash
 mampok create-mamplan \
   --project-id my-project \
-  --tool cellxgene \
+  --tool cxg \
   --cluster MY_CLUSTER \
   --owner jdoe \
   --datatype scRNA-seq \
@@ -96,3 +96,5 @@ mampok create-mamplan \
 ```bash
 mampok deploy ~/mamplans/my-project-mamplan.json --config /path/to/config.json
 ```
+
+Example files (a Mamplan, a Mamplate and a metadata file) are provided in the [`examples`](examples) directory.

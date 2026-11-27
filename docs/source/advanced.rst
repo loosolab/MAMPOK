@@ -131,12 +131,12 @@ The Python API provides a dedicated method (see :doc:`python_api`)::
     project_id = api.create_sh_mamplan(
         output="/path/to/mamplans/",
         username="alice",
-        tool="cellxgene",
+        tool="cxg",
         bucket="alice-cellxgene-bucket",
         cluster="MY_CLUSTER",
     )
 
-This creates ``alice-cellxgene-shmamplan.json`` with auth always set to
+This creates ``alice-cxg-shmamplan.json`` with auth always set to
 ``true``.
 
 Automated Expiry Management
@@ -300,7 +300,7 @@ The full URL is built as
 default, ``path_segment`` is ``project_id``, so for a cellxgene project in
 the ``mampok`` namespace::
 
-    https://ingress.example.com/mampok/my-cellxgene-project/cellxgene/
+    https://ingress.example.com/mampok/my-cellxgene-project/cxg/
 
 You can override the path segment with ``custom_url_id`` in the Mamplan::
 
@@ -311,11 +311,11 @@ You can override the path segment with ``custom_url_id`` in the Mamplan::
 
 Result::
 
-    https://ingress.example.com/mampok/mouse-atlas/cellxgene/
+    https://ingress.example.com/mampok/mouse-atlas/cxg/
 
 Alternatively, ``random_url_suffix: true`` appends five random characters to
 the path segment::
 
-    https://ingress.example.com/mampok/my-cellxgene-project-a3f7k/cellxgene/
+    https://ingress.example.com/mampok/my-cellxgene-project-a3f7k/cxg/
 
 This provides light obfuscation without requiring auth.

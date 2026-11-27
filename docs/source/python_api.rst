@@ -220,7 +220,7 @@ create_mamplan
         metadata_files=["project_metadata.yaml"],
         project={
             "project_id": "mouse-atlas",
-            "tool": "cellxgene",
+            "tool": "cxg",
             "files": ["atlas.h5ad"],
             "creation_date": "2026-04-17T12:00:00Z",
         },
@@ -257,12 +257,12 @@ create_sh_mamplan
     project_id = api.create_sh_mamplan(
         output="/path/to/mamplans/",
         username="alice",
-        tool="cellxgene",
+        tool="cxg",
         bucket="alice-cellxgene-bucket",
         cluster="MY_CLUSTER",
         lifetime="2026-12-31T00:00:00Z",
     )
-    print(project_id)  # "alice-cellxgene"
+    print(project_id)  # "alice-cxg"
 
 Creates a Software Hub Mamplan (``*-shmamplan.json``). Authentication is
 always enabled. If ``cluster`` is ``None``, the ``default_cluster`` from

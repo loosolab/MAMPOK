@@ -1,0 +1,49 @@
+{
+    "tool": "cxg",
+    "toolDisplayname": "CellxGene",
+    "image": "docker.gitlab.gwdg.de/loosolab/container/cellxgene:1.3.0",
+    "containertype": "maincontainer",
+    "ports": 5005,
+    "args": [
+        "launch",
+        "--host",
+        "0.0.0.0",
+        "/DOWNLOADS3/__project.files__",
+        "--annotations-dir",
+        "./annotation_dir/"
+    ],
+    "resources": {
+        "limits": {
+            "cpu": "2",
+            "memory": "16Gi"
+        },
+        "requests": {
+            "cpu": "500m",
+            "memory": "4Gi"
+        }
+    },
+    "volume": {
+        "name": "filedir",
+        "mountPath": "/DOWNLOADS3"
+    },
+    "container_data": {
+        "paths": [
+            "/app/annotation_dir/"
+        ],
+        "restore_on_deploy": true,
+        "sync_interval_seconds": 30
+    },
+    "readinessProbe": {
+        "httpGet": {
+            "path": "/",
+            "port": 5005
+        },
+        "initialDelaySeconds": 10,
+        "periodSeconds": 10,
+        "failureThreshold": 6
+    },
+    "annotation": {
+        "nginx.ingress.kubernetes.io/rewrite-target": "/$2",
+        "nginx.ingress.kubernetes.io/proxy-body-size": "6M"
+    }
+}

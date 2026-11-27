@@ -5,6 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.2] - 2026-11-26
+
+### Added
+
+- Example files in the `examples/` directory: a Mamplan (`gse130699-mamplan.json`), a metadata file (`gse130699_metadata.yaml`) and a Mamplate (`mamplates/cxg-mamplate.json`). They are referenced from the documentation (new "Example Files" section in the getting started guide, plus pointers in the Mamplans, Mamplates and `create-mamplan` sections) and from the README.
+
+### Changed
+
+- The documentation and the README now use `cxg` as the short tool name of the cellxgene Mamplate in all examples (CLI calls, Mamplan snippets, selectors and URLs). Project IDs in the examples are unchanged. As a consequence, the project ID returned by `create_sh_mamplan` in the examples is `alice-cxg` instead of `alice-cellxgene`.
+- The annotated Mamplate example in the documentation is now the complete `cxg-mamplate.json` (`args`, `httpGet` readiness probe, `container_data`, `annotation`).
+
+### Removed
+
+- The example files `my-cellxgene-project-mamplan.json`, `mamplates/cellxgene-mamplate.json` and `mamplates/sleep-init-mamplate.json` from the `examples/` directory. The init container Mamplate remains documented inline.
+
+[3.3.2]: https://gitlab.gwdg.de/loosolab/software/mampok/-/compare/v3.3.1...v3.3.2
+
 ## [3.3.1] - 2026-10-26
 
 ### Changed

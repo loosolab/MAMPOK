@@ -10,6 +10,9 @@ format.
    :doc:`concepts`: conceptual overview of how Mamplans, Mamplates, and
    config.json interact.
 
+A complete example Mamplan for a cellxgene project is provided in the
+repository as ``examples/gse130699-mamplan.json``.
+
 File Naming and Location
 ------------------------
 
@@ -38,7 +41,7 @@ Creating a Mamplan
 
     mampok create-mamplan \
       --project-id my-cellxgene-project \
-      --tool cellxgene \
+      --tool cxg \
       --cluster MY_CLUSTER \
       --owner jdoe \
       --datatype scRNA-seq \
@@ -58,7 +61,7 @@ This is the structure of a complete Mamplan (all optional sections included):
     {
       "project": {
         "project_id": "my-cellxgene-project",
-        "tool": "cellxgene",
+        "tool": "cxg",
         "files": ["data.h5ad"],
         "creation_date": "2026-03-26T12:00:00Z",
         "init_container": ["sleep-init"]
@@ -113,7 +116,7 @@ Section Reference
      - string
      - yes
      - Tool name. Must match a Mamplate file in ``mamplates_path``
-       (e.g. ``"cellxgene"`` → ``cellxgene-mamplate.json``).
+       (e.g. ``"cxg"`` → ``cxg-mamplate.json``).
    * - ``files``
      - array of strings
      - yes

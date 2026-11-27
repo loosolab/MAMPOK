@@ -16,7 +16,9 @@ Mamplate files follow this naming convention::
 
     {tool}-mamplate.json
 
-Examples: ``cellxgene-mamplate.json``, ``jupyter-mamplate.json``.
+Example: ``cxg-mamplate.json``, the Mamplate of the cellxgene tool, which
+is provided in the repository as ``examples/mamplates/cxg-mamplate.json``
+(see :ref:`mamplate-example`).
 
 The ``tool`` field inside the Mamplate JSON is what users reference in
 ``project.tool`` of their Mamplan.
@@ -24,58 +26,83 @@ The ``tool`` field inside the Mamplate JSON is what users reference in
 All Mamplate files live in a flat directory specified by ``mamplates_path``
 in ``config.json``. Subdirectories are not scanned.
 
+.. _mamplate-example:
+
 Annotated Example
 -----------------
 
-This is the complete ``cellxgene-mamplate.json`` from the examples directory:
+This is the complete ``cxg-mamplate.json`` from the ``examples/mamplates``
+directory of the repository. ``cxg`` is the short tool name used throughout
+this documentation for cellxgene:
 
 .. code-block:: json
 
     {
-      "tool": "cellxgene",
-      "image": "ghcr.io/chanzuckerberg/cellxgene:1.2.0",
-      "containertype": "maincontainer",
-      "ports": 5005,
-      "command": [
-        "cellxgene",
-        "launch",
-        "/DOWNLOADS3/__project.files__",
-        "--host", "0.0.0.0",
-        "--port", "5005"
-      ],
-      "resources": {
-        "limits": {
-          "cpu": "4",
-          "memory": "16Gi"
+        "tool": "cxg",
+        "toolDisplayname": "CellxGene",
+        "image": "docker.gitlab.gwdg.de/loosolab/container/cellxgene:1.3.0",
+        "containertype": "maincontainer",
+        "ports": 5005,
+        "args": [
+            "launch",
+            "--host",
+            "0.0.0.0",
+            "/DOWNLOADS3/__project.files__",
+            "--annotations-dir",
+            "./annotation_dir/"
+        ],
+        "resources": {
+            "limits": {
+                "cpu": "2",
+                "memory": "16Gi"
+            },
+            "requests": {
+                "cpu": "500m",
+                "memory": "4Gi"
+            }
         },
-        "requests": {
-          "cpu": "1",
-          "memory": "4Gi"
+        "volume": {
+            "name": "filedir",
+            "mountPath": "/DOWNLOADS3"
+        },
+        "container_data": {
+            "paths": [
+                "/app/annotation_dir/"
+            ],
+            "restore_on_deploy": true,
+            "sync_interval_seconds": 30
+        },
+        "readinessProbe": {
+            "httpGet": {
+                "path": "/",
+                "port": 5005
+            },
+            "initialDelaySeconds": 10,
+            "periodSeconds": 10,
+            "failureThreshold": 6
+        },
+        "annotation": {
+            "nginx.ingress.kubernetes.io/rewrite-target": "/$2",
+            "nginx.ingress.kubernetes.io/proxy-body-size": "6M"
         }
-      },
-      "volume": {
-        "name": "filedir",
-        "mountPath": "/DOWNLOADS3"
-      },
-      "readinessProbe": {
-        "tcpSocket": {
-          "port": 5005
-        },
-        "initialDelaySeconds": 10,
-        "periodSeconds": 10,
-        "failureThreshold": 6
-      }
     }
 
 Key points:
 
-* ``__project.files__`` in ``command`` is a **template token**: it is
+* ``__project.files__`` in ``args`` is a **template token**: it is
   replaced at deploy time with the comma-joined file paths from the Mamplan's
   ``project.files``. See :ref:`template-tokens`.
 * ``volume.mountPath`` (``/DOWNLOADS3``) is where the S3 init container
   downloads files. The main container then reads from this path.
-* ``readinessProbe.tcpSocket`` tells Kubernetes to wait until port 5005
-  accepts connections before marking the pod ready.
+* ``readinessProbe.httpGet`` tells Kubernetes to wait until the application
+  answers an HTTP GET request on ``/`` (port 5005) before marking the pod
+  ready. See :ref:`readiness-probes`.
+* ``container_data`` synchronizes the annotation directory with S3, so that
+  annotations created in the running container survive stops and
+  redeployments. See :ref:`s3-persistence`.
+* ``annotation`` adds tool-specific Ingress annotations to the deployment
+  (here a path rewrite for the project URL and the maximum request body
+  size).
 
 Field Reference
 ---------------
@@ -239,7 +266,7 @@ deploy time after the Mamplan's ``container`` overrides are merged.
    * - ``__service.owner__``
      - The owner username
    * - ``__url_base_path__``
-     - The URL path of the deployed tool (e.g. ``/my-project/cellxgene/``).
+     - The URL path of the deployed tool (e.g. ``/my-project/cxg/``).
        Only supported inside ``readinessProbe``.
 
 Any other dot-separated Mamplan field path (e.g. ``__deployment.auth__``) is
@@ -418,7 +445,7 @@ You can define additional custom init containers by setting
 ``containertype: initcontainer`` in a Mamplate and then referencing that
 Mamplate's tool name in the Mamplan's ``project.init_container`` list.
 
-Example init container Mamplate (``sleep-init-mamplate.json``):
+Example init container Mamplate:
 
 .. code-block:: json
 
